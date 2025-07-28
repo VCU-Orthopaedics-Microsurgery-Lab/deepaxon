@@ -176,12 +176,10 @@ def base_label(train_masks):
     :returns: Numpy Array; training mask images with values being 0,1,2 instead of whatever colors it was
     '''
     
-    label_encoder = LabelEncoder()
-    n, h, w = train_masks.shape #get shape values to be eable to convert it back into its shape
-    train_masks_flat = train_masks.reshape(-1) #make the array 1 dimensional
-    train_masks_flat_encoded = label_encoder.fit_transform(train_masks_flat) #recode the labels to make them base values
-    train_masks_encoded = train_masks_flat_encoded.reshape(n, h, w) #reshape the array to fit into original shape
-    return train_masks_encoded
+    pixel_to_class = {0: 0, 127: 1, 128: 1, 255: 2}
+    train_masks_remapped = np.vectorize(lambda x: pixel_to_class.get(x, 0))(train_masks)
+    return train_masks_remapped
+
 
 def train_model(dir_path, model_path, model_name, batch_size=16, epochs=200):
     '''

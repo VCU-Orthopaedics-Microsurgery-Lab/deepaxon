@@ -31,4 +31,4 @@ pip install -r requirements.txt
 
 **The input for morphometric analysis is a folder that contains ONLY segmented images**
 
-# MORE INFORMATION TO COME THE README SOON
+*MORE INFORMATION TO COME THE README SOON*
