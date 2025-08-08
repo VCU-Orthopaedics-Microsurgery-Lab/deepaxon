@@ -20,13 +20,6 @@ def get_labels(img):
     markers = label(local_max_mask)
     segmented_cells = watershed(-distance, markers, mask=img)
     return segmented_cells
-    # distance = ndi.distance_transform_edt(img)
-    # coords = peak_local_max(distance, footprint=np.ones((10,10)), labels=img)
-    # mask = np.zeros(distance.shape, dtype=bool)
-    # mask[tuple(coords.T)] = True
-    # markers, _ = ndi.label(mask)
-    # labels = watershed(-distance, markers, mask=img)
-    # return labels
 
 def get_myelin_row(myelin_df, x, y):
     '''
@@ -41,6 +34,22 @@ def get_myelin_row(myelin_df, x, y):
     #the axon centroid x will be left<x<right and the y will be top<y<bottom
     return myelin_df[((myelin_df['bbox-0'] <= x) & (myelin_df['bbox-2'] >= x)) & ((myelin_df['bbox-1'] <= y) & (myelin_df['bbox-3'] >= y))]
 
+def get_axon_row(axon_df, left, right, top, bottom):
+    '''
+    Using the myelin bounding box find the larges axon that correspons to that myelin
+    '''
+    
+    left = int(left)
+    right = int(right)
+    top = int(top)
+    bottom = int(bottom)
+    
+    axons_id = axon_df[(((axon_df['centroid-0'])>=left) & (axon_df['centroid-0']<=right)) &
+                       ((axon_df['centroid-1'])>=top) & (axon_df['centroid-1']<=bottom)]
+    biggest_axon = axons_id[axons_id['area'] == axons_id['area'].max()]
+    
+    return biggest_axon
+        
 def get_morphometrics(img_path):
     '''
     Get morphometric data from a single image and return a pandas df of the morphometric data
@@ -83,47 +92,97 @@ def get_morphometrics(img_path):
                'orientation':[],
                'solidity':[],
                'gratio':[]}
-    morph_df = pd.DataFrame(columns)
+    morph_df1 = pd.DataFrame(columns)
+    morph_df2 = pd.DataFrame(columns)
+    
+    #going through all the myelin that got accounted for in watershed
+    #using myelin to compare to axons
+    drop_rows = []    
+    for index, row in myelin_df.iterrows():
+        left = row['bbox-0']
+        right = row['bbox-2']
+        top = row['bbox-1']
+        bottom = row['bbox-3']
+        
+        axon_row = get_axon_row(axon_df, left, right, top, bottom)
+        if not(axon_row.empty):
+            label = row['label']
+            x = axon_row['centroid-0']
+            y = axon_row['centroid-1']
+            axon_area = axon_row['area']
+            axon_perimeter = axon_row['perimeter']
+            axon_diam = axon_row['axis_major_length']#(row['axis_major_length'] + row['axis_minor_length']) / 2 #getting axon diameter along the major axis
+            eccentricity = axon_row['eccentricity']
+            orientation = axon_row['orientation']
+            solidity = axon_row['solidity']
+            
+            myelin_area = row['area'] - axon_area
+            myelin_thickness = row['axis_major_length']
+            myelin_perimeter = row['perimeter']
+            gratio = axon_diam / row['axis_major_length']
+            
+            if gratio.iloc[0] < 1:
+                #make a one row DataFrame with axon and myelin data
+                new_dict = {'label':label,
+                        'x':x,
+                        'y':y,
+                        'axon_area':axon_area,
+                        'axon_perimeter':axon_perimeter,
+                        'axon_diam':axon_diam,
+                        'myelin_area':myelin_area,
+                        'myelin_thickness':myelin_thickness,
+                        'myelin_perimeter':myelin_perimeter,
+                        'eccentricity':eccentricity,
+                        'orientation':orientation,
+                        'solidity':solidity,
+                        'gratio':gratio}
+
+                new_df = pd.DataFrame(new_dict)
+                
+                #add the new data to the morphometrics DataFrame
+                morph_df2 = pd.concat([morph_df2,new_df], ignore_index=True)
+            
+    morph_df2 = morph_df2.drop(drop_rows)
     
     #going through all the axons that got accounted for in watershed
     #using axons since they are more separate so it will be a more accurate value
-    for index, row in axon_df.iterrows():
-        #save all morphometric data in variables
-        label = row['label']
-        x = row['centroid-0']
-        y = row['centroid-1']
-        axon_area = row['area']
-        axon_perimeter = row['perimeter']
-        axon_diam = row['axis_major_length']#(row['axis_major_length'] + row['axis_minor_length']) / 2 #getting axon diameter along the major axis
-        eccentricity = row['eccentricity']
-        orientation = row['orientation']
-        solidity = row['solidity']
-        myelin_row = get_myelin_row(myelin_df, x, y) #get myelin corresponding to axon of interest
-        myelin_area = myelin_row['area'] - axon_area #area of the myelin = (axon+myelin area) - (axon area)
-        myelin_thickness = myelin_row['axis_major_length']#((myelin_row['axis_major_length'] + myelin_row['axis_minor_length']) / 2) - axon_diam #myelin thickness = (axon+myelin diam) - (axon diam)
-        myelin_perimeter = myelin_row['perimeter']
-        gratio = axon_diam / myelin_row['axis_major_length']#((myelin_row['axis_major_length'] + myelin_row['axis_minor_length']) / 2)
+    # for index, row in axon_df.iterrows():
+    #     #save all morphometric data in variables
+    #     label = row['label']
+    #     x = row['centroid-0']
+    #     y = row['centroid-1']
+    #     axon_area = row['area']
+    #     axon_perimeter = row['perimeter']
+    #     axon_diam = row['axis_major_length']#(row['axis_major_length'] + row['axis_minor_length']) / 2 #getting axon diameter along the major axis
+    #     eccentricity = row['eccentricity']
+    #     orientation = row['orientation']
+    #     solidity = row['solidity']
+    #     myelin_row = get_myelin_row(myelin_df, x, y) #get myelin corresponding to axon of interest
+    #     myelin_area = myelin_row['area'] - axon_area #area of the myelin = (axon+myelin area) - (axon area)
+    #     myelin_thickness = myelin_row['axis_major_length']#((myelin_row['axis_major_length'] + myelin_row['axis_minor_length']) / 2) - axon_diam #myelin thickness = (axon+myelin diam) - (axon diam)
+    #     myelin_perimeter = myelin_row['perimeter']
+    #     gratio = axon_diam / myelin_row['axis_major_length']#((myelin_row['axis_major_length'] + myelin_row['axis_minor_length']) / 2)
         
-        #make a one row DataFrame with axon and myelin data
-        new_dict = {'label':label,
-                'x':x,
-                'y':y,
-                'axon_area':axon_area,
-                'axon_perimeter':axon_perimeter,
-                'axon_diam':axon_diam,
-                'myelin_area':myelin_area,
-                'myelin_thickness':myelin_thickness,
-                'myelin_perimeter':myelin_perimeter,
-                'eccentricity':eccentricity,
-                'orientation':orientation,
-                'solidity':solidity,
-                'gratio':gratio}
-        new_df = pd.DataFrame(new_dict)
+    #     #make a one row DataFrame with axon and myelin data
+    #     new_dict = {'label':label,
+    #             'x':x,
+    #             'y':y,
+    #             'axon_area':axon_area,
+    #             'axon_perimeter':axon_perimeter,
+    #             'axon_diam':axon_diam,
+    #             'myelin_area':myelin_area,
+    #             'myelin_thickness':myelin_thickness,
+    #             'myelin_perimeter':myelin_perimeter,
+    #             'eccentricity':eccentricity,
+    #             'orientation':orientation,
+    #             'solidity':solidity,
+    #             'gratio':gratio}
+    #     new_df = pd.DataFrame(new_dict)
         
-        #add the new data to the morphometrics DataFrame
-        morph_df = pd.concat([morph_df,new_df], ignore_index=True)
+    #     #add the new data to the morphometrics DataFrame
+    #     morph_df1 = pd.concat([morph_df1,new_df], ignore_index=True)
         
-    return morph_df
+    # return morph_df2
 
 def save_morphometrics(morph_df, output_dir, output_name):
     output_path = os.path.join(output_dir, output_name+'.xlsx')
