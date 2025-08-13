@@ -14,7 +14,7 @@ import os
 
 def get_labels(img):
     distance = ndi.distance_transform_edt(img)
-    local_max_coords = peak_local_max(distance, min_distance=10)
+    local_max_coords = peak_local_max(distance, min_distance=50)
     local_max_mask = np.zeros(distance.shape, dtype=bool)
     local_max_mask[tuple(local_max_coords.T)] = True
     markers = label(local_max_mask)
