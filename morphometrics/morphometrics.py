@@ -182,7 +182,7 @@ def get_morphometrics(img_path):
     #     #add the new data to the morphometrics DataFrame
     #     morph_df1 = pd.concat([morph_df1,new_df], ignore_index=True)
         
-    # return morph_df2
+    return morph_df2
 
 def save_morphometrics(morph_df, output_dir, output_name):
     output_path = os.path.join(output_dir, output_name+'.xlsx')
