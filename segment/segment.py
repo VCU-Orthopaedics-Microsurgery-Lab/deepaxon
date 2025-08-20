@@ -137,12 +137,13 @@ def segment(img_path, model_path, output_path, patch_size=256):
     
     pred_img = Image.fromarray(pred_img)
     img_name = os.path.basename(img_path)
-    pred_path = os.path.join(output_path, img_name)
+    pred_path = os.path.join(output_path,img_name.split('.')[0] + "_seg." + img_name.split('.')[1])
     pred_img.save(pred_path)
     
     return pred_path
 
 def segment_dir(dir_path, model_path, output_path):
     for img_name in os.listdir(dir_path):
-        img_path = os.path.join(dir_path,img_name)
-        segment(img_path, model_path, output_path)
+        if img_name != "Thumbs.db":
+            img_path = os.path.join(dir_path,img_name)
+            segment(img_path, model_path, output_path)
