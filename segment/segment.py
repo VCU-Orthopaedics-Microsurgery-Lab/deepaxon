@@ -5,6 +5,7 @@ from PIL import Image
 import numpy as np
 from patchify import patchify
 import os
+from resize import resize_img
 
 def get_pos(shape, i,j):
     i_max = shape[0]-1
@@ -100,7 +101,7 @@ def recolor(img):
     return img_color
 
 def segment(img_path, model_path, output_path, patch_size=256):
-    img = cv2.imread(img_path, 0)
+    img = resize_img(img_path)
     model = load_model(model_path)
     
     SIZE_X = img.shape[1] // patch_size * patch_size
