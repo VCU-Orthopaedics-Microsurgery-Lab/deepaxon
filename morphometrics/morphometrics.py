@@ -11,13 +11,14 @@ from scipy import ndimage as ndi #for watershed segmentation
 from skimage.feature import peak_local_max #for watershed segmentation
 from skimage.segmentation import watershed #for watershed segmentation
 import os
+from skimage.morphology import dilation, disk
 
 def get_labels(img):
     distance = ndi.distance_transform_edt(img)
-    local_max_coords = peak_local_max(distance, min_distance=50)
-    local_max_mask = np.zeros(distance.shape, dtype=bool)
-    local_max_mask[tuple(local_max_coords.T)] = True
-    markers = label(local_max_mask)
+    sure_fg_mask = distance > 0.1 * distance.max()
+    markers = label(sure_fg_mask)
+    sure_bg_mask = dilation(img, disk(5))
+    markers[sure_bg_mask == 0] = markers.max() + 1
     segmented_cells = watershed(-distance, markers, mask=img)
     return segmented_cells
 
