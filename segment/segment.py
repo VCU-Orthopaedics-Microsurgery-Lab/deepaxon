@@ -1,13 +1,27 @@
-from keras.utils import normalize
-from keras.models import load_model
-import cv2
-from PIL import Image
-import numpy as np
-from patchify import patchify
+'''
+-------------------------------- DEEPAXON --------------------------------
+obtain segmented image file where the meylin is a middle grey and the axons are white
+'''
+# ------------------------------ Standard Libraries ---------------------------------- #
 import os
-from resize import resize_img
+from PIL import Image                   # Image processing
 
+# ------------------------------ Third-Party Libraries ------------------------------- # 
+import cv2                              # Computer vision library 
+import numpy as np                      # Numerical operations
+from keras.models import load_model     # Load trained UNet++ model
+from keras.utils import normalize       # Normalize image pixel values
+from patchify import patchify           # Splits large images into smaller overlapping patches
+
+# ------------------------------- Local Imports -------------------------------------- #
+from resize import resize_img           # Custom function: resize images to a standard size
+
+# ------------------------------- Patch Utilities ------------------------------------- #
 def get_pos(shape, i,j):
+    '''
+    Determine the relative position of a patch within the full image.
+    Returns an integer (0-8) indicating patch location (corner, edge, or center).
+    '''
     i_max = shape[0]-1
     j_max = shape[1]-1
     if i == 0 and j == 0:
@@ -31,9 +45,16 @@ def get_pos(shape, i,j):
     return pos
 
 def hann_fn(x):
+    '''
+    Hann window function for smoothing patch edges.
+    '''
     return (1 - np.cos(2 * np.pi * x / 255))/2
 
 def hann_window(pos):
+    '''
+    Generate a 2D Hann window matrix based on patch position.
+    Helps smoothly blend overlapping patches.
+    '''
     i, j = np.meshgrid(np.arange(256), np.arange(256), indexing='ij')
     condition1 = (i <= 128) & (j <= 128)
     condition2 = (i > 128) & (j < 128)
@@ -41,6 +62,7 @@ def hann_window(pos):
     condition4 = ~condition1 & ~condition2 & ~condition3
     
     scaler = np.zeros((256,256), dtype=float)
+    # Hann weighting for each of the 9 possible patch positions
     if pos == 0:
         scaler[condition1] = 1
         scaler[condition2] = hann_fn(i[condition2])
@@ -89,43 +111,54 @@ def hann_window(pos):
         
     return scaler
 
+# ------------------------------ Visualization ----------------------------------- #
 def recolor(img):
+    '''
+    Map integer labels (0=background, 1=myelin, 2=axon) to RGB colors for visualization.
+    '''
     colors = {
-        0: (0, 0, 0),
-        1: (128, 128, 128),
-        2: (255, 255, 255),
+        0: (0, 0, 0),           # background
+        1: (128, 128, 128),     # myelin
+        2: (255, 255, 255),     # axon
     }
     img_color = np.zeros((img.shape[0], img.shape[1], 3), dtype=np.uint8)
     for value, color in colors.items():
         img_color[img == value, :] = color 
     return img_color
 
-def segment(img_path, model_path, output_path, patch_size=256):
-    img = resize_img(img_path)
-    model = load_model(model_path)
+# ------------------------------ Image Segmentation ------------------------------ #
+# Main segmentation function for a single image
+def segment(img_path, model, output_path, patch_size=256):
+    '''
+    Segment a single image using the trained UNet++ model.
+    Applies patch-based prediction with Hann window blending.
+    '''
+    img = resize_img(img_path)             # Resize image to standard dimensions
+
     
     SIZE_X = img.shape[1] // patch_size * patch_size
     SIZE_Y = img.shape[0] // patch_size * patch_size
     
     img = Image.fromarray(img)
-    img = img.crop((0,0,SIZE_X, SIZE_Y))
+    img = img.crop((0,0,SIZE_X, SIZE_Y))    # Ensure divisible by patch size
     img = np.array(img)
     
-    patches = patchify(img, (patch_size, patch_size), patch_size//2)
+    patches = patchify(img, (patch_size, patch_size), patch_size//2) # 50% overlap
     
-    pred_img = np.zeros(img.shape)
+    pred_img = np.zeros(img.shape)  # Placeholder for reconstructed prediction
+    
+    # Loop through patches and predict
     for i in range(patches.shape[0]):
         for j in range(patches.shape[1]):
             patch = patches[i,j,:,:]
             patch = normalize(patch)
-            patch = np.expand_dims(patch, axis=(0,3))
-            pred = model.predict(patch)
-            pred = np.argmax(pred, axis=3)
-            pred = pred[0,:,:]
+            patch = np.expand_dims(patch, axis=(0,3))       # Add batch and channel dims
+            pred = model.predict(patch)                     # UNet++ prediction
+            pred = np.argmax(pred, axis=3)[0,:,:]           # Remove batch dim
             
             patch_pos = get_pos(patches.shape, i, j)
             hann_matrix = hann_window(patch_pos)
-            adj_pred = pred * hann_matrix
+            adj_pred = pred * hann_matrix                   # Apply Hann weighting
             
             i_start = i*patch_size//2
             i_end = i_start+patch_size
@@ -143,8 +176,14 @@ def segment(img_path, model_path, output_path, patch_size=256):
     
     return pred_path
 
+# ------------------------------ Directory Segmentation ------------------------------ #
 def segment_dir(dir_path, model_path, output_path):
+    '''
+    Apply segmentation to all images in a folder using the trained UNet++ model.
+    Loads the model once to avoid reloading for every image.
+    '''
+    model = load_model(model_path)      # Load trained UNet++ model
     for img_name in os.listdir(dir_path):
-        if img_name != "Thumbs.db":
+        if img_name != "Thumbs.db":     # Skip OS artifact files
             img_path = os.path.join(dir_path,img_name)
             segment(img_path, model_path, output_path)

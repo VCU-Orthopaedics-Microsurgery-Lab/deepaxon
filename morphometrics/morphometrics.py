@@ -2,18 +2,24 @@
 -------------------------------- DEEPAXON --------------------------------
 obtain morphometric data for a single segmented image file where the meylin is a middle grey and the axons are white
 '''
-
-import numpy as np
-import cv2 #to work with images
-from skimage.measure import label, regionprops_table #to get shape properties
-import pandas as pd #make spreadsheet
-from scipy import ndimage as ndi #for watershed segmentation
-from skimage.feature import peak_local_max #for watershed segmentation
-from skimage.segmentation import watershed #for watershed segmentation
+# ----------------------------- Standard Library ----------------------------- #
 import os
-from skimage.morphology import dilation, disk
 
+# ----------------------------- Third-Party Libraries ------------------------ #
+import cv2  # to work with images
+import numpy as np
+import pandas as pd  # make spreadsheet
+from scipy import ndimage as ndi  # for watershed segmentation
+from skimage.feature import peak_local_max  # for watershed segmentation
+from skimage.measure import label, regionprops_table  # to get shape properties
+from skimage.morphology import dilation, disk
+from skimage.segmentation import watershed  # for watershed segmentation
+
+# ------------------------------ Labeling Functions -------------------------- #
 def get_labels(img):
+    '''
+    Apply watershed segmentation to label connected regions.
+    '''
     distance = ndi.distance_transform_edt(img)
     sure_fg_mask = distance > 0.1 * distance.max()
     markers = label(sure_fg_mask)
@@ -21,25 +27,26 @@ def get_labels(img):
     markers[sure_bg_mask == 0] = markers.max() + 1
     segmented_cells = watershed(-distance, markers, mask=img)
     return segmented_cells
+    # [M*] Consider applying morphological smoothing before watershed.
 
+# ---------------------------- Axon/Myelin Matching -------------------------- #
 def get_myelin_row(myelin_df, x, y):
     '''
-    Using the axon centroid coordinates, find the myelin that corresponds to that axon
+    Using axon centroid coordinates, find the corresponding myelin region.
     The centroid of the axon will be in the bbox of the myelin so find the proper myelin
     '''
-    
     #make the axon centroid integers so they can be compared to bbox values
     x = int(x)
     y = int(y)
     
     #the axon centroid x will be left<x<right and the y will be top<y<bottom
-    return myelin_df[((myelin_df['bbox-0'] <= x) & (myelin_df['bbox-2'] >= x)) & ((myelin_df['bbox-1'] <= y) & (myelin_df['bbox-3'] >= y))]
+    return myelin_df[((myelin_df['bbox-0'] <= x) & (myelin_df['bbox-2'] >= x)) & 
+                     ((myelin_df['bbox-1'] <= y) & (myelin_df['bbox-3'] >= y))]
 
 def get_axon_row(axon_df, left, right, top, bottom):
     '''
-    Using the myelin bounding box find the larges axon that correspons to that myelin
+    Using the myelin bounding box, find the largest axon within
     '''
-    
     left = int(left)
     right = int(right)
     top = int(top)
@@ -50,61 +57,57 @@ def get_axon_row(axon_df, left, right, top, bottom):
     biggest_axon = axons_id[axons_id['area'] == axons_id['area'].max()]
     
     return biggest_axon
-        
+       
+# ------------------------------ Morphometric Analysis ---------------------- # 
 def get_morphometrics(img_path):
     '''
-    Get morphometric data from a single image and return a pandas df of the morphometric data
+    Extract morphometric measurements from a single segmented image.
+    Returns a pandas DataFrame with axon and myelin properties.
     
     :param img_path: A path (string or object) pointing to a single segmented image in which the myelin is a middle grey and the axon is white
     
     :returns: Pandas DataFrame; morphometrics
     '''
-    
-    #read the image and flatten it into black and white
+    # Read image and flatten to black and white
     img = cv2.imread(img_path)
     img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-    axon = cv2.inRange(img, 200, 255) #axons are everything above a medium gray
-    myelin = cv2.inRange(img, 1, 255) #myelin is actually axon+myelin so everything above black
+    axon = cv2.inRange(img, 200, 255) # Axons = everything above a medium gray
+    myelin = cv2.inRange(img, 1, 255) # Myelin = axon + myelin = everything above black
     
-    #watershed labelling of axons then obtaining region properties and putting it in a DataFrame
+    # Watershed labeling of axons then obtaining region properties and putting it in a DataFrame
     axon_label = get_labels(axon)
-    axon_props = regionprops_table(axon_label,properties=('label', 'centroid', 'area', 'axis_minor_length', 'axis_major_length', 
-                                                          'eccentricity', 'orientation', 'perimeter', 'solidity'))
+    axon_props = regionprops_table(axon_label,properties=(
+        'label', 'centroid', 'area', 'axis_minor_length', 'axis_major_length', 
+        'eccentricity', 'orientation', 'perimeter', 'solidity'))
     axon_df = pd.DataFrame.from_dict(axon_props)
 
-    #watershed labelling of myelin then obtaining region properties and putting it in a DataFrame
+    # Watershed labeling of myelin then obtaining region properties and putting it in a DataFrame
     myelin_label = get_labels(myelin)
-    myelin_props = regionprops_table(myelin_label, properties=('label', 'bbox', 'area', 'axis_minor_length', 'axis_major_length',
-                                                               'perimeter'))
+    myelin_props = regionprops_table(myelin_label, properties=(
+        'label', 'bbox', 'area', 'axis_minor_length', 'axis_major_length', 'perimeter'))
     myelin_df = pd.DataFrame.from_dict(myelin_props)
     
-    #making an empty DataFrame to put morphometric data into
-    columns = {'label':[],
-               'x':[],
-               'y':[],
-               'axon_area':[],
-               'axon_perimeter':[],
-               'axon_diam':[],
-               'myelin_area':[],
-               'myelin_thickness':[],
-               'myelin_perimeter':[],
-               'eccentricity':[],
-               'orientation':[],
-               'solidity':[],
-               'gratio':[]}
-    morph_df1 = pd.DataFrame(columns)
-    morph_df2 = pd.DataFrame(columns)
+    # Making an empty DataFrame to put morphometric data into
+    columns = {'label':[], 'x':[], 'y':[],
+        'axon_area':[], 'axon_perimeter':[],'axon_diam':[],
+        'myelin_area':[], 'myelin_thickness':[], 'myelin_perimeter':[],
+        'eccentricity':[], 'orientation':[], 'solidity':[], 'gratio':[]
+    }
+    morph_df1 = pd.DataFrame(columns)  # axon-based loop
+    morph_df2 = pd.DataFrame(columns)  # myelin-based loop
     
-    #going through all the myelin that got accounted for in watershed
-    #using myelin to compare to axons
+    
+# ------------------------ Loop over myelin (active) ------------------------ #
+    # going through all the myelin that got accounted for in watershed
+    # using myelin to compare to axons
     drop_rows = []    
     for index, row in myelin_df.iterrows():
         left = row['bbox-0']
         right = row['bbox-2']
         top = row['bbox-1']
         bottom = row['bbox-3']
-        
+            
         axon_row = get_axon_row(axon_df, left, right, top, bottom)
         if not(axon_row.empty):
             label = row['label']
@@ -145,8 +148,9 @@ def get_morphometrics(img_path):
             
     morph_df2 = morph_df2.drop(drop_rows)
     
-    #going through all the axons that got accounted for in watershed
-    #using axons since they are more separate so it will be a more accurate value
+    # ------------------------ Loop over axons (commented out) ------------------------ #
+    # going through all the axons that got accounted for in watershed
+    # using axons since they are more separate so it will be a more accurate value
     # for index, row in axon_df.iterrows():
     #     #save all morphometric data in variables
     #     label = row['label']
@@ -185,6 +189,7 @@ def get_morphometrics(img_path):
         
     return morph_df2
 
+# ------------------------------ Save Output -------------------------------- #
 def save_morphometrics(morph_df, output_dir, output_name):
     output_path = os.path.join(output_dir, output_name+'.xlsx')
     morph_df.to_excel(output_path)
