@@ -5,10 +5,11 @@ obtain segmented image file where the meylin is a middle grey and the axons are 
 # ------------------------------ Standard Libraries ---------------------------------- #
 import os
 from PIL import Image                   # Image processing
+import numpy as np                      # Numerical operations
 
 # ------------------------------ Third-Party Libraries ------------------------------- # 
 import cv2                              # Computer vision library 
-import numpy as np                      # Numerical operations
+import tensorflow as tf
 from keras.models import load_model     # Load trained UNet++ model
 from keras.utils import normalize       # Normalize image pixel values
 from patchify import patchify           # Splits large images into smaller overlapping patches
@@ -22,92 +23,82 @@ def get_pos(shape, i,j):
     Determine the relative position of a patch within the full image.
     Returns an integer (0-8) indicating patch location (corner, edge, or center).
     '''
-    i_max = shape[0]-1
-    j_max = shape[1]-1
-    if i == 0 and j == 0:
-        pos = 0
-    elif i == 0 and j == j_max:
-        pos = 2
-    elif i == i_max and j == 0:
-        pos = 6
-    elif i == i_max and j == j_max:
-        pos = 8
-    elif i == 0:
-        pos = 1
-    elif i == i_max:
-        pos = 7
-    elif j == 0:
-        pos = 3
-    elif j == j_max:
-        pos = 5
-    else:
-        pos = 4
-    return pos
+    i_max, j_max = shape[0]-1, shape[1]-1
+    if i == 0 and j == 0: return 0
+    if i == 0 and j == j_max: return 2
+    if i == i_max and j == 0: return 6
+    if i == i_max and j == j_max: return 8
+    if i == 0: return 1
+    if i == i_max: return 7
+    if j == 0: return 3
+    if j == j_max: return 5
+    return 4
 
-def hann_fn(x):
+def hann_fn(x, patch_size):
     '''
-    Hann window function for smoothing patch edges.
+    1D Hann window function scaled to patch size.
     '''
-    return (1 - np.cos(2 * np.pi * x / 255))/2
+    return (1 - np.cos(2 * np.pi * x / (patch_size - 1))) / 2
 
-def hann_window(pos):
+def hann_window(pos, patch_size):
     '''
-    Generate a 2D Hann window matrix based on patch position.
-    Helps smoothly blend overlapping patches.
+     Generate 2D Hann window for a given patch position and size.
     '''
-    i, j = np.meshgrid(np.arange(256), np.arange(256), indexing='ij')
-    condition1 = (i <= 128) & (j <= 128)
-    condition2 = (i > 128) & (j < 128)
-    condition3 = (i < 128) & (j > 128)
-    condition4 = ~condition1 & ~condition2 & ~condition3
+    i, j = np.meshgrid(np.arange(patch_size), np.arange(patch_size), indexing='ij')
+    center = patch_size // 2
+    cond1 = (i <= center) & (j <= center)
+    cond2 = (i > center) & (j <= center)
+    cond3 = (i <= center) & (j > center)
+    cond4 = ~cond1 & ~cond2 & ~cond3
     
-    scaler = np.zeros((256,256), dtype=float)
+    scaler = np.zeros((patch_size, patch_size), dtype=float)
+    
     # Hann weighting for each of the 9 possible patch positions
     if pos == 0:
-        scaler[condition1] = 1
-        scaler[condition2] = hann_fn(i[condition2])
-        scaler[condition3] = hann_fn(j[condition3])
-        scaler[condition4] = hann_fn(i[condition4]) * hann_fn(j[condition4])
+        scaler[cond1] = 1
+        scaler[cond2] = hann_fn(i[cond2], patch_size)
+        scaler[cond3] = hann_fn(j[cond3], patch_size)
+        scaler[cond4] = hann_fn(i[cond4], patch_size) * hann_fn(j[cond4], patch_size)
     elif pos == 1:
-        scaler[condition1] = hann_fn(j[condition1])
-        scaler[condition2] = hann_fn(i[condition2]) * hann_fn(j[condition2])
-        scaler[condition3] = hann_fn(j[condition3])
-        scaler[condition4] = hann_fn(i[condition4]) * hann_fn(j[condition4])
+        scaler[cond1] = hann_fn(j[cond1], patch_size)
+        scaler[cond2] = hann_fn(i[cond2], patch_size) * hann_fn(j[cond2], patch_size)
+        scaler[cond3] = hann_fn(j[cond3], patch_size)
+        scaler[cond4] = hann_fn(i[cond4], patch_size) * hann_fn(j[cond4], patch_size)
     elif pos == 2:
-        scaler[condition1] = hann_fn(j[condition1])
-        scaler[condition2] = hann_fn(i[condition2]) * hann_fn(j[condition2])
-        scaler[condition3] = 1
-        scaler[condition4] = hann_fn(i[condition4])
+        scaler[cond1] = hann_fn(j[cond1], patch_size)
+        scaler[cond2] = hann_fn(i[cond2], patch_size) * hann_fn(j[cond2], patch_size)
+        scaler[cond3] = 1
+        scaler[cond4] = hann_fn(i[cond4], patch_size)
     elif pos == 3:
-        scaler[condition1] = hann_fn(i[condition1])
-        scaler[condition2] = hann_fn(i[condition2])
-        scaler[condition3] = hann_fn(i[condition3]) * hann_fn(j[condition3])
-        scaler[condition4] = hann_fn(i[condition4]) * hann_fn(j[condition4])
+        scaler[cond1] = hann_fn(i[cond1], patch_size)
+        scaler[cond2] = hann_fn(i[cond2], patch_size)
+        scaler[cond3] = hann_fn(i[cond3], patch_size) * hann_fn(j[cond3], patch_size)
+        scaler[cond4] = hann_fn(i[cond4], patch_size) * hann_fn(j[cond4], patch_size)
     elif pos == 4:
-        scaler[condition1] = hann_fn(i[condition1]) * hann_fn(j[condition1])
-        scaler[condition2] = hann_fn(i[condition2]) * hann_fn(j[condition2])
-        scaler[condition3] = hann_fn(i[condition3]) * hann_fn(j[condition3])
-        scaler[condition4] = hann_fn(i[condition4]) * hann_fn(j[condition4])
+        scaler[cond1] = hann_fn(i[cond1], patch_size) * hann_fn(j[cond1], patch_size)
+        scaler[cond2] = hann_fn(i[cond2], patch_size) * hann_fn(j[cond2], patch_size)
+        scaler[cond3] = hann_fn(i[cond3], patch_size) * hann_fn(j[cond3], patch_size)
+        scaler[cond4] = hann_fn(i[cond4], patch_size) * hann_fn(j[cond4], patch_size)
     elif pos == 5:
-        scaler[condition1] = hann_fn(i[condition1]) * hann_fn(j[condition1])
-        scaler[condition2] = hann_fn(i[condition2]) * hann_fn(j[condition2])
-        scaler[condition3] = hann_fn(i[condition3])
-        scaler[condition4] = hann_fn(i[condition4])
+        scaler[cond1] = hann_fn(i[cond1], patch_size) * hann_fn(j[cond1], patch_size)
+        scaler[cond2] = hann_fn(i[cond2], patch_size) * hann_fn(j[cond2], patch_size)
+        scaler[cond3] = hann_fn(i[cond3], patch_size)
+        scaler[cond4] = hann_fn(i[cond4], patch_size)
     elif pos == 6:
-        scaler[condition1] = hann_fn(i[condition1])
-        scaler[condition2] = 1
-        scaler[condition3] = hann_fn(i[condition3]) * hann_fn(j[condition3])
-        scaler[condition4] = hann_fn(j[condition4])
+        scaler[cond1] = hann_fn(i[cond1], patch_size)
+        scaler[cond2] = 1
+        scaler[cond3] = hann_fn(i[cond3], patch_size) * hann_fn(j[cond3], patch_size)
+        scaler[cond4] = hann_fn(j[cond4], patch_size)
     elif pos == 7:
-        scaler[condition1] = hann_fn(i[condition1]) * hann_fn(j[condition1])
-        scaler[condition2] = hann_fn(j[condition2])
-        scaler[condition3] = hann_fn(i[condition3]) * hann_fn(j[condition3])
-        scaler[condition4] = hann_fn(j[condition4])
+        scaler[cond1] = hann_fn(i[cond1], patch_size) * hann_fn(j[cond1], patch_size)
+        scaler[cond2] = hann_fn(j[cond2], patch_size)
+        scaler[cond3] = hann_fn(i[cond3], patch_size) * hann_fn(j[cond3], patch_size)
+        scaler[cond4] = hann_fn(j[cond4], patch_size)
     elif pos == 8:
-        scaler[condition1] = hann_fn(i[condition1]) * hann_fn(j[condition1])
-        scaler[condition2] = hann_fn(j[condition2])
-        scaler[condition3] = hann_fn(i[condition3])
-        scaler[condition4] = 1
+        scaler[cond1] = hann_fn(i[cond1], patch_size) * hann_fn(j[cond1], patch_size)
+        scaler[cond2] = hann_fn(j[cond2], patch_size)
+        scaler[cond3] = hann_fn(i[cond3], patch_size)
+        scaler[cond4] = 1
         
     return scaler
 
@@ -128,7 +119,7 @@ def recolor(img):
 
 # ------------------------------ Image Segmentation ------------------------------ #
 # Main segmentation function for a single image
-def segment(img_path, model, output_path, patch_size=256):
+def segment(img_path, model, output_path, patch_size=512):
     '''
     Segment a single image using the trained UNet++ model.
     Applies patch-based prediction with Hann window blending.
@@ -157,7 +148,7 @@ def segment(img_path, model, output_path, patch_size=256):
             pred = np.argmax(pred, axis=3)[0,:,:]           # Remove batch dim
             
             patch_pos = get_pos(patches.shape, i, j)
-            hann_matrix = hann_window(patch_pos)
+            hann_matrix = hann_window(patch_pos, patch_size)
             adj_pred = pred * hann_matrix                   # Apply Hann weighting
             
             i_start = i*patch_size//2
@@ -177,13 +168,12 @@ def segment(img_path, model, output_path, patch_size=256):
     return pred_path
 
 # ------------------------------ Directory Segmentation ------------------------------ #
-def segment_dir(dir_path, model_path, output_path):
+def segment_dir(dir_path, model, output_path, patch_size=512):
     '''
     Apply segmentation to all images in a folder using the trained UNet++ model.
     Loads the model once to avoid reloading for every image.
     '''
-    model = load_model(model_path)      # Load trained UNet++ model
     for img_name in os.listdir(dir_path):
         if img_name != "Thumbs.db":     # Skip OS artifact files
             img_path = os.path.join(dir_path,img_name)
-            segment(img_path, model_path, output_path)
+            segment(img_path, model, output_path)

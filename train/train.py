@@ -43,6 +43,7 @@ from patchify import patchify           # Split images into smaller patches
 from keras.utils import normalize, to_categorical       # Normalizing and categorizing dataset
 from sklearn.model_selection import train_test_split    # Train/test split
 from model import deepaxon_plusplus_model               # UNET++ model
+from resize import resize_img                           # Custom function: resize images to a standard size
 
 # ------------------------------ Utility Functions ----------------------------------- #
 def count_files(folder_path):
@@ -171,7 +172,7 @@ def get_images(patch_path):
     patch_files = [os.path.join(patch_path, f) for f in os.listdir(patch_path)
                    if os.path.isfile(os.path.join(patch_path, f)) and not f.startswith('.')]
     patch_files.sort()
-    return np.array([cv2.imread(f, cv2.IMREAD_GRAYSCALE) for f in patch_files])
+    return np.array([resize_img(f) for f in patch_files])     # resize 2048 resolution images to 1024 for training
 
 def base_label(train_masks):
     '''
@@ -203,7 +204,7 @@ def train_model(training_dir, model_path, model_name, batch_size=16, epochs=200,
     images, masks = load_training_dataset(images_dir, masks_dir, img_ext, mask_ext)
 
     # Crop and patch all images & masks
-    batch_patch(images, masks)
+    batch_patch(images, masks, 512) # double patch size from 256 for 100x images
 
     # Paths to patch folders
     image_patch_path = os.path.join(images_dir, "cropped", "patches")
