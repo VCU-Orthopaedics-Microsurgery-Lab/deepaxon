@@ -119,7 +119,7 @@ def recolor(img):
 
 # ------------------------------ Image Segmentation ------------------------------ #
 # Main segmentation function for a single image
-def segment(img_path, model, output_path, patch_size=512):
+def segment(img_path, model, output_path, patch_size=256):
     '''
     Segment a single image using the trained UNet++ model.
     Applies patch-based prediction with Hann window blending.
@@ -168,7 +168,7 @@ def segment(img_path, model, output_path, patch_size=512):
     return pred_path
 
 # ------------------------------ Directory Segmentation ------------------------------ #
-def segment_dir(dir_path, model, output_path, patch_size=512):
+def segment_dir(dir_path, model, output_path, patch_size=256):
     '''
     Apply segmentation to all images in a folder using the trained UNet++ model.
     Loads the model once to avoid reloading for every image.

@@ -110,5 +110,5 @@ epochs = get_int_input("Epochs", 200)
 test_size = get_float_input("Fraction of dataset to reserve for testing (0-1)", 0.3)
 
 # ------------------------------ Start Training ------------------------------ #
-print(f"\nTraining model '{model_name}' with batch size={batch_size}, epochs={epochs}, train/test split={test_size}...")
+print(f"\nTraining augmented model '{model_name}' with batch size={batch_size}, epochs={epochs}, train/test split={test_size}...")
 train.train_model(training_dir, model_dir, model_name, batch_size, epochs,test_fraction=test_size)

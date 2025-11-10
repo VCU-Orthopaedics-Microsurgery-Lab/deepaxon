@@ -17,14 +17,14 @@ def resize_img(img_path):
         img_path (str): Path to the input image.
 
     Returns:
-        np.ndarray: Grayscale image, resized if original dimensions were (2880, 2048).
+        np.ndarray: Grayscale image, resized if original dimensions were (H:2048, W:2880).
     '''
     img = cv2.imread(img_path, 0)               # Load image in grayscale
     if img is None:
         raise ValueError(f"Error: could not read image at {img_path}")
 
-    # Only resize if image matches this exact dimension
-    if img.shape == (2880, 2048):               
-        return cv2.resize(img, (1440, 1024))    # Resize to target input size
+    # Only resize if image matches this exact dimension (HxW)
+    if img.shape == (2048, 2880):               
+        return cv2.resize(img, (1440, 1024))    # (width, height)
     
     return img                                  # Otherwise, return original

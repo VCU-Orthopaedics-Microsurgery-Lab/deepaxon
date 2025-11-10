@@ -54,7 +54,7 @@ for img_file in os.listdir(dir_path):
     try:
         # Perform segmentation on the image using the specified model
         segment.segment(img_path, model, output_path) #pass loaded model not the path
-        print(f"Processed: {img_file}")
+        print(f"Segmented: {img_file}")
     except Exception as e:
         # Catch errors for individual files without stopping the loop
         print(f"Error processing {img_file}: {e}")
