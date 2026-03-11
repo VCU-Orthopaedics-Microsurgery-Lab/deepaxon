@@ -1,10 +1,13 @@
 # ------------------------------ Standard Library --------------------------- #
 import os
+import datetime
 
 # ------------------------------ Third-Party Libraries ---------------------- #
 # Suppress TensorFlow warnings and info messages
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"  # 0=all, 1=info, 2=warning, 3=error
 import tensorflow as tf
+from tensorflow.keras import backend as K
+from tensorflow.keras.losses import CategoricalCrossentropy
 from keras.models import load_model
 
 # ------------------------------ Local Imports ------------------------------- #
@@ -21,6 +24,32 @@ if gpus:
         print(f"Could not set memory growth: {e}")
 else:
     print("No GPU detected, running on CPU.")
+
+# ------------------------------ Custom Metrics and Loss ------------------------- #
+def dice_coef(y_true, y_pred, smooth=1e-6):
+    """Dice coefficient (tensor) for training and callbacks"""
+    y_true_f = K.flatten(y_true)
+    y_pred_f = K.flatten(y_pred)
+    intersection = K.sum(y_true_f * y_pred_f)
+    return (2. * intersection + smooth) / (K.sum(y_true_f) + K.sum(y_pred_f) + smooth)
+
+def dice_loss(y_true, y_pred):
+    """Dice loss = 1 - Dice coefficient"""
+    return 1 - dice_coef(y_true, y_pred)
+
+def iou_coef(y_true, y_pred, smooth=1e-6):
+    """Intersection over Union (IoU) coefficient (tensor)"""
+    y_true_f = K.flatten(y_true)
+    y_pred_f = K.flatten(y_pred)
+    intersection = K.sum(y_true_f * y_pred_f)
+    union = K.sum(y_true_f) + K.sum(y_pred_f) - intersection
+    return (intersection + smooth) / (union + smooth)
+
+def combined_loss(y_true, y_pred):
+    """Combined categorical cross-entropy + Dice loss"""
+    bce = CategoricalCrossentropy()(y_true, y_pred)
+    dsc = dice_loss(y_true, y_pred)
+    return bce + dsc
     
 # ------------------------------ User Input Paths ---------------------------- #
 # Prompt user for paths to the model, input folder, and output folder
@@ -38,23 +67,13 @@ os.makedirs(output_path, exist_ok=True)
 
 # ------------------------------ Load Model Once ----------------------------- #
 print("Loading model...")
-model = load_model(model_path)  #load model from model_path
+model = load_model(model_path, custom_objects={
+    "combined_loss": combined_loss,
+    "dice_coef": dice_coef,
+    "iou_coef": iou_coef
+})
 print("Model loaded successfully!")
 
-# ------------------------------ Process Images ------------------------------ #
-# Loop over all files in the input directory and apply segmentation
-for img_file in os.listdir(dir_path):
-    img_path = os.path.join(dir_path, img_file)
-    
-    # Skip non-image files (optional)
-    if not img_file.lower().endswith(('.tif', '.tiff', '.png')):
-        print(f"Skipping non-image file: {img_file}")
-        continue
-
-    try:
-        # Perform segmentation on the image using the specified model
-        segment.segment(img_path, model, output_path) #pass loaded model not the path
-        print(f"Segmented: {img_file}")
-    except Exception as e:
-        # Catch errors for individual files without stopping the loop
-        print(f"Error processing {img_file}: {e}")
+# ------------------------------ Process Folder ------------------------------ #
+print("Segmenting folder...")
+times = segment.segment_dir(dir_path, model, output_path)

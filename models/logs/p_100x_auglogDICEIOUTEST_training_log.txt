@@ -1,0 +1,943 @@
+======================================================================
+DEEPAXON++ TRAINING LOG
+======================================================================
+
+Model name            : p_100x_auglogDICEIOUTEST
+Start time            : 2025-11-12 12:23:20
+Architecture          : UNet++ (DeepAxon++)
+Input size (H×W×C)    : 256×256×1
+Classes               : 3
+Patch size            : 256
+Batch size            : 12
+Epoch limit           : 500
+Test fraction         : 0.1
+Augmentations         : H/V flip, small rotation, brightness/contrast (img only), gamma (img only), Gaussian noise (img only)
+ReduceLROnPlateau     : factor=0.5, patience=15, min_delta=0.001, min_lr=1e-6, monitor=val_loss
+EarlyStopping         : patience=40, min_delta=0.001, restore_best_weights=True, monitor=val_loss
+Device                : CPU-only
+Train samples         : 252
+Test samples          : 28
+
+(da_venv) C:\Users\mazurm\deepaxon>python train
+Use GPU acceleration if available? [y/N]: n
+┌──────────────────────────────┐
+│ Running DeepAxon on CPU only │
+└──────────────────────────────┘
+Use data augmentation? [y/N]: y
+
+ Data augmentation ENABLED
+   • Global augmentation probability: 0.25
+   • Random flips, small rotations, brightness/gamma jitter, light noise
+
+Input the path to the training folder that holds the images and masks: T:\Orthopaedics\Lab Imaging Data\mmazur\DA_Model_Training\100X\100X Model Training\Selected Images\trainingv3a
+Input the path of the folder where the model will be saved: C:\Users\mazurm\deepaxon\models
+Input the name of the model (e.g., Rb_100x_proximal): p_100x_auglogDICEIOUTEST
+Epochs (press Enter for default=200): 500
+Fraction of dataset to reserve for testing (0-1) (press Enter for default=0.3): .1
+
+Training model 'p_100x_auglogDICEIOUTEST', epochs=500, train/test split=0.1...
+──────────────────────────────────────── VERIFYING IMAGE–MASK PAIRS ─────────────────────────────────────────
+┌─ Dataset Verification ─┐
+│ Found pairs: 14        │
+│ Missing masks: 0       │
+│ Missing images: 0      │
+└────────────────────────┘
+────────────────────────────────────────── IMAGE PROCESSING START ───────────────────────────────────────────
+┌────────── [IMG] image1 ──────────┐
+│ Original: (2048, 2880, 3) → 3 ch │
+│ Resized:  (1024, 1440) → 1 ch    │
+│ Cropped:  (1024, 1280) → 1 ch    │
+│ Patches:  20 total → 1 ch each   │
+└──────────────────────────────────┘
+┌────────── [IMG] image2 ──────────┐
+│ Original: (2048, 2880, 3) → 3 ch │
+│ Resized:  (1024, 1440) → 1 ch    │
+│ Cropped:  (1024, 1280) → 1 ch    │
+│ Patches:  20 total → 1 ch each   │
+└──────────────────────────────────┘
+┌────────── [IMG] image3 ──────────┐
+│ Original: (2048, 2880, 3) → 3 ch │
+│ Resized:  (1024, 1440) → 1 ch    │
+│ Cropped:  (1024, 1280) → 1 ch    │
+│ Patches:  20 total → 1 ch each   │
+└──────────────────────────────────┘
+┌────────── [IMG] image4 ──────────┐
+│ Original: (2048, 2880, 3) → 3 ch │
+│ Resized:  (1024, 1440) → 1 ch    │
+│ Cropped:  (1024, 1280) → 1 ch    │
+│ Patches:  20 total → 1 ch each   │
+└──────────────────────────────────┘
+┌────────── [IMG] image5 ──────────┐
+│ Original: (2048, 2880, 3) → 3 ch │
+│ Resized:  (1024, 1440) → 1 ch    │
+│ Cropped:  (1024, 1280) → 1 ch    │
+│ Patches:  20 total → 1 ch each   │
+└──────────────────────────────────┘
+┌────────── [IMG] image6 ──────────┐
+│ Original: (2048, 2880, 3) → 3 ch │
+│ Resized:  (1024, 1440) → 1 ch    │
+│ Cropped:  (1024, 1280) → 1 ch    │
+│ Patches:  20 total → 1 ch each   │
+└──────────────────────────────────┘
+┌────────── [IMG] image7 ──────────┐
+│ Original: (2048, 2880, 3) → 3 ch │
+│ Resized:  (1024, 1440) → 1 ch    │
+│ Cropped:  (1024, 1280) → 1 ch    │
+│ Patches:  20 total → 1 ch each   │
+└──────────────────────────────────┘
+┌────────── [IMG] image8 ──────────┐
+│ Original: (2048, 2880, 3) → 3 ch │
+│ Resized:  (1024, 1440) → 1 ch    │
+│ Cropped:  (1024, 1280) → 1 ch    │
+│ Patches:  20 total → 1 ch each   │
+└──────────────────────────────────┘
+┌────────── [IMG] image9 ──────────┐
+│ Original: (2048, 2880, 3) → 3 ch │
+│ Resized:  (1024, 1440) → 1 ch    │
+│ Cropped:  (1024, 1280) → 1 ch    │
+│ Patches:  20 total → 1 ch each   │
+└──────────────────────────────────┘
+┌───────── [IMG] image10 ──────────┐
+│ Original: (2048, 2880, 3) → 3 ch │
+│ Resized:  (1024, 1440) → 1 ch    │
+│ Cropped:  (1024, 1280) → 1 ch    │
+│ Patches:  20 total → 1 ch each   │
+└──────────────────────────────────┘
+┌───────── [IMG] image11 ──────────┐
+│ Original: (2048, 2880, 3) → 3 ch │
+│ Resized:  (1024, 1440) → 1 ch    │
+│ Cropped:  (1024, 1280) → 1 ch    │
+│ Patches:  20 total → 1 ch each   │
+└──────────────────────────────────┘
+┌───────── [IMG] image12 ──────────┐
+│ Original: (2048, 2880, 3) → 3 ch │
+│ Resized:  (1024, 1440) → 1 ch    │
+│ Cropped:  (1024, 1280) → 1 ch    │
+│ Patches:  20 total → 1 ch each   │
+└──────────────────────────────────┘
+┌───────── [IMG] image13 ──────────┐
+│ Original: (2048, 2880, 3) → 3 ch │
+│ Resized:  (1024, 1440) → 1 ch    │
+│ Cropped:  (1024, 1280) → 1 ch    │
+│ Patches:  20 total → 1 ch each   │
+└──────────────────────────────────┘
+┌───────── [IMG] image14 ──────────┐
+│ Original: (2048, 2880, 3) → 3 ch │
+│ Resized:  (1024, 1440) → 1 ch    │
+│ Cropped:  (1024, 1280) → 1 ch    │
+│ Patches:  20 total → 1 ch each   │
+└──────────────────────────────────┘
+─────────────────────────────────────────── MASK PROCESSING START ───────────────────────────────────────────
+┌────────── [IMG] image1 ──────────┐
+│ Original: (2048, 2880, 4) → 4 ch │
+│ Resized:  (1024, 1440) → 1 ch    │
+│ Cropped:  (1024, 1280) → 1 ch    │
+│ Patches:  20 total → 1 ch each   │
+└──────────────────────────────────┘
+┌────────── [IMG] image2 ──────────┐
+│ Original: (2048, 2880, 4) → 4 ch │
+│ Resized:  (1024, 1440) → 1 ch    │
+│ Cropped:  (1024, 1280) → 1 ch    │
+│ Patches:  20 total → 1 ch each   │
+└──────────────────────────────────┘
+┌────────── [IMG] image3 ──────────┐
+│ Original: (2048, 2880, 4) → 4 ch │
+│ Resized:  (1024, 1440) → 1 ch    │
+│ Cropped:  (1024, 1280) → 1 ch    │
+│ Patches:  20 total → 1 ch each   │
+└──────────────────────────────────┘
+┌────────── [IMG] image4 ──────────┐
+│ Original: (2048, 2880, 4) → 4 ch │
+│ Resized:  (1024, 1440) → 1 ch    │
+│ Cropped:  (1024, 1280) → 1 ch    │
+│ Patches:  20 total → 1 ch each   │
+└──────────────────────────────────┘
+┌────────── [IMG] image5 ──────────┐
+│ Original: (2048, 2880, 4) → 4 ch │
+│ Resized:  (1024, 1440) → 1 ch    │
+│ Cropped:  (1024, 1280) → 1 ch    │
+│ Patches:  20 total → 1 ch each   │
+└──────────────────────────────────┘
+┌────────── [IMG] image6 ──────────┐
+│ Original: (2048, 2880, 4) → 4 ch │
+│ Resized:  (1024, 1440) → 1 ch    │
+│ Cropped:  (1024, 1280) → 1 ch    │
+│ Patches:  20 total → 1 ch each   │
+└──────────────────────────────────┘
+┌────────── [IMG] image7 ──────────┐
+│ Original: (2048, 2880, 4) → 4 ch │
+│ Resized:  (1024, 1440) → 1 ch    │
+│ Cropped:  (1024, 1280) → 1 ch    │
+│ Patches:  20 total → 1 ch each   │
+└──────────────────────────────────┘
+┌────────── [IMG] image8 ──────────┐
+│ Original: (2048, 2880, 4) → 4 ch │
+│ Resized:  (1024, 1440) → 1 ch    │
+│ Cropped:  (1024, 1280) → 1 ch    │
+│ Patches:  20 total → 1 ch each   │
+└──────────────────────────────────┘
+┌────────── [IMG] image9 ──────────┐
+│ Original: (2048, 2880, 4) → 4 ch │
+│ Resized:  (1024, 1440) → 1 ch    │
+│ Cropped:  (1024, 1280) → 1 ch    │
+│ Patches:  20 total → 1 ch each   │
+└──────────────────────────────────┘
+┌───────── [IMG] image10 ──────────┐
+│ Original: (2048, 2880, 4) → 4 ch │
+│ Resized:  (1024, 1440) → 1 ch    │
+│ Cropped:  (1024, 1280) → 1 ch    │
+│ Patches:  20 total → 1 ch each   │
+└──────────────────────────────────┘
+┌───────── [IMG] image11 ──────────┐
+│ Original: (2048, 2880, 4) → 4 ch │
+│ Resized:  (1024, 1440) → 1 ch    │
+│ Cropped:  (1024, 1280) → 1 ch    │
+│ Patches:  20 total → 1 ch each   │
+└──────────────────────────────────┘
+┌───────── [IMG] image12 ──────────┐
+│ Original: (2048, 2880, 4) → 4 ch │
+│ Resized:  (1024, 1440) → 1 ch    │
+│ Cropped:  (1024, 1280) → 1 ch    │
+│ Patches:  20 total → 1 ch each   │
+└──────────────────────────────────┘
+┌───────── [IMG] image13 ──────────┐
+│ Original: (2048, 2880, 4) → 4 ch │
+│ Resized:  (1024, 1440) → 1 ch    │
+│ Cropped:  (1024, 1280) → 1 ch    │
+│ Patches:  20 total → 1 ch each   │
+└──────────────────────────────────┘
+┌───────── [IMG] image14 ──────────┐
+│ Original: (2048, 2880, 4) → 4 ch │
+│ Resized:  (1024, 1440) → 1 ch    │
+│ Cropped:  (1024, 1280) → 1 ch    │
+│ Patches:  20 total → 1 ch each   │
+└──────────────────────────────────┘
+───────────────────────────────────────── VERIFYING PATCH ALIGNMENT ─────────────────────────────────────────
+┌─────────────────────────────┐
+│ ✅ Patch alignment verified │
+│ Images: 280 | Masks: 280    │
+└─────────────────────────────┘
+────────────────────────────────────────────── TRAINING SETUP ───────────────────────────────────────────────
+📦 Total training patches: 252
+🧪 Validation patches:     28
+💡 Recommended batch size: 4
+🔢 Batches per epoch:      63
+📈 Batch efficiency:       100.0%
+
+💡 Perfect fit — no leftover patches with batch size 4.
+Use recommended batch size (4)? [Y/n]: n
+Enter custom batch size (positive integer): 12
+───────────────────────────────────────── CUSTOM BATCH SIZE SUMMARY ─────────────────────────────────────────
+💪 Custom batch size: 12
+🔢 Batches per epoch: 21
+📈 Batch efficiency:  100.0%
+🧩 Leftover patches:  0
+
+Confirm use of custom batch size? [Y/n]: y
+✅ Using batch size: 12
+
+────────────────────────────────────────────── DATASET SUMMARY ──────────────────────────────────────────────
+✅ 280 patches → 252 train / 28 val | 3 classes | aug=ON
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────
+────────────────────────────────────────── TRAINING INITIALIZATION ──────────────────────────────────────────
+Augmentation ON: random on-the-fly transformations enabled.
+Epoch 1/500
+21/21 [==============================] - 107s 5s/step - loss: 1.4996 - dice_coef: 0.6031 - iou_coef: 0.4389 - val_loss: 2.4177 - val_dice_coef: 0.5658 - val_iou_coef: 0.3945 - lr: 0.0010
+Epoch 2/500
+21/21 [==============================] - 1078s 54s/step - loss: 0.8831 - dice_coef: 0.7864 - iou_coef: 0.6492 - val_loss: 4.0978 - val_dice_coef: 0.6087 - val_iou_coef: 0.4375 - lr: 0.0010
+Epoch 3/500
+21/21 [==============================] - 106s 5s/step - loss: 0.7336 - dice_coef: 0.8365 - iou_coef: 0.7198 - val_loss: 5.8814 - val_dice_coef: 0.6043 - val_iou_coef: 0.4330 - lr: 0.0010
+Epoch 4/500
+21/21 [==============================] - 109s 5s/step - loss: 0.6570 - dice_coef: 0.8616 - iou_coef: 0.7573 - val_loss: 3.2038 - val_dice_coef: 0.6110 - val_iou_coef: 0.4398 - lr: 0.0010
+Epoch 5/500
+21/21 [==============================] - 107s 5s/step - loss: 0.6044 - dice_coef: 0.8802 - iou_coef: 0.7863 - val_loss: 3.0216 - val_dice_coef: 0.6279 - val_iou_coef: 0.4576 - lr: 0.0010
+Epoch 6/500
+21/21 [==============================] - 109s 5s/step - loss: 0.5952 - dice_coef: 0.8821 - iou_coef: 0.7898 - val_loss: 2.5757 - val_dice_coef: 0.6369 - val_iou_coef: 0.4672 - lr: 0.0010
+Epoch 7/500
+21/21 [==============================] - 107s 5s/step - loss: 0.5181 - dice_coef: 0.9034 - iou_coef: 0.8240 - val_loss: 2.9901 - val_dice_coef: 0.6343 - val_iou_coef: 0.4645 - lr: 0.0010
+Epoch 8/500
+21/21 [==============================] - 107s 5s/step - loss: 0.5207 - dice_coef: 0.9041 - iou_coef: 0.8255 - val_loss: 2.2583 - val_dice_coef: 0.6428 - val_iou_coef: 0.4736 - lr: 0.0010
+Epoch 9/500
+21/21 [==============================] - 108s 5s/step - loss: 0.5026 - dice_coef: 0.9064 - iou_coef: 0.8292 - val_loss: 1.6346 - val_dice_coef: 0.7069 - val_iou_coef: 0.5467 - lr: 0.0010
+Epoch 10/500
+21/21 [==============================] - 107s 5s/step - loss: 0.4579 - dice_coef: 0.9168 - iou_coef: 0.8466 - val_loss: 1.4441 - val_dice_coef: 0.7549 - val_iou_coef: 0.6063 - lr: 0.0010
+Epoch 11/500
+21/21 [==============================] - 107s 5s/step - loss: 0.4741 - dice_coef: 0.9148 - iou_coef: 0.8436 - val_loss: 1.5055 - val_dice_coef: 0.6633 - val_iou_coef: 0.4962 - lr: 0.0010
+Epoch 12/500
+21/21 [==============================] - 108s 5s/step - loss: 0.4483 - dice_coef: 0.9188 - iou_coef: 0.8501 - val_loss: 4.2383 - val_dice_coef: 0.5139 - val_iou_coef: 0.3458 - lr: 0.0010
+Epoch 13/500
+21/21 [==============================] - 108s 5s/step - loss: 0.4470 - dice_coef: 0.9203 - iou_coef: 0.8528 - val_loss: 0.8557 - val_dice_coef: 0.8307 - val_iou_coef: 0.7105 - lr: 0.0010
+Epoch 14/500
+21/21 [==============================] - 107s 5s/step - loss: 0.4085 - dice_coef: 0.9289 - iou_coef: 0.8675 - val_loss: 1.1763 - val_dice_coef: 0.7958 - val_iou_coef: 0.6608 - lr: 0.0010
+Epoch 15/500
+21/21 [==============================] - 109s 5s/step - loss: 0.3992 - dice_coef: 0.9316 - iou_coef: 0.8721 - val_loss: 0.9302 - val_dice_coef: 0.8368 - val_iou_coef: 0.7193 - lr: 0.0010
+Epoch 16/500
+21/21 [==============================] - 108s 5s/step - loss: 0.4085 - dice_coef: 0.9282 - iou_coef: 0.8662 - val_loss: 1.0860 - val_dice_coef: 0.7863 - val_iou_coef: 0.6478 - lr: 0.0010
+Epoch 17/500
+21/21 [==============================] - 108s 5s/step - loss: 0.4095 - dice_coef: 0.9275 - iou_coef: 0.8651 - val_loss: 0.7326 - val_dice_coef: 0.8644 - val_iou_coef: 0.7612 - lr: 0.0010
+Epoch 18/500
+21/21 [==============================] - 107s 5s/step - loss: 0.3807 - dice_coef: 0.9343 - iou_coef: 0.8769 - val_loss: 0.6465 - val_dice_coef: 0.8848 - val_iou_coef: 0.7934 - lr: 0.0010
+Epoch 19/500
+21/21 [==============================] - 109s 5s/step - loss: 0.3634 - dice_coef: 0.9393 - iou_coef: 0.8858 - val_loss: 0.5578 - val_dice_coef: 0.8901 - val_iou_coef: 0.8019 - lr: 0.0010
+Epoch 20/500
+21/21 [==============================] - 108s 5s/step - loss: 0.3693 - dice_coef: 0.9377 - iou_coef: 0.8831 - val_loss: 0.6126 - val_dice_coef: 0.8804 - val_iou_coef: 0.7863 - lr: 0.0010
+Epoch 21/500
+21/21 [==============================] - 106s 5s/step - loss: 0.3599 - dice_coef: 0.9376 - iou_coef: 0.8827 - val_loss: 0.5314 - val_dice_coef: 0.8993 - val_iou_coef: 0.8170 - lr: 0.0010
+Epoch 22/500
+21/21 [==============================] - 107s 5s/step - loss: 0.3722 - dice_coef: 0.9338 - iou_coef: 0.8760 - val_loss: 0.5025 - val_dice_coef: 0.9102 - val_iou_coef: 0.8352 - lr: 0.0010
+Epoch 23/500
+21/21 [==============================] - 107s 5s/step - loss: 0.3360 - dice_coef: 0.9439 - iou_coef: 0.8940 - val_loss: 0.4965 - val_dice_coef: 0.9042 - val_iou_coef: 0.8251 - lr: 0.0010
+Epoch 24/500
+21/21 [==============================] - 107s 5s/step - loss: 0.3394 - dice_coef: 0.9425 - iou_coef: 0.8915 - val_loss: 0.4650 - val_dice_coef: 0.9135 - val_iou_coef: 0.8408 - lr: 0.0010
+Epoch 25/500
+21/21 [==============================] - 107s 5s/step - loss: 0.3224 - dice_coef: 0.9466 - iou_coef: 0.8987 - val_loss: 0.4787 - val_dice_coef: 0.9067 - val_iou_coef: 0.8293 - lr: 0.0010
+Epoch 26/500
+21/21 [==============================] - 107s 5s/step - loss: 0.3391 - dice_coef: 0.9413 - iou_coef: 0.8894 - val_loss: 0.6140 - val_dice_coef: 0.9007 - val_iou_coef: 0.8194 - lr: 0.0010
+Epoch 27/500
+21/21 [==============================] - 107s 5s/step - loss: 0.3282 - dice_coef: 0.9438 - iou_coef: 0.8939 - val_loss: 0.3644 - val_dice_coef: 0.9374 - val_iou_coef: 0.8822 - lr: 0.0010
+Epoch 28/500
+21/21 [==============================] - 107s 5s/step - loss: 0.3165 - dice_coef: 0.9470 - iou_coef: 0.8996 - val_loss: 0.3350 - val_dice_coef: 0.9423 - val_iou_coef: 0.8909 - lr: 0.0010
+Epoch 29/500
+21/21 [==============================] - 108s 5s/step - loss: 0.3261 - dice_coef: 0.9454 - iou_coef: 0.8968 - val_loss: 0.5469 - val_dice_coef: 0.8944 - val_iou_coef: 0.8090 - lr: 0.0010
+Epoch 30/500
+21/21 [==============================] - 111s 5s/step - loss: 0.3379 - dice_coef: 0.9403 - iou_coef: 0.8875 - val_loss: 0.3422 - val_dice_coef: 0.9419 - val_iou_coef: 0.8901 - lr: 0.0010
+Epoch 31/500
+21/21 [==============================] - 108s 5s/step - loss: 0.3181 - dice_coef: 0.9452 - iou_coef: 0.8963 - val_loss: 0.3989 - val_dice_coef: 0.9341 - val_iou_coef: 0.8763 - lr: 0.0010
+Epoch 32/500
+21/21 [==============================] - 107s 5s/step - loss: 0.3197 - dice_coef: 0.9449 - iou_coef: 0.8956 - val_loss: 0.3153 - val_dice_coef: 0.9481 - val_iou_coef: 0.9012 - lr: 0.0010
+Epoch 33/500
+21/21 [==============================] - 106s 5s/step - loss: 0.3183 - dice_coef: 0.9455 - iou_coef: 0.8972 - val_loss: 0.3819 - val_dice_coef: 0.9368 - val_iou_coef: 0.8812 - lr: 0.0010
+Epoch 34/500
+21/21 [==============================] - 106s 5s/step - loss: 0.3149 - dice_coef: 0.9456 - iou_coef: 0.8969 - val_loss: 0.3281 - val_dice_coef: 0.9459 - val_iou_coef: 0.8973 - lr: 0.0010
+Epoch 35/500
+21/21 [==============================] - 106s 5s/step - loss: 0.3034 - dice_coef: 0.9497 - iou_coef: 0.9045 - val_loss: 0.3142 - val_dice_coef: 0.9493 - val_iou_coef: 0.9035 - lr: 0.0010
+Epoch 36/500
+21/21 [==============================] - 107s 5s/step - loss: 0.2914 - dice_coef: 0.9521 - iou_coef: 0.9086 - val_loss: 0.3199 - val_dice_coef: 0.9467 - val_iou_coef: 0.8987 - lr: 0.0010
+Epoch 37/500
+21/21 [==============================] - 107s 5s/step - loss: 0.2759 - dice_coef: 0.9558 - iou_coef: 0.9154 - val_loss: 0.3246 - val_dice_coef: 0.9431 - val_iou_coef: 0.8924 - lr: 0.0010
+Epoch 38/500
+21/21 [==============================] - 106s 5s/step - loss: 0.2787 - dice_coef: 0.9545 - iou_coef: 0.9132 - val_loss: 0.4764 - val_dice_coef: 0.9176 - val_iou_coef: 0.8477 - lr: 0.0010
+Epoch 39/500
+21/21 [==============================] - 106s 5s/step - loss: 0.2669 - dice_coef: 0.9574 - iou_coef: 0.9184 - val_loss: 0.2961 - val_dice_coef: 0.9491 - val_iou_coef: 0.9032 - lr: 0.0010
+Epoch 40/500
+21/21 [==============================] - 108s 5s/step - loss: 0.2812 - dice_coef: 0.9540 - iou_coef: 0.9124 - val_loss: 0.2949 - val_dice_coef: 0.9475 - val_iou_coef: 0.9002 - lr: 0.0010
+Epoch 41/500
+21/21 [==============================] - 111s 5s/step - loss: 0.2755 - dice_coef: 0.9530 - iou_coef: 0.9104 - val_loss: 0.3038 - val_dice_coef: 0.9446 - val_iou_coef: 0.8951 - lr: 0.0010
+Epoch 42/500
+21/21 [==============================] - 108s 5s/step - loss: 0.2721 - dice_coef: 0.9546 - iou_coef: 0.9133 - val_loss: 0.3111 - val_dice_coef: 0.9473 - val_iou_coef: 0.9000 - lr: 0.0010
+Epoch 43/500
+21/21 [==============================] - 108s 5s/step - loss: 0.2785 - dice_coef: 0.9527 - iou_coef: 0.9097 - val_loss: 0.3611 - val_dice_coef: 0.9341 - val_iou_coef: 0.8764 - lr: 0.0010
+Epoch 44/500
+21/21 [==============================] - 109s 5s/step - loss: 0.2758 - dice_coef: 0.9531 - iou_coef: 0.9105 - val_loss: 0.3076 - val_dice_coef: 0.9509 - val_iou_coef: 0.9063 - lr: 0.0010
+Epoch 45/500
+21/21 [==============================] - 108s 5s/step - loss: 0.2801 - dice_coef: 0.9519 - iou_coef: 0.9083 - val_loss: 0.3422 - val_dice_coef: 0.9411 - val_iou_coef: 0.8888 - lr: 0.0010
+Epoch 46/500
+21/21 [==============================] - 107s 5s/step - loss: 0.2705 - dice_coef: 0.9542 - iou_coef: 0.9125 - val_loss: 0.3091 - val_dice_coef: 0.9494 - val_iou_coef: 0.9037 - lr: 0.0010
+Epoch 47/500
+21/21 [==============================] - 107s 5s/step - loss: 0.2635 - dice_coef: 0.9562 - iou_coef: 0.9162 - val_loss: 0.3691 - val_dice_coef: 0.9361 - val_iou_coef: 0.8798 - lr: 0.0010
+Epoch 48/500
+21/21 [==============================] - 107s 5s/step - loss: 0.2555 - dice_coef: 0.9576 - iou_coef: 0.9188 - val_loss: 0.2814 - val_dice_coef: 0.9530 - val_iou_coef: 0.9101 - lr: 0.0010
+Epoch 49/500
+21/21 [==============================] - 107s 5s/step - loss: 0.2506 - dice_coef: 0.9590 - iou_coef: 0.9212 - val_loss: 0.4471 - val_dice_coef: 0.9236 - val_iou_coef: 0.8580 - lr: 0.0010
+Epoch 50/500
+21/21 [==============================] - 106s 5s/step - loss: 0.2658 - dice_coef: 0.9551 - iou_coef: 0.9141 - val_loss: 0.3212 - val_dice_coef: 0.9445 - val_iou_coef: 0.8948 - lr: 0.0010
+Epoch 51/500
+21/21 [==============================] - 106s 5s/step - loss: 0.2508 - dice_coef: 0.9581 - iou_coef: 0.9196 - val_loss: 0.2824 - val_dice_coef: 0.9516 - val_iou_coef: 0.9076 - lr: 0.0010
+Epoch 52/500
+21/21 [==============================] - 107s 5s/step - loss: 0.2713 - dice_coef: 0.9528 - iou_coef: 0.9099 - val_loss: 0.2880 - val_dice_coef: 0.9505 - val_iou_coef: 0.9058 - lr: 0.0010
+Epoch 53/500
+21/21 [==============================] - 107s 5s/step - loss: 0.2598 - dice_coef: 0.9559 - iou_coef: 0.9157 - val_loss: 0.3022 - val_dice_coef: 0.9467 - val_iou_coef: 0.8988 - lr: 0.0010
+Epoch 54/500
+21/21 [==============================] - 108s 5s/step - loss: 0.2678 - dice_coef: 0.9529 - iou_coef: 0.9102 - val_loss: 0.3134 - val_dice_coef: 0.9456 - val_iou_coef: 0.8969 - lr: 0.0010
+Epoch 55/500
+21/21 [==============================] - 106s 5s/step - loss: 0.2440 - dice_coef: 0.9589 - iou_coef: 0.9210 - val_loss: 0.2820 - val_dice_coef: 0.9511 - val_iou_coef: 0.9068 - lr: 0.0010
+Epoch 56/500
+21/21 [==============================] - 106s 5s/step - loss: 0.2463 - dice_coef: 0.9605 - iou_coef: 0.9240 - val_loss: 0.2977 - val_dice_coef: 0.9462 - val_iou_coef: 0.8978 - lr: 0.0010
+Epoch 57/500
+21/21 [==============================] - 106s 5s/step - loss: 0.2558 - dice_coef: 0.9557 - iou_coef: 0.9152 - val_loss: 0.3217 - val_dice_coef: 0.9510 - val_iou_coef: 0.9066 - lr: 0.0010
+Epoch 58/500
+21/21 [==============================] - 106s 5s/step - loss: 0.2598 - dice_coef: 0.9553 - iou_coef: 0.9146 - val_loss: 0.2982 - val_dice_coef: 0.9493 - val_iou_coef: 0.9035 - lr: 0.0010
+Epoch 59/500
+21/21 [==============================] - 107s 5s/step - loss: 0.2571 - dice_coef: 0.9555 - iou_coef: 0.9149 - val_loss: 0.3082 - val_dice_coef: 0.9510 - val_iou_coef: 0.9065 - lr: 0.0010
+Epoch 60/500
+21/21 [==============================] - 107s 5s/step - loss: 0.2311 - dice_coef: 0.9626 - iou_coef: 0.9280 - val_loss: 0.2622 - val_dice_coef: 0.9568 - val_iou_coef: 0.9172 - lr: 0.0010
+Epoch 61/500
+21/21 [==============================] - 119s 6s/step - loss: 0.2345 - dice_coef: 0.9618 - iou_coef: 0.9265 - val_loss: 0.2638 - val_dice_coef: 0.9535 - val_iou_coef: 0.9110 - lr: 0.0010
+Epoch 62/500
+21/21 [==============================] - 110s 5s/step - loss: 0.2389 - dice_coef: 0.9599 - iou_coef: 0.9230 - val_loss: 0.2831 - val_dice_coef: 0.9500 - val_iou_coef: 0.9048 - lr: 0.0010
+Epoch 63/500
+21/21 [==============================] - 109s 5s/step - loss: 0.2350 - dice_coef: 0.9603 - iou_coef: 0.9236 - val_loss: 0.3809 - val_dice_coef: 0.9300 - val_iou_coef: 0.8692 - lr: 0.0010
+Epoch 64/500
+21/21 [==============================] - 113s 5s/step - loss: 0.2380 - dice_coef: 0.9602 - iou_coef: 0.9234 - val_loss: 0.2788 - val_dice_coef: 0.9475 - val_iou_coef: 0.9003 - lr: 0.0010
+Epoch 65/500
+21/21 [==============================] - 109s 5s/step - loss: 0.2363 - dice_coef: 0.9596 - iou_coef: 0.9224 - val_loss: 0.3051 - val_dice_coef: 0.9500 - val_iou_coef: 0.9048 - lr: 0.0010
+Epoch 66/500
+21/21 [==============================] - 109s 5s/step - loss: 0.2503 - dice_coef: 0.9573 - iou_coef: 0.9183 - val_loss: 0.2670 - val_dice_coef: 0.9555 - val_iou_coef: 0.9147 - lr: 0.0010
+Epoch 67/500
+21/21 [==============================] - 111s 5s/step - loss: 0.2341 - dice_coef: 0.9600 - iou_coef: 0.9232 - val_loss: 0.2643 - val_dice_coef: 0.9554 - val_iou_coef: 0.9146 - lr: 0.0010
+Epoch 68/500
+21/21 [==============================] - 114s 5s/step - loss: 0.2363 - dice_coef: 0.9599 - iou_coef: 0.9230 - val_loss: 0.2942 - val_dice_coef: 0.9444 - val_iou_coef: 0.8947 - lr: 0.0010
+Epoch 69/500
+21/21 [==============================] - 113s 5s/step - loss: 0.2419 - dice_coef: 0.9584 - iou_coef: 0.9203 - val_loss: 0.3185 - val_dice_coef: 0.9444 - val_iou_coef: 0.8947 - lr: 0.0010
+Epoch 70/500
+21/21 [==============================] - 112s 5s/step - loss: 0.3121 - dice_coef: 0.9404 - iou_coef: 0.8879 - val_loss: 0.3867 - val_dice_coef: 0.9299 - val_iou_coef: 0.8690 - lr: 0.0010
+Epoch 71/500
+21/21 [==============================] - 111s 5s/step - loss: 0.2488 - dice_coef: 0.9569 - iou_coef: 0.9174 - val_loss: 0.2847 - val_dice_coef: 0.9553 - val_iou_coef: 0.9145 - lr: 0.0010
+Epoch 72/500
+21/21 [==============================] - 112s 5s/step - loss: 0.2318 - dice_coef: 0.9626 - iou_coef: 0.9280 - val_loss: 0.2714 - val_dice_coef: 0.9561 - val_iou_coef: 0.9159 - lr: 0.0010
+Epoch 73/500
+21/21 [==============================] - 112s 5s/step - loss: 0.2399 - dice_coef: 0.9598 - iou_coef: 0.9229 - val_loss: 0.2759 - val_dice_coef: 0.9512 - val_iou_coef: 0.9069 - lr: 0.0010
+Epoch 74/500
+21/21 [==============================] - 113s 5s/step - loss: 0.2286 - dice_coef: 0.9618 - iou_coef: 0.9266 - val_loss: 0.2766 - val_dice_coef: 0.9506 - val_iou_coef: 0.9059 - lr: 0.0010
+Epoch 75/500
+21/21 [==============================] - ETA: 0s - loss: 0.2245 - dice_coef: 0.9630 - iou_coef: 0.9288
+Epoch 75: ReduceLROnPlateau reducing learning rate to 0.0005000000237487257.
+21/21 [==============================] - 113s 5s/step - loss: 0.2245 - dice_coef: 0.9630 - iou_coef: 0.9288 - val_loss: 0.2634 - val_dice_coef: 0.9528 - val_iou_coef: 0.9099 - lr: 0.0010
+Epoch 76/500
+21/21 [==============================] - 110s 5s/step - loss: 0.2137 - dice_coef: 0.9655 - iou_coef: 0.9335 - val_loss: 0.2470 - val_dice_coef: 0.9556 - val_iou_coef: 0.9150 - lr: 5.0000e-04
+Epoch 77/500
+21/21 [==============================] - 111s 5s/step - loss: 0.2083 - dice_coef: 0.9669 - iou_coef: 0.9359 - val_loss: 0.2384 - val_dice_coef: 0.9567 - val_iou_coef: 0.9170 - lr: 5.0000e-04
+Epoch 78/500
+21/21 [==============================] - 111s 5s/step - loss: 0.2046 - dice_coef: 0.9671 - iou_coef: 0.9364 - val_loss: 0.2371 - val_dice_coef: 0.9579 - val_iou_coef: 0.9192 - lr: 5.0000e-04
+Epoch 79/500
+21/21 [==============================] - 110s 5s/step - loss: 0.2014 - dice_coef: 0.9682 - iou_coef: 0.9384 - val_loss: 0.2302 - val_dice_coef: 0.9592 - val_iou_coef: 0.9215 - lr: 5.0000e-04
+Epoch 80/500
+21/21 [==============================] - 115s 6s/step - loss: 0.2007 - dice_coef: 0.9679 - iou_coef: 0.9380 - val_loss: 0.2337 - val_dice_coef: 0.9587 - val_iou_coef: 0.9207 - lr: 5.0000e-04
+Epoch 81/500
+21/21 [==============================] - 115s 5s/step - loss: 0.1943 - dice_coef: 0.9695 - iou_coef: 0.9409 - val_loss: 0.2292 - val_dice_coef: 0.9582 - val_iou_coef: 0.9197 - lr: 5.0000e-04
+Epoch 82/500
+21/21 [==============================] - 112s 5s/step - loss: 0.1949 - dice_coef: 0.9689 - iou_coef: 0.9398 - val_loss: 0.2393 - val_dice_coef: 0.9579 - val_iou_coef: 0.9193 - lr: 5.0000e-04
+Epoch 83/500
+21/21 [==============================] - 114s 5s/step - loss: 0.1918 - dice_coef: 0.9698 - iou_coef: 0.9414 - val_loss: 0.2331 - val_dice_coef: 0.9580 - val_iou_coef: 0.9194 - lr: 5.0000e-04
+Epoch 84/500
+21/21 [==============================] - 112s 5s/step - loss: 0.1973 - dice_coef: 0.9680 - iou_coef: 0.9381 - val_loss: 0.2327 - val_dice_coef: 0.9577 - val_iou_coef: 0.9189 - lr: 5.0000e-04
+Epoch 85/500
+21/21 [==============================] - 111s 5s/step - loss: 0.2005 - dice_coef: 0.9667 - iou_coef: 0.9357 - val_loss: 0.2384 - val_dice_coef: 0.9536 - val_iou_coef: 0.9114 - lr: 5.0000e-04
+Epoch 86/500
+21/21 [==============================] - 115s 5s/step - loss: 0.1940 - dice_coef: 0.9683 - iou_coef: 0.9385 - val_loss: 0.2386 - val_dice_coef: 0.9571 - val_iou_coef: 0.9178 - lr: 5.0000e-04
+Epoch 87/500
+21/21 [==============================] - 112s 5s/step - loss: 0.1989 - dice_coef: 0.9668 - iou_coef: 0.9358 - val_loss: 0.2356 - val_dice_coef: 0.9566 - val_iou_coef: 0.9168 - lr: 5.0000e-04
+Epoch 88/500
+21/21 [==============================] - 116s 6s/step - loss: 0.1910 - dice_coef: 0.9682 - iou_coef: 0.9385 - val_loss: 0.2351 - val_dice_coef: 0.9577 - val_iou_coef: 0.9188 - lr: 5.0000e-04
+Epoch 89/500
+21/21 [==============================] - 110s 5s/step - loss: 0.1922 - dice_coef: 0.9690 - iou_coef: 0.9399 - val_loss: 0.2358 - val_dice_coef: 0.9569 - val_iou_coef: 0.9173 - lr: 5.0000e-04
+Epoch 90/500
+21/21 [==============================] - 111s 5s/step - loss: 0.1920 - dice_coef: 0.9682 - iou_coef: 0.9384 - val_loss: 0.2223 - val_dice_coef: 0.9614 - val_iou_coef: 0.9257 - lr: 5.0000e-04
+Epoch 91/500
+21/21 [==============================] - 113s 5s/step - loss: 0.1923 - dice_coef: 0.9681 - iou_coef: 0.9382 - val_loss: 0.2419 - val_dice_coef: 0.9573 - val_iou_coef: 0.9181 - lr: 5.0000e-04
+Epoch 92/500
+21/21 [==============================] - 110s 5s/step - loss: 0.1869 - dice_coef: 0.9695 - iou_coef: 0.9408 - val_loss: 0.2236 - val_dice_coef: 0.9600 - val_iou_coef: 0.9231 - lr: 5.0000e-04
+Epoch 93/500
+21/21 [==============================] - 112s 5s/step - loss: 0.1900 - dice_coef: 0.9683 - iou_coef: 0.9386 - val_loss: 0.2227 - val_dice_coef: 0.9584 - val_iou_coef: 0.9201 - lr: 5.0000e-04
+Epoch 94/500
+21/21 [==============================] - 112s 5s/step - loss: 0.1807 - dice_coef: 0.9701 - iou_coef: 0.9420 - val_loss: 0.2201 - val_dice_coef: 0.9608 - val_iou_coef: 0.9245 - lr: 5.0000e-04
+Epoch 95/500
+21/21 [==============================] - 112s 5s/step - loss: 0.1808 - dice_coef: 0.9702 - iou_coef: 0.9422 - val_loss: 0.2282 - val_dice_coef: 0.9569 - val_iou_coef: 0.9173 - lr: 5.0000e-04
+Epoch 96/500
+21/21 [==============================] - 110s 5s/step - loss: 0.1721 - dice_coef: 0.9722 - iou_coef: 0.9460 - val_loss: 0.2258 - val_dice_coef: 0.9596 - val_iou_coef: 0.9224 - lr: 5.0000e-04
+Epoch 97/500
+21/21 [==============================] - 112s 5s/step - loss: 0.1768 - dice_coef: 0.9714 - iou_coef: 0.9444 - val_loss: 0.2146 - val_dice_coef: 0.9603 - val_iou_coef: 0.9236 - lr: 5.0000e-04
+Epoch 98/500
+21/21 [==============================] - 110s 5s/step - loss: 0.1737 - dice_coef: 0.9716 - iou_coef: 0.9447 - val_loss: 0.2161 - val_dice_coef: 0.9606 - val_iou_coef: 0.9241 - lr: 5.0000e-04
+Epoch 99/500
+21/21 [==============================] - 111s 5s/step - loss: 0.1738 - dice_coef: 0.9713 - iou_coef: 0.9443 - val_loss: 0.2305 - val_dice_coef: 0.9578 - val_iou_coef: 0.9191 - lr: 5.0000e-04
+Epoch 100/500
+21/21 [==============================] - 110s 5s/step - loss: 0.1765 - dice_coef: 0.9703 - iou_coef: 0.9424 - val_loss: 0.2158 - val_dice_coef: 0.9595 - val_iou_coef: 0.9222 - lr: 5.0000e-04
+Epoch 101/500
+21/21 [==============================] - 110s 5s/step - loss: 0.1681 - dice_coef: 0.9722 - iou_coef: 0.9459 - val_loss: 0.2213 - val_dice_coef: 0.9604 - val_iou_coef: 0.9239 - lr: 5.0000e-04
+Epoch 102/500
+21/21 [==============================] - 111s 5s/step - loss: 0.1702 - dice_coef: 0.9720 - iou_coef: 0.9457 - val_loss: 0.2205 - val_dice_coef: 0.9596 - val_iou_coef: 0.9224 - lr: 5.0000e-04
+Epoch 103/500
+21/21 [==============================] - 119s 6s/step - loss: 0.1704 - dice_coef: 0.9713 - iou_coef: 0.9444 - val_loss: 0.2142 - val_dice_coef: 0.9603 - val_iou_coef: 0.9235 - lr: 5.0000e-04
+Epoch 104/500
+21/21 [==============================] - 112s 5s/step - loss: 0.1737 - dice_coef: 0.9703 - iou_coef: 0.9424 - val_loss: 0.3839 - val_dice_coef: 0.9331 - val_iou_coef: 0.8746 - lr: 5.0000e-04
+Epoch 105/500
+21/21 [==============================] - ETA: 0s - loss: 0.1850 - dice_coef: 0.9676 - iou_coef: 0.9372
+Epoch 105: ReduceLROnPlateau reducing learning rate to 0.0002500000118743628.
+21/21 [==============================] - 112s 5s/step - loss: 0.1850 - dice_coef: 0.9676 - iou_coef: 0.9372 - val_loss: 0.2439 - val_dice_coef: 0.9570 - val_iou_coef: 0.9175 - lr: 5.0000e-04
+Epoch 106/500
+21/21 [==============================] - 110s 5s/step - loss: 0.1834 - dice_coef: 0.9681 - iou_coef: 0.9382 - val_loss: 0.2198 - val_dice_coef: 0.9601 - val_iou_coef: 0.9233 - lr: 2.5000e-04
+Epoch 107/500
+21/21 [==============================] - 111s 5s/step - loss: 0.1717 - dice_coef: 0.9709 - iou_coef: 0.9434 - val_loss: 0.2146 - val_dice_coef: 0.9610 - val_iou_coef: 0.9248 - lr: 2.5000e-04
+Epoch 108/500
+21/21 [==============================] - 116s 6s/step - loss: 0.1708 - dice_coef: 0.9716 - iou_coef: 0.9447 - val_loss: 0.2076 - val_dice_coef: 0.9623 - val_iou_coef: 0.9273 - lr: 2.5000e-04
+Epoch 109/500
+21/21 [==============================] - 109s 5s/step - loss: 0.1701 - dice_coef: 0.9715 - iou_coef: 0.9446 - val_loss: 0.2114 - val_dice_coef: 0.9614 - val_iou_coef: 0.9257 - lr: 2.5000e-04
+Epoch 110/500
+21/21 [==============================] - 111s 5s/step - loss: 0.1663 - dice_coef: 0.9724 - iou_coef: 0.9463 - val_loss: 0.2155 - val_dice_coef: 0.9622 - val_iou_coef: 0.9272 - lr: 2.5000e-04
+Epoch 111/500
+21/21 [==============================] - 111s 5s/step - loss: 0.1751 - dice_coef: 0.9700 - iou_coef: 0.9419 - val_loss: 0.2213 - val_dice_coef: 0.9598 - val_iou_coef: 0.9226 - lr: 2.5000e-04
+Epoch 112/500
+21/21 [==============================] - 112s 5s/step - loss: 0.1692 - dice_coef: 0.9712 - iou_coef: 0.9441 - val_loss: 0.2200 - val_dice_coef: 0.9599 - val_iou_coef: 0.9229 - lr: 2.5000e-04
+Epoch 113/500
+21/21 [==============================] - 112s 5s/step - loss: 0.1692 - dice_coef: 0.9710 - iou_coef: 0.9436 - val_loss: 0.2050 - val_dice_coef: 0.9630 - val_iou_coef: 0.9286 - lr: 2.5000e-04
+Epoch 114/500
+21/21 [==============================] - 108s 5s/step - loss: 0.1676 - dice_coef: 0.9718 - iou_coef: 0.9451 - val_loss: 0.2074 - val_dice_coef: 0.9629 - val_iou_coef: 0.9284 - lr: 2.5000e-04
+Epoch 115/500
+21/21 [==============================] - 110s 5s/step - loss: 0.1597 - dice_coef: 0.9734 - iou_coef: 0.9482 - val_loss: 0.1968 - val_dice_coef: 0.9646 - val_iou_coef: 0.9316 - lr: 2.5000e-04
+Epoch 116/500
+21/21 [==============================] - 2638s 132s/step - loss: 0.1618 - dice_coef: 0.9731 - iou_coef: 0.9476 - val_loss: 0.2046 - val_dice_coef: 0.9632 - val_iou_coef: 0.9289 - lr: 2.5000e-04
+Epoch 117/500
+21/21 [==============================] - 108s 5s/step - loss: 0.1559 - dice_coef: 0.9745 - iou_coef: 0.9502 - val_loss: 0.2068 - val_dice_coef: 0.9630 - val_iou_coef: 0.9286 - lr: 2.5000e-04
+Epoch 118/500
+21/21 [==============================] - 113s 5s/step - loss: 0.1608 - dice_coef: 0.9734 - iou_coef: 0.9483 - val_loss: 0.2141 - val_dice_coef: 0.9613 - val_iou_coef: 0.9256 - lr: 2.5000e-04
+Epoch 119/500
+21/21 [==============================] - 114s 5s/step - loss: 0.1595 - dice_coef: 0.9736 - iou_coef: 0.9485 - val_loss: 0.2035 - val_dice_coef: 0.9631 - val_iou_coef: 0.9287 - lr: 2.5000e-04
+Epoch 120/500
+21/21 [==============================] - 116s 6s/step - loss: 0.1568 - dice_coef: 0.9740 - iou_coef: 0.9494 - val_loss: 0.2015 - val_dice_coef: 0.9640 - val_iou_coef: 0.9305 - lr: 2.5000e-04
+Epoch 121/500
+21/21 [==============================] - 112s 5s/step - loss: 0.1604 - dice_coef: 0.9730 - iou_coef: 0.9475 - val_loss: 0.2023 - val_dice_coef: 0.9633 - val_iou_coef: 0.9292 - lr: 2.5000e-04
+Epoch 122/500
+21/21 [==============================] - 114s 5s/step - loss: 0.1623 - dice_coef: 0.9722 - iou_coef: 0.9461 - val_loss: 0.1982 - val_dice_coef: 0.9627 - val_iou_coef: 0.9282 - lr: 2.5000e-04
+Epoch 123/500
+21/21 [==============================] - 112s 5s/step - loss: 0.1572 - dice_coef: 0.9734 - iou_coef: 0.9483 - val_loss: 0.1978 - val_dice_coef: 0.9638 - val_iou_coef: 0.9301 - lr: 2.5000e-04
+Epoch 124/500
+21/21 [==============================] - 112s 5s/step - loss: 0.1545 - dice_coef: 0.9741 - iou_coef: 0.9495 - val_loss: 0.1952 - val_dice_coef: 0.9646 - val_iou_coef: 0.9316 - lr: 2.5000e-04
+Epoch 125/500
+21/21 [==============================] - 114s 5s/step - loss: 0.1553 - dice_coef: 0.9740 - iou_coef: 0.9494 - val_loss: 0.2014 - val_dice_coef: 0.9633 - val_iou_coef: 0.9292 - lr: 2.5000e-04
+Epoch 126/500
+21/21 [==============================] - 111s 5s/step - loss: 0.1561 - dice_coef: 0.9736 - iou_coef: 0.9486 - val_loss: 0.1986 - val_dice_coef: 0.9644 - val_iou_coef: 0.9313 - lr: 2.5000e-04
+Epoch 127/500
+21/21 [==============================] - 110s 5s/step - loss: 0.1559 - dice_coef: 0.9736 - iou_coef: 0.9485 - val_loss: 0.1980 - val_dice_coef: 0.9635 - val_iou_coef: 0.9295 - lr: 2.5000e-04
+Epoch 128/500
+21/21 [==============================] - 108s 5s/step - loss: 0.1531 - dice_coef: 0.9740 - iou_coef: 0.9494 - val_loss: 0.1997 - val_dice_coef: 0.9635 - val_iou_coef: 0.9296 - lr: 2.5000e-04
+Epoch 129/500
+21/21 [==============================] - 108s 5s/step - loss: 0.1562 - dice_coef: 0.9735 - iou_coef: 0.9484 - val_loss: 0.2018 - val_dice_coef: 0.9634 - val_iou_coef: 0.9294 - lr: 2.5000e-04
+Epoch 130/500
+21/21 [==============================] - ETA: 0s - loss: 0.1536 - dice_coef: 0.9737 - iou_coef: 0.9488
+Epoch 130: ReduceLROnPlateau reducing learning rate to 0.0001250000059371814.
+21/21 [==============================] - 107s 5s/step - loss: 0.1536 - dice_coef: 0.9737 - iou_coef: 0.9488 - val_loss: 0.2115 - val_dice_coef: 0.9627 - val_iou_coef: 0.9280 - lr: 2.5000e-04
+Epoch 131/500
+21/21 [==============================] - 108s 5s/step - loss: 0.1556 - dice_coef: 0.9736 - iou_coef: 0.9485 - val_loss: 0.2018 - val_dice_coef: 0.9637 - val_iou_coef: 0.9300 - lr: 1.2500e-04
+Epoch 132/500
+21/21 [==============================] - 330s 16s/step - loss: 0.1503 - dice_coef: 0.9743 - iou_coef: 0.9499 - val_loss: 0.1940 - val_dice_coef: 0.9649 - val_iou_coef: 0.9323 - lr: 1.2500e-04
+Epoch 133/500
+21/21 [==============================] - 108s 5s/step - loss: 0.1490 - dice_coef: 0.9749 - iou_coef: 0.9510 - val_loss: 0.1957 - val_dice_coef: 0.9647 - val_iou_coef: 0.9318 - lr: 1.2500e-04
+Epoch 134/500
+21/21 [==============================] - 111s 5s/step - loss: 0.1527 - dice_coef: 0.9743 - iou_coef: 0.9499 - val_loss: 0.1949 - val_dice_coef: 0.9645 - val_iou_coef: 0.9314 - lr: 1.2500e-04
+Epoch 135/500
+21/21 [==============================] - 113s 5s/step - loss: 0.1493 - dice_coef: 0.9751 - iou_coef: 0.9515 - val_loss: 0.1940 - val_dice_coef: 0.9641 - val_iou_coef: 0.9308 - lr: 1.2500e-04
+Epoch 136/500
+21/21 [==============================] - 111s 5s/step - loss: 0.1509 - dice_coef: 0.9742 - iou_coef: 0.9498 - val_loss: 0.2009 - val_dice_coef: 0.9634 - val_iou_coef: 0.9294 - lr: 1.2500e-04
+Epoch 137/500
+21/21 [==============================] - 111s 5s/step - loss: 0.1475 - dice_coef: 0.9754 - iou_coef: 0.9520 - val_loss: 0.1981 - val_dice_coef: 0.9646 - val_iou_coef: 0.9317 - lr: 1.2500e-04
+Epoch 138/500
+21/21 [==============================] - 109s 5s/step - loss: 0.1477 - dice_coef: 0.9748 - iou_coef: 0.9510 - val_loss: 0.2016 - val_dice_coef: 0.9640 - val_iou_coef: 0.9304 - lr: 1.2500e-04
+Epoch 139/500
+21/21 [==============================] - 110s 5s/step - loss: 0.1447 - dice_coef: 0.9758 - iou_coef: 0.9528 - val_loss: 0.2008 - val_dice_coef: 0.9639 - val_iou_coef: 0.9303 - lr: 1.2500e-04
+Epoch 140/500
+21/21 [==============================] - 118s 6s/step - loss: 0.1456 - dice_coef: 0.9758 - iou_coef: 0.9527 - val_loss: 0.2023 - val_dice_coef: 0.9639 - val_iou_coef: 0.9304 - lr: 1.2500e-04
+Epoch 141/500
+21/21 [==============================] - 110s 5s/step - loss: 0.1466 - dice_coef: 0.9753 - iou_coef: 0.9519 - val_loss: 0.1979 - val_dice_coef: 0.9638 - val_iou_coef: 0.9300 - lr: 1.2500e-04
+Epoch 142/500
+21/21 [==============================] - 111s 5s/step - loss: 0.1453 - dice_coef: 0.9755 - iou_coef: 0.9523 - val_loss: 0.1937 - val_dice_coef: 0.9650 - val_iou_coef: 0.9324 - lr: 1.2500e-04
+Epoch 143/500
+21/21 [==============================] - 111s 5s/step - loss: 0.1421 - dice_coef: 0.9764 - iou_coef: 0.9539 - val_loss: 0.1990 - val_dice_coef: 0.9643 - val_iou_coef: 0.9311 - lr: 1.2500e-04
+Epoch 144/500
+21/21 [==============================] - 111s 5s/step - loss: 0.1480 - dice_coef: 0.9753 - iou_coef: 0.9517 - val_loss: 0.2020 - val_dice_coef: 0.9640 - val_iou_coef: 0.9304 - lr: 1.2500e-04
+Epoch 145/500
+21/21 [==============================] - 113s 5s/step - loss: 0.1460 - dice_coef: 0.9753 - iou_coef: 0.9518 - val_loss: 0.1939 - val_dice_coef: 0.9648 - val_iou_coef: 0.9320 - lr: 1.2500e-04
+Epoch 146/500
+21/21 [==============================] - 115s 5s/step - loss: 0.1409 - dice_coef: 0.9765 - iou_coef: 0.9542 - val_loss: 0.1904 - val_dice_coef: 0.9657 - val_iou_coef: 0.9337 - lr: 1.2500e-04
+Epoch 147/500
+21/21 [==============================] - 117s 6s/step - loss: 0.1399 - dice_coef: 0.9767 - iou_coef: 0.9545 - val_loss: 0.1928 - val_dice_coef: 0.9657 - val_iou_coef: 0.9336 - lr: 1.2500e-04
+Epoch 148/500
+21/21 [==============================] - 115s 5s/step - loss: 0.1414 - dice_coef: 0.9766 - iou_coef: 0.9544 - val_loss: 0.1879 - val_dice_coef: 0.9659 - val_iou_coef: 0.9341 - lr: 1.2500e-04
+Epoch 149/500
+21/21 [==============================] - 115s 5s/step - loss: 0.1439 - dice_coef: 0.9757 - iou_coef: 0.9525 - val_loss: 0.1876 - val_dice_coef: 0.9665 - val_iou_coef: 0.9351 - lr: 1.2500e-04
+Epoch 150/500
+21/21 [==============================] - 120s 6s/step - loss: 0.1441 - dice_coef: 0.9758 - iou_coef: 0.9528 - val_loss: 0.1934 - val_dice_coef: 0.9653 - val_iou_coef: 0.9330 - lr: 1.2500e-04
+Epoch 151/500
+21/21 [==============================] - 113s 5s/step - loss: 0.1388 - dice_coef: 0.9765 - iou_coef: 0.9541 - val_loss: 0.1955 - val_dice_coef: 0.9652 - val_iou_coef: 0.9327 - lr: 1.2500e-04
+Epoch 152/500
+21/21 [==============================] - 111s 5s/step - loss: 0.1407 - dice_coef: 0.9766 - iou_coef: 0.9544 - val_loss: 0.1919 - val_dice_coef: 0.9649 - val_iou_coef: 0.9323 - lr: 1.2500e-04
+Epoch 153/500
+21/21 [==============================] - 113s 5s/step - loss: 0.1388 - dice_coef: 0.9770 - iou_coef: 0.9551 - val_loss: 0.1950 - val_dice_coef: 0.9648 - val_iou_coef: 0.9320 - lr: 1.2500e-04
+Epoch 154/500
+21/21 [==============================] - 111s 5s/step - loss: 0.1411 - dice_coef: 0.9762 - iou_coef: 0.9536 - val_loss: 0.1915 - val_dice_coef: 0.9655 - val_iou_coef: 0.9332 - lr: 1.2500e-04
+Epoch 155/500
+21/21 [==============================] - 112s 5s/step - loss: 0.1401 - dice_coef: 0.9764 - iou_coef: 0.9539 - val_loss: 0.1933 - val_dice_coef: 0.9653 - val_iou_coef: 0.9330 - lr: 1.2500e-04
+Epoch 156/500
+21/21 [==============================] - 110s 5s/step - loss: 0.1430 - dice_coef: 0.9758 - iou_coef: 0.9528 - val_loss: 0.1951 - val_dice_coef: 0.9649 - val_iou_coef: 0.9322 - lr: 1.2500e-04
+Epoch 157/500
+21/21 [==============================] - 110s 5s/step - loss: 0.1468 - dice_coef: 0.9749 - iou_coef: 0.9511 - val_loss: 0.1934 - val_dice_coef: 0.9649 - val_iou_coef: 0.9322 - lr: 1.2500e-04
+Epoch 158/500
+21/21 [==============================] - 110s 5s/step - loss: 0.1379 - dice_coef: 0.9766 - iou_coef: 0.9544 - val_loss: 0.1916 - val_dice_coef: 0.9655 - val_iou_coef: 0.9333 - lr: 1.2500e-04
+Epoch 159/500
+21/21 [==============================] - 109s 5s/step - loss: 0.1402 - dice_coef: 0.9762 - iou_coef: 0.9536 - val_loss: 0.1870 - val_dice_coef: 0.9664 - val_iou_coef: 0.9349 - lr: 1.2500e-04
+Epoch 160/500
+21/21 [==============================] - 109s 5s/step - loss: 0.1425 - dice_coef: 0.9758 - iou_coef: 0.9527 - val_loss: 0.1955 - val_dice_coef: 0.9649 - val_iou_coef: 0.9321 - lr: 1.2500e-04
+Epoch 161/500
+21/21 [==============================] - 110s 5s/step - loss: 0.1380 - dice_coef: 0.9765 - iou_coef: 0.9541 - val_loss: 0.1894 - val_dice_coef: 0.9656 - val_iou_coef: 0.9335 - lr: 1.2500e-04
+Epoch 162/500
+21/21 [==============================] - 112s 5s/step - loss: 0.1405 - dice_coef: 0.9763 - iou_coef: 0.9536 - val_loss: 0.1843 - val_dice_coef: 0.9665 - val_iou_coef: 0.9351 - lr: 1.2500e-04
+Epoch 163/500
+21/21 [==============================] - 115s 5s/step - loss: 0.1396 - dice_coef: 0.9763 - iou_coef: 0.9537 - val_loss: 0.1950 - val_dice_coef: 0.9653 - val_iou_coef: 0.9329 - lr: 1.2500e-04
+Epoch 164/500
+21/21 [==============================] - ETA: 0s - loss: 0.1407 - dice_coef: 0.9762 - iou_coef: 0.9536
+Epoch 164: ReduceLROnPlateau reducing learning rate to 6.25000029685907e-05.
+21/21 [==============================] - 118s 6s/step - loss: 0.1407 - dice_coef: 0.9762 - iou_coef: 0.9536 - val_loss: 0.1918 - val_dice_coef: 0.9657 - val_iou_coef: 0.9337 - lr: 1.2500e-04
+Epoch 165/500
+21/21 [==============================] - 113s 5s/step - loss: 0.1374 - dice_coef: 0.9766 - iou_coef: 0.9542 - val_loss: 0.1905 - val_dice_coef: 0.9659 - val_iou_coef: 0.9340 - lr: 6.2500e-05
+Epoch 166/500
+21/21 [==============================] - 113s 5s/step - loss: 0.1337 - dice_coef: 0.9773 - iou_coef: 0.9557 - val_loss: 0.1898 - val_dice_coef: 0.9659 - val_iou_coef: 0.9340 - lr: 6.2500e-05
+Epoch 167/500
+21/21 [==============================] - 114s 5s/step - loss: 0.1330 - dice_coef: 0.9777 - iou_coef: 0.9565 - val_loss: 0.1901 - val_dice_coef: 0.9659 - val_iou_coef: 0.9341 - lr: 6.2500e-05
+Epoch 168/500
+21/21 [==============================] - 117s 6s/step - loss: 0.1365 - dice_coef: 0.9771 - iou_coef: 0.9553 - val_loss: 0.1921 - val_dice_coef: 0.9656 - val_iou_coef: 0.9335 - lr: 6.2500e-05
+Epoch 169/500
+21/21 [==============================] - 121s 6s/step - loss: 0.1356 - dice_coef: 0.9771 - iou_coef: 0.9553 - val_loss: 0.1906 - val_dice_coef: 0.9662 - val_iou_coef: 0.9345 - lr: 6.2500e-05
+Epoch 170/500
+21/21 [==============================] - 115s 5s/step - loss: 0.1404 - dice_coef: 0.9761 - iou_coef: 0.9533 - val_loss: 0.1905 - val_dice_coef: 0.9659 - val_iou_coef: 0.9341 - lr: 6.2500e-05
+Epoch 171/500
+21/21 [==============================] - 112s 5s/step - loss: 0.1357 - dice_coef: 0.9770 - iou_coef: 0.9550 - val_loss: 0.1910 - val_dice_coef: 0.9659 - val_iou_coef: 0.9340 - lr: 6.2500e-05
+Epoch 172/500
+21/21 [==============================] - 116s 6s/step - loss: 0.1369 - dice_coef: 0.9766 - iou_coef: 0.9543 - val_loss: 0.1849 - val_dice_coef: 0.9668 - val_iou_coef: 0.9357 - lr: 6.2500e-05
+Epoch 173/500
+21/21 [==============================] - 115s 5s/step - loss: 0.1390 - dice_coef: 0.9761 - iou_coef: 0.9533 - val_loss: 0.1858 - val_dice_coef: 0.9663 - val_iou_coef: 0.9348 - lr: 6.2500e-05
+Epoch 174/500
+21/21 [==============================] - 121s 6s/step - loss: 0.1351 - dice_coef: 0.9771 - iou_coef: 0.9552 - val_loss: 0.1853 - val_dice_coef: 0.9665 - val_iou_coef: 0.9352 - lr: 6.2500e-05
+Epoch 175/500
+21/21 [==============================] - 114s 5s/step - loss: 0.1334 - dice_coef: 0.9776 - iou_coef: 0.9562 - val_loss: 0.1881 - val_dice_coef: 0.9662 - val_iou_coef: 0.9347 - lr: 6.2500e-05
+Epoch 176/500
+21/21 [==============================] - 115s 5s/step - loss: 0.1334 - dice_coef: 0.9775 - iou_coef: 0.9561 - val_loss: 0.1828 - val_dice_coef: 0.9673 - val_iou_coef: 0.9366 - lr: 6.2500e-05
+Epoch 177/500
+21/21 [==============================] - 115s 5s/step - loss: 0.1362 - dice_coef: 0.9767 - iou_coef: 0.9545 - val_loss: 0.1861 - val_dice_coef: 0.9669 - val_iou_coef: 0.9358 - lr: 6.2500e-05
+Epoch 178/500
+21/21 [==============================] - 113s 5s/step - loss: 0.1332 - dice_coef: 0.9775 - iou_coef: 0.9559 - val_loss: 0.1830 - val_dice_coef: 0.9669 - val_iou_coef: 0.9359 - lr: 6.2500e-05
+Epoch 179/500
+21/21 [==============================] - 112s 5s/step - loss: 0.1361 - dice_coef: 0.9768 - iou_coef: 0.9547 - val_loss: 0.1867 - val_dice_coef: 0.9660 - val_iou_coef: 0.9342 - lr: 6.2500e-05
+Epoch 180/500
+21/21 [==============================] - 110s 5s/step - loss: 0.1331 - dice_coef: 0.9775 - iou_coef: 0.9561 - val_loss: 0.1873 - val_dice_coef: 0.9665 - val_iou_coef: 0.9352 - lr: 6.2500e-05
+Epoch 181/500
+21/21 [==============================] - 115s 5s/step - loss: 0.1348 - dice_coef: 0.9771 - iou_coef: 0.9553 - val_loss: 0.1937 - val_dice_coef: 0.9657 - val_iou_coef: 0.9336 - lr: 6.2500e-05
+Epoch 182/500
+21/21 [==============================] - 115s 6s/step - loss: 0.1355 - dice_coef: 0.9771 - iou_coef: 0.9552 - val_loss: 0.1962 - val_dice_coef: 0.9651 - val_iou_coef: 0.9325 - lr: 6.2500e-05
+Epoch 183/500
+21/21 [==============================] - 111s 5s/step - loss: 0.1309 - dice_coef: 0.9780 - iou_coef: 0.9569 - val_loss: 0.1912 - val_dice_coef: 0.9658 - val_iou_coef: 0.9338 - lr: 6.2500e-05
+Epoch 184/500
+21/21 [==============================] - 109s 5s/step - loss: 0.1351 - dice_coef: 0.9771 - iou_coef: 0.9552 - val_loss: 0.1943 - val_dice_coef: 0.9649 - val_iou_coef: 0.9323 - lr: 6.2500e-05
+Epoch 185/500
+21/21 [==============================] - 110s 5s/step - loss: 0.1335 - dice_coef: 0.9773 - iou_coef: 0.9556 - val_loss: 0.1951 - val_dice_coef: 0.9649 - val_iou_coef: 0.9322 - lr: 6.2500e-05
+Epoch 186/500
+21/21 [==============================] - 109s 5s/step - loss: 0.1308 - dice_coef: 0.9780 - iou_coef: 0.9570 - val_loss: 0.2020 - val_dice_coef: 0.9639 - val_iou_coef: 0.9303 - lr: 6.2500e-05
+Epoch 187/500
+21/21 [==============================] - 110s 5s/step - loss: 0.1311 - dice_coef: 0.9781 - iou_coef: 0.9571 - val_loss: 0.1992 - val_dice_coef: 0.9645 - val_iou_coef: 0.9315 - lr: 6.2500e-05
+Epoch 188/500
+21/21 [==============================] - 114s 5s/step - loss: 0.1319 - dice_coef: 0.9778 - iou_coef: 0.9565 - val_loss: 0.1974 - val_dice_coef: 0.9649 - val_iou_coef: 0.9322 - lr: 6.2500e-05
+Epoch 189/500
+21/21 [==============================] - 112s 5s/step - loss: 0.1388 - dice_coef: 0.9761 - iou_coef: 0.9533 - val_loss: 0.1954 - val_dice_coef: 0.9648 - val_iou_coef: 0.9321 - lr: 6.2500e-05
+Epoch 190/500
+21/21 [==============================] - 116s 6s/step - loss: 0.1312 - dice_coef: 0.9777 - iou_coef: 0.9565 - val_loss: 0.1916 - val_dice_coef: 0.9654 - val_iou_coef: 0.9331 - lr: 6.2500e-05
+Epoch 191/500
+21/21 [==============================] - ETA: 0s - loss: 0.1296 - dice_coef: 0.9782 - iou_coef: 0.9573
+Epoch 191: ReduceLROnPlateau reducing learning rate to 3.125000148429535e-05.
+21/21 [==============================] - 112s 5s/step - loss: 0.1296 - dice_coef: 0.9782 - iou_coef: 0.9573 - val_loss: 0.1837 - val_dice_coef: 0.9666 - val_iou_coef: 0.9353 - lr: 6.2500e-05
+Epoch 192/500
+21/21 [==============================] - 113s 5s/step - loss: 0.1336 - dice_coef: 0.9773 - iou_coef: 0.9557 - val_loss: 0.1864 - val_dice_coef: 0.9663 - val_iou_coef: 0.9349 - lr: 3.1250e-05
+Epoch 193/500
+21/21 [==============================] - 114s 5s/step - loss: 0.1304 - dice_coef: 0.9778 - iou_coef: 0.9567 - val_loss: 0.1883 - val_dice_coef: 0.9663 - val_iou_coef: 0.9347 - lr: 3.1250e-05
+Epoch 194/500
+21/21 [==============================] - 112s 5s/step - loss: 0.1319 - dice_coef: 0.9777 - iou_coef: 0.9565 - val_loss: 0.1866 - val_dice_coef: 0.9662 - val_iou_coef: 0.9346 - lr: 3.1250e-05
+Epoch 195/500
+21/21 [==============================] - 112s 5s/step - loss: 0.1317 - dice_coef: 0.9777 - iou_coef: 0.9565 - val_loss: 0.1855 - val_dice_coef: 0.9664 - val_iou_coef: 0.9349 - lr: 3.1250e-05
+Epoch 196/500
+21/21 [==============================] - 111s 5s/step - loss: 0.1325 - dice_coef: 0.9773 - iou_coef: 0.9557 - val_loss: 0.1863 - val_dice_coef: 0.9661 - val_iou_coef: 0.9344 - lr: 3.1250e-05
+Epoch 197/500
+21/21 [==============================] - 113s 5s/step - loss: 0.1343 - dice_coef: 0.9772 - iou_coef: 0.9555 - val_loss: 0.1866 - val_dice_coef: 0.9662 - val_iou_coef: 0.9346 - lr: 3.1250e-05
+Epoch 198/500
+21/21 [==============================] - 110s 5s/step - loss: 0.1339 - dice_coef: 0.9771 - iou_coef: 0.9553 - val_loss: 0.1867 - val_dice_coef: 0.9661 - val_iou_coef: 0.9345 - lr: 3.1250e-05
+Epoch 199/500
+21/21 [==============================] - 112s 5s/step - loss: 0.1266 - dice_coef: 0.9787 - iou_coef: 0.9583 - val_loss: 0.1855 - val_dice_coef: 0.9667 - val_iou_coef: 0.9355 - lr: 3.1250e-05
+Epoch 200/500
+21/21 [==============================] - 112s 5s/step - loss: 0.1348 - dice_coef: 0.9770 - iou_coef: 0.9551 - val_loss: 0.1871 - val_dice_coef: 0.9661 - val_iou_coef: 0.9345 - lr: 3.1250e-05
+Epoch 201/500
+21/21 [==============================] - 117s 6s/step - loss: 0.1313 - dice_coef: 0.9777 - iou_coef: 0.9564 - val_loss: 0.1846 - val_dice_coef: 0.9665 - val_iou_coef: 0.9351 - lr: 3.1250e-05
+Epoch 202/500
+21/21 [==============================] - 113s 5s/step - loss: 0.1325 - dice_coef: 0.9774 - iou_coef: 0.9558 - val_loss: 0.1861 - val_dice_coef: 0.9664 - val_iou_coef: 0.9350 - lr: 3.1250e-05
+Epoch 203/500
+21/21 [==============================] - 113s 5s/step - loss: 0.1289 - dice_coef: 0.9782 - iou_coef: 0.9574 - val_loss: 0.1846 - val_dice_coef: 0.9668 - val_iou_coef: 0.9358 - lr: 3.1250e-05
+Epoch 204/500
+21/21 [==============================] - 112s 5s/step - loss: 0.1313 - dice_coef: 0.9777 - iou_coef: 0.9564 - val_loss: 0.1855 - val_dice_coef: 0.9666 - val_iou_coef: 0.9353 - lr: 3.1250e-05
+Epoch 205/500
+21/21 [==============================] - 112s 5s/step - loss: 0.1280 - dice_coef: 0.9783 - iou_coef: 0.9575 - val_loss: 0.1861 - val_dice_coef: 0.9667 - val_iou_coef: 0.9356 - lr: 3.1250e-05
+Epoch 206/500
+21/21 [==============================] - 116s 6s/step - loss: 0.1297 - dice_coef: 0.9781 - iou_coef: 0.9573 - val_loss: 0.1855 - val_dice_coef: 0.9667 - val_iou_coef: 0.9356 - lr: 3.1250e-05
+Epoch 207/500
+21/21 [==============================] - 111s 5s/step - loss: 0.1303 - dice_coef: 0.9778 - iou_coef: 0.9567 - val_loss: 0.1873 - val_dice_coef: 0.9666 - val_iou_coef: 0.9354 - lr: 3.1250e-05
+Epoch 208/500
+21/21 [==============================] - 111s 5s/step - loss: 0.1288 - dice_coef: 0.9783 - iou_coef: 0.9576 - val_loss: 0.1826 - val_dice_coef: 0.9671 - val_iou_coef: 0.9363 - lr: 3.1250e-05
+Epoch 209/500
+21/21 [==============================] - 133s 6s/step - loss: 0.1302 - dice_coef: 0.9781 - iou_coef: 0.9572 - val_loss: 0.1859 - val_dice_coef: 0.9667 - val_iou_coef: 0.9356 - lr: 3.1250e-05
+Epoch 210/500
+21/21 [==============================] - ETA: 0s - loss: 0.1280 - dice_coef: 0.9785 - iou_coef: 0.9579
+Epoch 210: ReduceLROnPlateau reducing learning rate to 1.5625000742147677e-05.
+21/21 [==============================] - 110s 5s/step - loss: 0.1280 - dice_coef: 0.9785 - iou_coef: 0.9579 - val_loss: 0.1831 - val_dice_coef: 0.9673 - val_iou_coef: 0.9366 - lr: 3.1250e-05
+Epoch 211/500
+21/21 [==============================] - 111s 5s/step - loss: 0.1300 - dice_coef: 0.9781 - iou_coef: 0.9571 - val_loss: 0.1857 - val_dice_coef: 0.9668 - val_iou_coef: 0.9357 - lr: 1.5625e-05
+Epoch 212/500
+21/21 [==============================] - 110s 5s/step - loss: 0.1289 - dice_coef: 0.9783 - iou_coef: 0.9575 - val_loss: 0.1842 - val_dice_coef: 0.9670 - val_iou_coef: 0.9360 - lr: 1.5625e-05
+Epoch 213/500
+21/21 [==============================] - 112s 5s/step - loss: 0.1293 - dice_coef: 0.9782 - iou_coef: 0.9574 - val_loss: 0.1869 - val_dice_coef: 0.9667 - val_iou_coef: 0.9356 - lr: 1.5625e-05
+Epoch 214/500
+21/21 [==============================] - 113s 5s/step - loss: 0.1319 - dice_coef: 0.9775 - iou_coef: 0.9560 - val_loss: 0.1880 - val_dice_coef: 0.9664 - val_iou_coef: 0.9350 - lr: 1.5625e-05
+Epoch 215/500
+21/21 [==============================] - 116s 5s/step - loss: 0.1277 - dice_coef: 0.9784 - iou_coef: 0.9578 - val_loss: 0.1860 - val_dice_coef: 0.9667 - val_iou_coef: 0.9355 - lr: 1.5625e-05
+Epoch 216/500
+21/21 [==============================] - ETA: 0s - loss: 0.1252 - dice_coef: 0.9790 - iou_coef: 0.9589Restoring model weights from the end of the best epoch: 176.
+21/21 [==============================] - 115s 5s/step - loss: 0.1252 - dice_coef: 0.9790 - iou_coef: 0.9589 - val_loss: 0.1859 - val_dice_coef: 0.9670 - val_iou_coef: 0.9361 - lr: 1.5625e-05
+Epoch 216: early stopping
+────────────────────────────────────────── TRAINING SUMMARY TABLE ───────────────────────────────────────────
+                       DeepAxon++ Training Progress
+┌───────┬────────┬─────┬──────────┬─────────┬──────────┬─────────────────┐
+│ Epoch │  Loss  │ Acc │ Val_Loss │ Val_Acc │    LR    │ Aug (T/A/Mi/Ma) │
+├───────┼────────┼─────┼──────────┼─────────┼──────────┼─────────────────┤
+│   1   │ 1.4996 │ nan │  2.4177  │   nan   │ 1.00e-03 │   68/3.24/1/6   │
+│   2   │ 0.8831 │ nan │  4.0978  │   nan   │ 1.00e-03 │   61/2.90/1/7   │
+│   3   │ 0.7336 │ nan │  5.8814  │   nan   │ 1.00e-03 │   46/2.19/0/4   │
+│   4   │ 0.6570 │ nan │  3.2038  │   nan   │ 1.00e-03 │   51/2.43/0/6   │
+│   5   │ 0.6044 │ nan │  3.0216  │   nan   │ 1.00e-03 │   71/3.38/2/6   │
+│   6   │ 0.5952 │ nan │  2.5757  │   nan   │ 1.00e-03 │   63/3.00/0/6   │
+│   7   │ 0.5181 │ nan │  2.9901  │   nan   │ 1.00e-03 │   61/2.90/0/6   │
+│   8   │ 0.5207 │ nan │  2.2583  │   nan   │ 1.00e-03 │   61/2.90/0/5   │
+│   9   │ 0.5026 │ nan │  1.6346  │   nan   │ 1.00e-03 │   55/2.62/0/6   │
+│  10   │ 0.4579 │ nan │  1.4441  │   nan   │ 1.00e-03 │   59/2.81/0/5   │
+│  11   │ 0.4741 │ nan │  1.5055  │   nan   │ 1.00e-03 │   53/2.52/0/6   │
+│  12   │ 0.4483 │ nan │  4.2383  │   nan   │ 1.00e-03 │   52/2.48/1/5   │
+│  13   │ 0.4470 │ nan │  0.8557  │   nan   │ 1.00e-03 │   72/3.43/1/6   │
+│  14   │ 0.4085 │ nan │  1.1763  │   nan   │ 1.00e-03 │   54/2.57/1/5   │
+│  15   │ 0.3992 │ nan │  0.9302  │   nan   │ 1.00e-03 │   57/2.71/0/5   │
+│  16   │ 0.4085 │ nan │  1.0860  │   nan   │ 1.00e-03 │   68/3.24/1/5   │
+│  17   │ 0.4095 │ nan │  0.7326  │   nan   │ 1.00e-03 │   55/2.62/0/5   │
+│  18   │ 0.3807 │ nan │  0.6465  │   nan   │ 1.00e-03 │   69/3.29/1/6   │
+│  19   │ 0.3634 │ nan │  0.5578  │   nan   │ 1.00e-03 │   55/2.62/0/6   │
+│  20   │ 0.3693 │ nan │  0.6126  │   nan   │ 1.00e-03 │   59/2.81/0/5   │
+│  21   │ 0.3599 │ nan │  0.5314  │   nan   │ 1.00e-03 │   55/2.62/0/6   │
+│  22   │ 0.3722 │ nan │  0.5025  │   nan   │ 1.00e-03 │   63/3.00/1/7   │
+│  23   │ 0.3360 │ nan │  0.4965  │   nan   │ 1.00e-03 │   45/2.14/0/4   │
+│  24   │ 0.3394 │ nan │  0.4650  │   nan   │ 1.00e-03 │   55/2.62/1/5   │
+│  25   │ 0.3224 │ nan │  0.4787  │   nan   │ 1.00e-03 │   55/2.62/0/5   │
+│  26   │ 0.3391 │ nan │  0.6140  │   nan   │ 1.00e-03 │   62/2.95/0/6   │
+│  27   │ 0.3282 │ nan │  0.3644  │   nan   │ 1.00e-03 │   62/2.95/0/5   │
+│  28   │ 0.3165 │ nan │  0.3350  │   nan   │ 1.00e-03 │   49/2.33/0/5   │
+│  29   │ 0.3261 │ nan │  0.5469  │   nan   │ 1.00e-03 │   50/2.38/0/4   │
+│  30   │ 0.3379 │ nan │  0.3422  │   nan   │ 1.00e-03 │   68/3.24/1/7   │
+│  31   │ 0.3181 │ nan │  0.3989  │   nan   │ 1.00e-03 │   60/2.86/0/5   │
+│  32   │ 0.3197 │ nan │  0.3153  │   nan   │ 1.00e-03 │   57/2.71/1/5   │
+│  33   │ 0.3183 │ nan │  0.3819  │   nan   │ 1.00e-03 │   53/2.52/0/6   │
+│  34   │ 0.3149 │ nan │  0.3281  │   nan   │ 1.00e-03 │   63/3.00/1/6   │
+│  35   │ 0.3034 │ nan │  0.3142  │   nan   │ 1.00e-03 │   57/2.71/0/5   │
+│  36   │ 0.2914 │ nan │  0.3199  │   nan   │ 1.00e-03 │   51/2.43/0/6   │
+│  37   │ 0.2759 │ nan │  0.3246  │   nan   │ 1.00e-03 │   48/2.29/1/5   │
+│  38   │ 0.2787 │ nan │  0.4764  │   nan   │ 1.00e-03 │   58/2.76/0/6   │
+│  39   │ 0.2669 │ nan │  0.2961  │   nan   │ 1.00e-03 │   50/2.38/0/4   │
+│  40   │ 0.2812 │ nan │  0.2949  │   nan   │ 1.00e-03 │   64/3.05/1/6   │
+│  41   │ 0.2755 │ nan │  0.3038  │   nan   │ 1.00e-03 │   56/2.67/1/6   │
+│  42   │ 0.2721 │ nan │  0.3111  │   nan   │ 1.00e-03 │   57/2.71/0/6   │
+│  43   │ 0.2785 │ nan │  0.3611  │   nan   │ 1.00e-03 │   49/2.33/0/6   │
+│  44   │ 0.2758 │ nan │  0.3076  │   nan   │ 1.00e-03 │   54/2.57/0/5   │
+│  45   │ 0.2801 │ nan │  0.3422  │   nan   │ 1.00e-03 │   60/2.86/1/6   │
+│  46   │ 0.2705 │ nan │  0.3091  │   nan   │ 1.00e-03 │   62/2.95/1/7   │
+│  47   │ 0.2635 │ nan │  0.3691  │   nan   │ 1.00e-03 │   50/2.38/0/4   │
+│  48   │ 0.2555 │ nan │  0.2814  │   nan   │ 1.00e-03 │   65/3.10/1/6   │
+│  49   │ 0.2506 │ nan │  0.4471  │   nan   │ 1.00e-03 │   58/2.76/1/5   │
+│  50   │ 0.2658 │ nan │  0.3212  │   nan   │ 1.00e-03 │   63/3.00/0/6   │
+│  51   │ 0.2508 │ nan │  0.2824  │   nan   │ 1.00e-03 │   49/2.33/0/5   │
+│  52   │ 0.2713 │ nan │  0.2880  │   nan   │ 1.00e-03 │   66/3.14/0/6   │
+│  53   │ 0.2598 │ nan │  0.3022  │   nan   │ 1.00e-03 │   59/2.81/0/5   │
+│  54   │ 0.2678 │ nan │  0.3134  │   nan   │ 1.00e-03 │   58/2.76/0/5   │
+│  55   │ 0.2440 │ nan │  0.2820  │   nan   │ 1.00e-03 │   51/2.43/0/5   │
+│  56   │ 0.2463 │ nan │  0.2977  │   nan   │ 1.00e-03 │   58/2.76/0/5   │
+│  57   │ 0.2558 │ nan │  0.3217  │   nan   │ 1.00e-03 │   53/2.52/0/5   │
+│  58   │ 0.2598 │ nan │  0.2982  │   nan   │ 1.00e-03 │   55/2.62/0/5   │
+│  59   │ 0.2571 │ nan │  0.3082  │   nan   │ 1.00e-03 │   58/2.76/1/6   │
+│  60   │ 0.2311 │ nan │  0.2622  │   nan   │ 1.00e-03 │   47/2.24/0/6   │
+│  61   │ 0.2345 │ nan │  0.2638  │   nan   │ 1.00e-03 │   55/2.62/0/5   │
+│  62   │ 0.2389 │ nan │  0.2831  │   nan   │ 1.00e-03 │   65/3.10/0/7   │
+│  63   │ 0.2350 │ nan │  0.3809  │   nan   │ 1.00e-03 │   57/2.71/0/6   │
+│  64   │ 0.2380 │ nan │  0.2788  │   nan   │ 1.00e-03 │   63/3.00/1/5   │
+│  65   │ 0.2363 │ nan │  0.3051  │   nan   │ 1.00e-03 │   48/2.29/0/5   │
+│  66   │ 0.2503 │ nan │  0.2670  │   nan   │ 1.00e-03 │   63/3.00/1/6   │
+│  67   │ 0.2341 │ nan │  0.2643  │   nan   │ 1.00e-03 │   61/2.90/1/6   │
+│  68   │ 0.2363 │ nan │  0.2942  │   nan   │ 1.00e-03 │   51/2.43/0/4   │
+│  69   │ 0.2419 │ nan │  0.3185  │   nan   │ 1.00e-03 │   44/2.10/0/4   │
+│  70   │ 0.3121 │ nan │  0.3867  │   nan   │ 1.00e-03 │   50/2.38/0/5   │
+│  71   │ 0.2488 │ nan │  0.2847  │   nan   │ 1.00e-03 │   46/2.19/0/4   │
+│  72   │ 0.2318 │ nan │  0.2714  │   nan   │ 1.00e-03 │   51/2.43/0/6   │
+│  73   │ 0.2399 │ nan │  0.2759  │   nan   │ 1.00e-03 │   78/3.71/1/6   │
+│  74   │ 0.2286 │ nan │  0.2766  │   nan   │ 1.00e-03 │   58/2.76/0/7   │
+│  75   │ 0.2245 │ nan │  0.2634  │   nan   │ 5.00e-04 │   62/2.95/1/5   │
+│  76   │ 0.2137 │ nan │  0.2470  │   nan   │ 5.00e-04 │   58/2.76/0/7   │
+│  77   │ 0.2083 │ nan │  0.2384  │   nan   │ 5.00e-04 │   59/2.81/0/7   │
+│  78   │ 0.2046 │ nan │  0.2371  │   nan   │ 5.00e-04 │   61/2.90/1/6   │
+│  79   │ 0.2014 │ nan │  0.2302  │   nan   │ 5.00e-04 │   54/2.57/1/5   │
+│  80   │ 0.2007 │ nan │  0.2337  │   nan   │ 5.00e-04 │   52/2.48/0/5   │
+│  81   │ 0.1943 │ nan │  0.2292  │   nan   │ 5.00e-04 │   47/2.24/0/4   │
+│  82   │ 0.1949 │ nan │  0.2393  │   nan   │ 5.00e-04 │   62/2.95/0/6   │
+│  83   │ 0.1918 │ nan │  0.2331  │   nan   │ 5.00e-04 │   56/2.67/0/5   │
+│  84   │ 0.1973 │ nan │  0.2327  │   nan   │ 5.00e-04 │   65/3.10/0/6   │
+│  85   │ 0.2005 │ nan │  0.2384  │   nan   │ 5.00e-04 │   57/2.71/1/6   │
+│  86   │ 0.1940 │ nan │  0.2386  │   nan   │ 5.00e-04 │   53/2.52/0/5   │
+│  87   │ 0.1989 │ nan │  0.2356  │   nan   │ 5.00e-04 │   63/3.00/1/5   │
+│  88   │ 0.1910 │ nan │  0.2351  │   nan   │ 5.00e-04 │   52/2.48/1/5   │
+│  89   │ 0.1922 │ nan │  0.2358  │   nan   │ 5.00e-04 │   70/3.33/1/6   │
+│  90   │ 0.1920 │ nan │  0.2223  │   nan   │ 5.00e-04 │   52/2.48/0/5   │
+│  91   │ 0.1923 │ nan │  0.2419  │   nan   │ 5.00e-04 │   63/3.00/2/5   │
+│  92   │ 0.1869 │ nan │  0.2236  │   nan   │ 5.00e-04 │   61/2.90/1/5   │
+│  93   │ 0.1900 │ nan │  0.2227  │   nan   │ 5.00e-04 │   64/3.05/0/9   │
+│  94   │ 0.1807 │ nan │  0.2201  │   nan   │ 5.00e-04 │   56/2.67/0/6   │
+│  95   │ 0.1808 │ nan │  0.2282  │   nan   │ 5.00e-04 │   58/2.76/1/6   │
+│  96   │ 0.1721 │ nan │  0.2258  │   nan   │ 5.00e-04 │   36/1.71/0/5   │
+│  97   │ 0.1768 │ nan │  0.2146  │   nan   │ 5.00e-04 │   58/2.76/0/5   │
+│  98   │ 0.1737 │ nan │  0.2161  │   nan   │ 5.00e-04 │   61/2.90/0/6   │
+│  99   │ 0.1738 │ nan │  0.2305  │   nan   │ 5.00e-04 │   62/2.95/0/6   │
+│  100  │ 0.1765 │ nan │  0.2158  │   nan   │ 5.00e-04 │   62/2.95/0/6   │
+│  101  │ 0.1681 │ nan │  0.2213  │   nan   │ 5.00e-04 │   46/2.19/0/5   │
+│  102  │ 0.1702 │ nan │  0.2205  │   nan   │ 5.00e-04 │   70/3.33/1/7   │
+│  103  │ 0.1704 │ nan │  0.2142  │   nan   │ 5.00e-04 │   57/2.71/0/4   │
+│  104  │ 0.1737 │ nan │  0.3839  │   nan   │ 5.00e-04 │   55/2.62/1/5   │
+│  105  │ 0.1850 │ nan │  0.2439  │   nan   │ 2.50e-04 │   49/2.33/1/4   │
+│  106  │ 0.1834 │ nan │  0.2198  │   nan   │ 2.50e-04 │   59/2.81/0/8   │
+│  107  │ 0.1717 │ nan │  0.2146  │   nan   │ 2.50e-04 │   60/2.86/0/6   │
+│  108  │ 0.1708 │ nan │  0.2076  │   nan   │ 2.50e-04 │   60/2.86/0/6   │
+│  109  │ 0.1701 │ nan │  0.2114  │   nan   │ 2.50e-04 │   60/2.86/1/5   │
+│  110  │ 0.1663 │ nan │  0.2155  │   nan   │ 2.50e-04 │   58/2.76/1/5   │
+│  111  │ 0.1751 │ nan │  0.2213  │   nan   │ 2.50e-04 │   69/3.29/1/8   │
+│  112  │ 0.1692 │ nan │  0.2200  │   nan   │ 2.50e-04 │   61/2.90/0/6   │
+│  113  │ 0.1692 │ nan │  0.2050  │   nan   │ 2.50e-04 │   75/3.57/1/8   │
+│  114  │ 0.1676 │ nan │  0.2074  │   nan   │ 2.50e-04 │   55/2.62/1/5   │
+│  115  │ 0.1597 │ nan │  0.1968  │   nan   │ 2.50e-04 │   58/2.76/1/6   │
+│  116  │ 0.1618 │ nan │  0.2046  │   nan   │ 2.50e-04 │   60/2.86/1/5   │
+│  117  │ 0.1559 │ nan │  0.2068  │   nan   │ 2.50e-04 │   33/1.57/0/6   │
+│  118  │ 0.1608 │ nan │  0.2141  │   nan   │ 2.50e-04 │   68/3.24/0/7   │
+│  119  │ 0.1595 │ nan │  0.2035  │   nan   │ 2.50e-04 │   60/2.86/1/5   │
+│  120  │ 0.1568 │ nan │  0.2015  │   nan   │ 2.50e-04 │   54/2.57/0/6   │
+│  121  │ 0.1604 │ nan │  0.2023  │   nan   │ 2.50e-04 │   65/3.10/1/6   │
+│  122  │ 0.1623 │ nan │  0.1982  │   nan   │ 2.50e-04 │   55/2.62/0/6   │
+│  123  │ 0.1572 │ nan │  0.1978  │   nan   │ 2.50e-04 │   55/2.62/0/6   │
+│  124  │ 0.1545 │ nan │  0.1952  │   nan   │ 2.50e-04 │   48/2.29/0/4   │
+│  125  │ 0.1553 │ nan │  0.2014  │   nan   │ 2.50e-04 │   56/2.67/0/5   │
+│  126  │ 0.1561 │ nan │  0.1986  │   nan   │ 2.50e-04 │   57/2.71/1/5   │
+│  127  │ 0.1559 │ nan │  0.1980  │   nan   │ 2.50e-04 │   52/2.48/0/5   │
+│  128  │ 0.1531 │ nan │  0.1997  │   nan   │ 2.50e-04 │   52/2.48/0/6   │
+│  129  │ 0.1562 │ nan │  0.2018  │   nan   │ 2.50e-04 │   71/3.38/1/6   │
+│  130  │ 0.1536 │ nan │  0.2115  │   nan   │ 1.25e-04 │   59/2.81/0/6   │
+│  131  │ 0.1556 │ nan │  0.2018  │   nan   │ 1.25e-04 │   69/3.29/1/7   │
+│  132  │ 0.1503 │ nan │  0.1940  │   nan   │ 1.25e-04 │   53/2.52/0/6   │
+│  133  │ 0.1490 │ nan │  0.1957  │   nan   │ 1.25e-04 │   57/2.71/0/6   │
+│  134  │ 0.1527 │ nan │  0.1949  │   nan   │ 1.25e-04 │   65/3.10/1/6   │
+│  135  │ 0.1493 │ nan │  0.1940  │   nan   │ 1.25e-04 │   46/2.19/0/5   │
+│  136  │ 0.1509 │ nan │  0.2009  │   nan   │ 1.25e-04 │   67/3.19/0/6   │
+│  137  │ 0.1475 │ nan │  0.1981  │   nan   │ 1.25e-04 │   56/2.67/1/6   │
+│  138  │ 0.1477 │ nan │  0.2016  │   nan   │ 1.25e-04 │   55/2.62/0/5   │
+│  139  │ 0.1447 │ nan │  0.2008  │   nan   │ 1.25e-04 │   63/3.00/1/7   │
+│  140  │ 0.1456 │ nan │  0.2023  │   nan   │ 1.25e-04 │   57/2.71/1/5   │
+│  141  │ 0.1466 │ nan │  0.1979  │   nan   │ 1.25e-04 │   65/3.10/1/5   │
+│  142  │ 0.1453 │ nan │  0.1937  │   nan   │ 1.25e-04 │   57/2.71/0/6   │
+│  143  │ 0.1421 │ nan │  0.1990  │   nan   │ 1.25e-04 │   57/2.71/0/8   │
+│  144  │ 0.1480 │ nan │  0.2020  │   nan   │ 1.25e-04 │   54/2.57/1/4   │
+│  145  │ 0.1460 │ nan │  0.1939  │   nan   │ 1.25e-04 │   60/2.86/1/6   │
+│  146  │ 0.1409 │ nan │  0.1904  │   nan   │ 1.25e-04 │   45/2.14/0/5   │
+│  147  │ 0.1399 │ nan │  0.1928  │   nan   │ 1.25e-04 │   60/2.86/1/7   │
+│  148  │ 0.1414 │ nan │  0.1879  │   nan   │ 1.25e-04 │   54/2.57/0/6   │
+│  149  │ 0.1439 │ nan │  0.1876  │   nan   │ 1.25e-04 │   59/2.81/0/6   │
+│  150  │ 0.1441 │ nan │  0.1934  │   nan   │ 1.25e-04 │   58/2.76/0/6   │
+│  151  │ 0.1388 │ nan │  0.1955  │   nan   │ 1.25e-04 │   45/2.14/0/4   │
+│  152  │ 0.1407 │ nan │  0.1919  │   nan   │ 1.25e-04 │   51/2.43/0/6   │
+│  153  │ 0.1388 │ nan │  0.1950  │   nan   │ 1.25e-04 │   48/2.29/0/7   │
+│  154  │ 0.1411 │ nan │  0.1915  │   nan   │ 1.25e-04 │   58/2.76/0/6   │
+│  155  │ 0.1401 │ nan │  0.1933  │   nan   │ 1.25e-04 │   52/2.48/0/5   │
+│  156  │ 0.1430 │ nan │  0.1951  │   nan   │ 1.25e-04 │   65/3.10/1/7   │
+│  157  │ 0.1468 │ nan │  0.1934  │   nan   │ 1.25e-04 │   70/3.33/1/6   │
+│  158  │ 0.1379 │ nan │  0.1916  │   nan   │ 1.25e-04 │   54/2.57/0/5   │
+│  159  │ 0.1402 │ nan │  0.1870  │   nan   │ 1.25e-04 │   60/2.86/1/6   │
+│  160  │ 0.1425 │ nan │  0.1955  │   nan   │ 1.25e-04 │   58/2.76/0/5   │
+│  161  │ 0.1380 │ nan │  0.1894  │   nan   │ 1.25e-04 │   51/2.43/0/7   │
+│  162  │ 0.1405 │ nan │  0.1843  │   nan   │ 1.25e-04 │   54/2.57/0/4   │
+│  163  │ 0.1396 │ nan │  0.1950  │   nan   │ 1.25e-04 │   61/2.90/1/6   │
+│  164  │ 0.1407 │ nan │  0.1918  │   nan   │ 6.25e-05 │   57/2.71/0/5   │
+│  165  │ 0.1374 │ nan │  0.1905  │   nan   │ 6.25e-05 │   53/2.52/1/4   │
+│  166  │ 0.1337 │ nan │  0.1898  │   nan   │ 6.25e-05 │   55/2.62/0/6   │
+│  167  │ 0.1330 │ nan │  0.1901  │   nan   │ 6.25e-05 │   58/2.76/0/5   │
+│  168  │ 0.1365 │ nan │  0.1921  │   nan   │ 6.25e-05 │   57/2.71/1/6   │
+│  169  │ 0.1356 │ nan │  0.1906  │   nan   │ 6.25e-05 │   49/2.33/0/6   │
+│  170  │ 0.1404 │ nan │  0.1905  │   nan   │ 6.25e-05 │   66/3.14/1/8   │
+│  171  │ 0.1357 │ nan │  0.1910  │   nan   │ 6.25e-05 │   54/2.57/0/6   │
+│  172  │ 0.1369 │ nan │  0.1849  │   nan   │ 6.25e-05 │   58/2.76/0/5   │
+│  173  │ 0.1390 │ nan │  0.1858  │   nan   │ 6.25e-05 │   55/2.62/0/7   │
+│  174  │ 0.1351 │ nan │  0.1853  │   nan   │ 6.25e-05 │   61/2.90/0/6   │
+│  175  │ 0.1334 │ nan │  0.1881  │   nan   │ 6.25e-05 │   60/2.86/1/5   │
+│  176  │ 0.1334 │ nan │  0.1828  │   nan   │ 6.25e-05 │   55/2.62/1/6   │
+│  177  │ 0.1362 │ nan │  0.1861  │   nan   │ 6.25e-05 │   61/2.90/0/6   │
+│  178  │ 0.1332 │ nan │  0.1830  │   nan   │ 6.25e-05 │   57/2.71/0/6   │
+│  179  │ 0.1361 │ nan │  0.1867  │   nan   │ 6.25e-05 │   62/2.95/1/5   │
+│  180  │ 0.1331 │ nan │  0.1873  │   nan   │ 6.25e-05 │   58/2.76/0/5   │
+│  181  │ 0.1348 │ nan │  0.1937  │   nan   │ 6.25e-05 │   51/2.43/0/6   │
+│  182  │ 0.1355 │ nan │  0.1962  │   nan   │ 6.25e-05 │   57/2.71/0/5   │
+│  183  │ 0.1309 │ nan │  0.1912  │   nan   │ 6.25e-05 │   47/2.24/0/5   │
+│  184  │ 0.1351 │ nan │  0.1943  │   nan   │ 6.25e-05 │   62/2.95/0/5   │
+│  185  │ 0.1335 │ nan │  0.1951  │   nan   │ 6.25e-05 │   55/2.62/1/5   │
+│  186  │ 0.1308 │ nan │  0.2020  │   nan   │ 6.25e-05 │   57/2.71/0/5   │
+│  187  │ 0.1311 │ nan │  0.1992  │   nan   │ 6.25e-05 │   55/2.62/0/6   │
+│  188  │ 0.1319 │ nan │  0.1974  │   nan   │ 6.25e-05 │   63/3.00/0/7   │
+│  189  │ 0.1388 │ nan │  0.1954  │   nan   │ 6.25e-05 │   63/3.00/1/6   │
+│  190  │ 0.1312 │ nan │  0.1916  │   nan   │ 6.25e-05 │   58/2.76/0/6   │
+│  191  │ 0.1296 │ nan │  0.1837  │   nan   │ 3.13e-05 │   49/2.33/1/5   │
+│  192  │ 0.1336 │ nan │  0.1864  │   nan   │ 3.13e-05 │   65/3.10/0/6   │
+│  193  │ 0.1304 │ nan │  0.1883  │   nan   │ 3.13e-05 │   61/2.90/0/7   │
+│  194  │ 0.1319 │ nan │  0.1866  │   nan   │ 3.13e-05 │   62/2.95/0/5   │
+│  195  │ 0.1317 │ nan │  0.1855  │   nan   │ 3.13e-05 │   67/3.19/1/6   │
+│  196  │ 0.1325 │ nan │  0.1863  │   nan   │ 3.13e-05 │   64/3.05/1/6   │
+│  197  │ 0.1343 │ nan │  0.1866  │   nan   │ 3.13e-05 │   71/3.38/1/5   │
+│  198  │ 0.1339 │ nan │  0.1867  │   nan   │ 3.13e-05 │   61/2.90/1/5   │
+│  199  │ 0.1266 │ nan │  0.1855  │   nan   │ 3.13e-05 │   51/2.43/0/6   │
+│  200  │ 0.1348 │ nan │  0.1871  │   nan   │ 3.13e-05 │   58/2.76/1/6   │
+│  201  │ 0.1313 │ nan │  0.1846  │   nan   │ 3.13e-05 │   59/2.81/0/6   │
+│  202  │ 0.1325 │ nan │  0.1861  │   nan   │ 3.13e-05 │   61/2.90/0/7   │
+│  203  │ 0.1289 │ nan │  0.1846  │   nan   │ 3.13e-05 │   63/3.00/0/6   │
+│  204  │ 0.1313 │ nan │  0.1855  │   nan   │ 3.13e-05 │   68/3.24/1/6   │
+│  205  │ 0.1280 │ nan │  0.1861  │   nan   │ 3.13e-05 │   52/2.48/1/4   │
+│  206  │ 0.1297 │ nan │  0.1855  │   nan   │ 3.13e-05 │   60/2.86/0/6   │
+│  207  │ 0.1303 │ nan │  0.1873  │   nan   │ 3.13e-05 │   46/2.19/0/5   │
+│  208  │ 0.1288 │ nan │  0.1826  │   nan   │ 3.13e-05 │   57/2.71/0/6   │
+│  209  │ 0.1302 │ nan │  0.1859  │   nan   │ 3.13e-05 │   65/3.10/1/7   │
+│  210  │ 0.1280 │ nan │  0.1831  │   nan   │ 1.56e-05 │   53/2.52/0/6   │
+│  211  │ 0.1300 │ nan │  0.1857  │   nan   │ 1.56e-05 │   57/2.71/0/6   │
+│  212  │ 0.1289 │ nan │  0.1842  │   nan   │ 1.56e-05 │   58/2.76/1/5   │
+│  213  │ 0.1293 │ nan │  0.1869  │   nan   │ 1.56e-05 │   58/2.76/0/6   │
+│  214  │ 0.1319 │ nan │  0.1880  │   nan   │ 1.56e-05 │   69/3.29/1/8   │
+│  215  │ 0.1277 │ nan │  0.1860  │   nan   │ 1.56e-05 │   60/2.86/0/5   │
+│  216  │ 0.1252 │ nan │  0.1859  │   nan   │ 1.56e-05 │   55/2.62/1/4   │
+└───────┴────────┴─────┴──────────┴─────────┴──────────┴─────────────────┘
+───────────────────────────────────────────── TRAINING COMPLETE ─────────────────────────────────────────────
+┌─────────────────────────────── DeepAxon++ Summary ───────────────────────────────┐
+│                                                                                  │
+│  Model saved at: C:\Users\mazurm\deepaxon\models\p_100x_auglogDICEIOUTEST.keras  │
+│  Final Training Loss: 0.1252                                                     │
+│  Final Validation Loss: 0.1859                                                   │
+│                                                                                  │
+│  Final Training Dice: 0.9790                                                     │
+│  Final Validation Dice: 0.9670                                                   │
+│  Final Training IoU: 0.9589                                                      │
+│  Final Validation IoU: 0.9361                                                    │
+│                                                                                  │
+│  Total Training Time: 461m 28s                                                   │
+│  Total Patches Processed: 54,444                                                 │
+│  Total Patches Augmented: 12,453                                                 │
+│                                                                                  │
+└──────────────────────────────────────────────────────────────────────────────────┘
+
+================================================================================
+FINAL SUMMARY
+================================================================================
+Final training loss:       0.1252
+Final validation loss:     0.1859
+Final training Dice:       0.9790
+Final validation Dice:     0.9670
+Final training IoU:        0.9589
+Final validation IoU:      0.9361
+Total training time:       461m 28s
+Total patches processed:   54,444
+Total patches augmented:   12,453
+Model saved at:            C:\Users\mazurm\deepaxon\models\p_100x_auglogDICEIOUTEST.keras
+================================================================================

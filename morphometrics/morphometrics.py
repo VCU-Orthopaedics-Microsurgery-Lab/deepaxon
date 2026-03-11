@@ -85,17 +85,12 @@ def get_morphometrics(img_path):
     # Watershed labeling of myelin then obtaining region properties and putting it in a DataFrame
     myelin_label = get_labels(myelin)
     myelin_props = regionprops_table(myelin_label, properties=(
-        'label', 'bbox', 'area', 'axis_minor_length', 'axis_major_length', 'perimeter'))
+        'label', 'bbox', 'area', 'axis_minor_length', 'axis_major_length', 'perimeter',
+        'eccentricity', 'orientation', 'solidity'))
     myelin_df = pd.DataFrame.from_dict(myelin_props)
     
-    # Making an empty DataFrame to put morphometric data into
-    columns = {'label':[], 'x':[], 'y':[],
-        'axon_area':[], 'axon_perimeter':[],'axon_diam':[],
-        'myelin_area':[], 'myelin_thickness':[], 'myelin_perimeter':[],
-        'eccentricity':[], 'orientation':[], 'solidity':[], 'gratio':[]
-    }
-    morph_df1 = pd.DataFrame(columns)  # axon-based loop
-    morph_df2 = pd.DataFrame(columns)  # myelin-based loop
+    morph_df1 = pd.DataFrame()  # axon-based loop
+    morph_df2 = pd.DataFrame()  # myelin-based loop
     
     
 # ------------------------ Loop over myelin (active) ------------------------ #
@@ -110,41 +105,84 @@ def get_morphometrics(img_path):
             
         axon_row = get_axon_row(axon_df, left, right, top, bottom)
         if not(axon_row.empty):
+            #basic info
             label = row['label']
-            x = axon_row['centroid-0']
-            y = axon_row['centroid-1']
-            axon_area = axon_row['area']
-            axon_perimeter = axon_row['perimeter']
-            axon_diam = axon_row['axis_major_length']#(row['axis_major_length'] + row['axis_minor_length']) / 2 #getting axon diameter along the major axis
-            eccentricity = axon_row['eccentricity']
-            orientation = axon_row['orientation']
-            solidity = axon_row['solidity']
+            x = float(axon_row['centroid-0'].iloc[0])
+            y = float(axon_row['centroid-1'].iloc[0])
             
-            myelin_area = row['area'] - axon_area
-            myelin_thickness = row['axis_major_length']
-            myelin_perimeter = row['perimeter']
-            gratio = axon_diam / row['axis_major_length']
+            #axon morphology
+            axon_area = float(axon_row['area'].iloc[0])
+            axon_perimeter = float(axon_row['perimeter'].iloc[0])
+            axon_major_axis = float(axon_row['axis_major_length'].iloc[0])
+            axon_minor_axis = float(axon_row['axis_minor_length'].iloc[0])
+            axon_eccentricity = float(axon_row['eccentricity'].iloc[0])
+            axon_orientation = float(axon_row['orientation'].iloc[0])
+            axon_solidity = float(axon_row['solidity'].iloc[0]) 
             
-            if gratio.iloc[0] < 1:
+            # Axon-derived metrics
+            axon_equiv_diam = np.sqrt(4 * axon_area / np.pi)  # area-based diameter
+            axon_deformation = axon_major_axis / axon_equiv_diam
+             
+            # ---------------- Fiber / Myelin morphology ---------------- #
+            fiber_area = float(row['area'])
+            fiber_major = float(row['axis_major_length'])
+            fiber_minor = float(row['axis_minor_length']) if 'axis_minor_length' in row else fiber_major
+            fiber_equiv_diam = np.sqrt(fiber_area / np.pi) * 2
+            fiber_deformation = fiber_major / fiber_minor if fiber_minor > 0 else np.nan
+            fiber_eccentricity = float(row['eccentricity']) if 'eccentricity' in row else np.nan
+            fiber_orientation = float(row['orientation']) if 'orientation' in row else np.nan
+            fiber_perimeter = float(row['perimeter'])
+            
+            # Myelin-specific metrics
+            myelin_area = fiber_area - axon_area
+            myelin_thickness = (fiber_equiv_diam - axon_major_axis) / 2  # radial thickness
+           
+            # Myelin-specific metrics
+            myelin_area = fiber_area - axon_area
+            myelin_thickness = (fiber_equiv_diam - axon_major_axis) / 2  # radial thickness
+           
+            # ---------------- Derived metrics ---------------- #
+            g_ratio = axon_major_axis / fiber_major
+            
+            if g_ratio < 1: # Only keep fibers with g_ratio < 1
                 #make a one row DataFrame with axon and myelin data
-                new_dict = {'label':label,
-                        'x':x,
-                        'y':y,
-                        'axon_area':axon_area,
-                        'axon_perimeter':axon_perimeter,
-                        'axon_diam':axon_diam,
-                        'myelin_area':myelin_area,
-                        'myelin_thickness':myelin_thickness,
-                        'myelin_perimeter':myelin_perimeter,
-                        'eccentricity':eccentricity,
-                        'orientation':orientation,
-                        'solidity':solidity,
-                        'gratio':gratio}
+                new_dict = {
+                    #Identification
+                    'label':label,
+                    'x':x,
+                    'y':y,
+                    
+                    # Axon morphometrics
+                    'axon_area': axon_area,
+                    'axon_perimeter': axon_perimeter,
+                    'axon_diam': axon_equiv_diam,
+                    'axon_major': axon_major_axis,
+                    'axon_minor': axon_minor_axis,
+                    'axon_solidity': axon_solidity,
+                    'axon_deformation': axon_deformation,
+                    'axon_eccentricity': axon_eccentricity,
+                    'axon_orientation': axon_orientation,
 
-                new_df = pd.DataFrame(new_dict)
+                    # Myelin / Fiber morphometrics
+                    'myelin_area': myelin_area,
+                    'myelin_thickness': myelin_thickness,
+                    'myelin_perimeter': fiber_perimeter,
+                    'fiber_area': fiber_area,
+                    'fiber_equiv_diam': fiber_equiv_diam,
+                    'fiber_major': fiber_major,
+                    'fiber_minor': fiber_minor,
+                    'fiber_deformation': fiber_deformation,
+                    'fiber_eccentricity': fiber_eccentricity,
+                    'fiber_orientation': fiber_orientation,
+
+                    # Derived
+                    'gratio': g_ratio
+                }
+                
+                new_df = pd.DataFrame([new_dict])
                 
                 #add the new data to the morphometrics DataFrame
-                morph_df2 = pd.concat([morph_df2,new_df], ignore_index=True)
+                morph_df2 = pd.concat([morph_df2, new_df], ignore_index=True)
             
     morph_df2 = morph_df2.drop(drop_rows)
     
@@ -192,4 +230,4 @@ def get_morphometrics(img_path):
 # ------------------------------ Save Output -------------------------------- #
 def save_morphometrics(morph_df, output_dir, output_name):
     output_path = os.path.join(output_dir, output_name+'.xlsx')
-    morph_df.to_excel(output_path)
+    morph_df.to_excel(output_path, index=False)

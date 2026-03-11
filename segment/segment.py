@@ -4,6 +4,9 @@ obtain segmented image file where the meylin is a middle grey and the axons are 
 '''
 # ------------------------------ Standard Libraries ---------------------------------- #
 import os
+import time
+from datetime import datetime
+import csv
 from PIL import Image                   # Image processing
 import numpy as np                      # Numerical operations
 
@@ -172,8 +175,46 @@ def segment_dir(dir_path, model, output_path, patch_size=256):
     '''
     Apply segmentation to all images in a folder using the trained UNet++ model.
     Loads the model once to avoid reloading for every image.
+    Per Image timing (print + csv saved)
     '''
+    valid_exts = ('.tif', '.tiff', '.png')
+    times = {}
+    folder_start = time.time() #folder-level timer
+    
     for img_name in os.listdir(dir_path):
-        if img_name != "Thumbs.db":     # Skip OS artifact files
-            img_path = os.path.join(dir_path,img_name)
-            segment(img_path, model, output_path)
+        if img_name != "Thumbs.db" and img_name.lower().endswith(valid_exts):
+            img_path = os.path.join(dir_path, img_name)
+            start_time = time.time()
+            
+            try:
+                segment(img_path, model, output_path, patch_size)
+                
+            except Exception as e:
+                print(f"Error processing {img_name}:{e}")
+                continue
+            
+            elapsed = time.time() - start_time
+            times[img_name] = elapsed
+            
+            print(f"Segmented {img_name} in {elapsed:.2f} s")
+            
+    total_time = sum(times.values())
+    avg_time = total_time / len(times) if times else 0.0
+    folder_end = time.time()
+        
+    print(f"\nFolder '{dir_path}' segmentation complete ✅")
+    print(f"Total segmentation time (images only): {total_time:.2f} s")
+    print(f"Average time per image: {avg_time:.2f} s")
+    print(f"Total folder runtime (including overhead): {folder_end - folder_start:.2f} s")
+            
+    # Save CSV in output folder
+    date_str = datetime.now().strftime("%Y%m%d")  # e.g., 20260212
+    csv_path = os.path.join(output_path, f"segmentation_times_{date_str}.csv")
+    with open(csv_path, 'w', newline='') as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(["Image", "Time_s"])
+        for img_name, t in times.items():
+            writer.writerow([img_name, t])
+                
+    print(f"Segmentation times saved to {csv_path}")
+    return times
