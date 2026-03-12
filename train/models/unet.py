@@ -1,53 +1,54 @@
-# train/models/unet.py
 """
-UNET model architecture and convolutional blocks for DeepAxon.
+train/models/unet.py
+
+Standard UNet architecture for DeepAxon.
 """
 
-from keras.models import Model
-from keras.layers import Input, Conv2D, MaxPooling2D, Conv2DTranspose, Dropout, BatchNormalization, concatenate
-from keras.regularizers import l2
+from tensorflow.keras import layers, Model
 
-# ------------------------------ Convolutional Blocks ----------------------------------- #
-def conv_block(inputs, filters, dropout=0.1, kernel_reg=1e-4):
-    c1 = Conv2D(filters, (3,3), activation='relu', kernel_initializer='he_normal',
-                kernel_regularizer=l2(kernel_reg), padding='same')(inputs)
-    c1 = BatchNormalization()(c1)
-    c1 = Dropout(dropout)(c1)
 
-    c2 = Conv2D(filters, (3,3), activation='relu', kernel_initializer='he_normal',
-                kernel_regularizer=l2(kernel_reg), padding='same')(c1)
-    c2 = BatchNormalization()(c2)
-    return c2
+def conv_block(x, filters: int, dropout: float = 0.1):
+    x = layers.Conv2D(filters, 3, padding='same')(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.Dropout(dropout)(x)
+    x = layers.Activation('relu')(x)
+    x = layers.Conv2D(filters, 3, padding='same')(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.Activation('relu')(x)
+    return x
 
-def exp_block(up, skip, filters, dropout=0.1, kernel_reg=1e-4):
-    e1 = Conv2DTranspose(filters, (2,2), strides=(2,2), padding='same')(up)
-    g2 = concatenate(skip + [e1])
 
-    c1 = Conv2D(filters, (3,3), activation='relu', kernel_initializer='he_normal',
-                kernel_regularizer=l2(kernel_reg), padding='same')(g2)
-    c1 = BatchNormalization()(c1)
-    c1 = Dropout(dropout)(c1)
+def exp_block(x, skip, filters: int):
+    x = layers.UpSampling2D(size=(2, 2))(x)
+    x = layers.Concatenate()([x, skip])
+    x = conv_block(x, filters)
+    return x
 
-    c2 = Conv2D(filters, (3,3), activation='relu', kernel_initializer='he_normal',
-                kernel_regularizer=l2(kernel_reg), padding='same')(c1)
-    c2 = BatchNormalization()(c2)
-    return c2
 
-# ------------------------------ Base UNET ---------------------------------------- #
-def UNET(input_shape=(256,256,1), num_classes=3, base_filters=16):
-    inputs = Input(input_shape)
-    x00 = conv_block(inputs, base_filters, dropout=0.1)
-    x10 = conv_block(MaxPooling2D((2,2))(x00), base_filters*2, dropout=0.1)
-    x20 = conv_block(MaxPooling2D((2,2))(x10), base_filters*4, dropout=0.2)
-    x30 = conv_block(MaxPooling2D((2,2))(x20), base_filters*8, dropout=0.2)
-    x40 = conv_block(MaxPooling2D((2,2))(x30), base_filters*16, dropout=0.3)
+def UNET(input_shape=(256, 256, 1), n_classes: int = 3, filters: int = 16) -> Model:
+    inputs = layers.Input(shape=input_shape)
 
-    x31 = exp_block(up=x40, skip=[x30], filters=base_filters*8, dropout=0.2)
-    x21 = exp_block(up=x31, skip=[x20], filters=base_filters*4, dropout=0.2)
-    x11 = exp_block(up=x21, skip=[x10], filters=base_filters*2, dropout=0.1)
-    x01 = exp_block(up=x11, skip=[x00], filters=base_filters, dropout=0.1)
+    # Encoder
+    c1 = conv_block(inputs, filters * 1)
+    p1 = layers.MaxPooling2D()(c1)
 
-    activation = 'sigmoid' if num_classes==1 else 'softmax'
-    outputs = Conv2D(num_classes, (1,1), activation=activation)(x01)
-    model = Model(inputs=[inputs], outputs=[outputs])
-    return model
+    c2 = conv_block(p1, filters * 2)
+    p2 = layers.MaxPooling2D()(c2)
+
+    c3 = conv_block(p2, filters * 4)
+    p3 = layers.MaxPooling2D()(c3)
+
+    c4 = conv_block(p3, filters * 8)
+    p4 = layers.MaxPooling2D()(c4)
+
+    # Bottleneck
+    c5 = conv_block(p4, filters * 16)
+
+    # Decoder
+    u6 = exp_block(c5, c4, filters * 8)
+    u7 = exp_block(u6, c3, filters * 4)
+    u8 = exp_block(u7, c2, filters * 2)
+    u9 = exp_block(u8, c1, filters * 1)
+
+    outputs = layers.Conv2D(n_classes, 1, activation='softmax')(u9)
+    return Model(inputs, outputs, name="UNET")

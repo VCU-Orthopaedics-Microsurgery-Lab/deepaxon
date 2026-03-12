@@ -1,0 +1,43 @@
+{
+    "_comment": "DeepAxon configuration file. Update pixel_size_um with your own calibration values if using a different microscope/camera setup.",
+    "microscope": "Olympus BX63 (Lab default)",
+    "fiji_executable": "",
+    "_fiji_comment": "Path to your Fiji executable. Leave blank to be prompted on first run. Example: C:/Users/you/Downloads/fiji-win64/Fiji.app/fiji-windows-x64.exe",
+    "pixel_size_um": {
+        "_comment": "Keys are cropped image widths in pixels. 4X uses original full-res width (no crop). Values are um/px.",
+        "4X": {
+            "2880": 1.087
+        },
+        "10X": {
+            "1280": 0.769,
+            "1024": 0.769
+        },
+        "20X": {
+            "1280": 0.435,
+            "1024": 0.435
+        },
+        "40X": {
+            "1280": 0.217,
+            "1024": 0.217
+        },
+        "100X": null
+    },
+    "_100x_comment": "100X conversion factor not yet calibrated. Physical unit output will be unavailable for 100X images until this is set. Set to: { '1440': X.XXX, '2880': X.XXX }",
+    "csa_suffix": "_CSA.tif",
+    "csa_folder": "CSA",
+    "tiff_suffix": "_TIFF",
+    "segmented_folder": "Segmented",
+    "morphometrics_folder": "Morphometrics",
+    "patch_size": {
+        "_comment": "Patch size in pixels per magnification. Affects crop size and model input.",
+        "40X": 256,
+        "100X": 256
+    },
+    "cropped_folder": "Cropped",
+    "clahe": {
+    "_comment": "Contrast Limited Adaptive Histogram Equalization. Applied during segmentation before patchifying. clip_limit=1.0 is very mild — minimal noise amplification.",
+    "enabled": true,
+    "clip_limit": 1.0,
+    "tile_grid_size": [8, 8]
+    }
+}

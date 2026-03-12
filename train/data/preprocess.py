@@ -1,100 +1,109 @@
-# train/data/preprocess.py
 """
-Image preprocessing for DeepAxon
-Steps:
-1) Resize originals to standard size
-2) Center-crop to multiples of patch size (save to parentfolder/cropped)
-3) Split into patches (save to parentfolder/cropped/patches)
+train/data/preprocess.py
+
+Image preprocessing pipeline for DeepAxon training.
+resize -> center crop -> save cropped image -> patchify (50% overlap) -> save patches
 """
+
+from __future__ import annotations
 
 import os
-import cv2
 import numpy as np
+import cv2
+from pathlib import Path
 from patchify import patchify
-from ..utils.console_utils import info, warn, rule
-from rich.console import Console
-from rich.panel import Panel
 
-console = Console()
+from utils.resize import resize_img
+from utils.console import DeepAxonLogger
+from utils.helpers import load_config
 
 
-# ------------------------------ Single Image Processing ----------------------- #
-def process_single_image(path, patch_size=256, target_shape=(1024, 1440)):
-    image_name = os.path.splitext(os.path.basename(path))[0]
-    parent_dir = os.path.dirname(path)
-    is_mask = "mask" in parent_dir.lower()
+def center_crop(img, patch_size):
+    h, w = img.shape[:2]
+    crop_h = (h // patch_size) * patch_size
+    crop_w = (w // patch_size) * patch_size
+    start_h = (h - crop_h) // 2
+    start_w = (w - crop_w) // 2
+    return img[start_h:start_h + crop_h, start_w:start_w + crop_w]
 
-    # Load image
-    img = cv2.imread(path, cv2.IMREAD_UNCHANGED)
-    if img is None:
-        raise ValueError(f"Could not read image: {path}")
 
-    orig_shape = img.shape[:2]  # store H, W before any resizing
-    
-    # Ensure image is 2D (grayscale) for processing
-    if img.ndim == 3:
-        if img.shape[2] == 3 or img.shape[2] == 4:  # RGB or RGBA
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        elif img.shape[2] == 1:  # single-channel 3D
-            img = img[:, :, 0]
+def process_single_image(
+    img_path,
+    patches_dir,
+    cropped_dir,
+    patch_size=256,
+    is_mask=False,
+    log=None
+):
+    """
+    Process a single image: resize -> center crop -> save cropped -> patchify (50% overlap) -> save patches.
+    Returns number of patches saved.
+    """
+    step = patch_size // 2  # 50% overlap
 
-    # Resize if needed
-    if img.shape != target_shape:
-        interp = cv2.INTER_NEAREST if is_mask else cv2.INTER_LINEAR
-        img = cv2.resize(img, (target_shape[1], target_shape[0]), interpolation=interp)
+    img = resize_img(img_path, is_mask=is_mask)
+    img_crop = center_crop(img, patch_size)
+    crop_h, crop_w = img_crop.shape[:2]
 
-    # Masks: enforce pixel values
-    if is_mask:
-        img = np.where((img >= 126) & (img <= 129), 127, img)
-        img = np.where(img > 200, 255, img)
-        img = np.where(img < 50, 0, img)
+    # Save cropped image
+    stem = Path(img_path).stem
+    Path(cropped_dir).mkdir(parents=True, exist_ok=True)
+    crop_ext = '.tif' if not is_mask else '.png'
+    crop_out = Path(cropped_dir) / f"{stem}_cropped{crop_ext}"
+    cv2.imwrite(str(crop_out), img_crop)
 
-    # Crop to multiple of patch_size
-    h, w = img.shape
-    new_h = (h // patch_size) * patch_size
-    new_w = (w // patch_size) * patch_size
-    top = (h - new_h) // 2
-    left = (w - new_w) // 2
-    cropped = img[top:top+new_h, left:left+new_w]
+    # Patchify with 50% overlap
+    Path(patches_dir).mkdir(parents=True, exist_ok=True)
+    patches = patchify(img_crop, (patch_size, patch_size), step=step)
+    n_rows, n_cols = patches.shape[:2]
 
-    # Save cropped
-    cropped_dir = os.path.join(parent_dir, "cropped")
-    os.makedirs(cropped_dir, exist_ok=True)
-    cv2.imwrite(os.path.join(cropped_dir, os.path.basename(path)), cropped)
-
-    # Patchify
-    patch_dir = os.path.join(cropped_dir, "patches")
-    os.makedirs(patch_dir, exist_ok=True)
-    patches = patchify(cropped, (patch_size, patch_size), step=patch_size)
-
-    patch_count = 0
-    for i in range(patches.shape[0]):
-        for j in range(patches.shape[1]):
+    count = 0
+    for i in range(n_rows):
+        for j in range(n_cols):
             patch = patches[i, j]
-            if patch.ndim == 3 and patch.shape[0] == 1:
-                patch = patch[0]
-            cv2.imwrite(os.path.join(patch_dir, f"{image_name}_{i}{j}.png"), patch)
-            patch_count += 1
+            out_path = Path(patches_dir) / f"{stem}_{i:02d}{j:02d}.png"
+            cv2.imwrite(str(out_path), patch)
+            count += 1
 
-    # Pixel info for masks
-    pixel_info = ""
-    if is_mask:
-        all_pixel_vals = np.unique(np.array([p.ravel() for row in patches for p in row]).flatten())
-        pixel_info = f" | pixel values: {list(all_pixel_vals)}"
+    if log:
+        h_orig, w_orig = img.shape[:2]
+        log.info(
+            f"  {'[MASK]' if is_mask else '[IMG] '} {stem} | "
+            f"Resized: ({h_orig}x{w_orig}) -> Cropped: ({crop_h}x{crop_w}) -> {count} patches"
+        )
 
-    # Display panel
-    line1 = f"Original: {orig_shape} → Resized: {img.shape[:2]} → Cropped: {cropped.shape}"
-    line2 = f"Patches created: {patch_count} total{pixel_info}"
-    console.print(Panel(f"{line1}\n{line2}", title=f"[IMG] {image_name}", expand=False))
+    return count
 
 
-# ------------------------------ Batch Processing ------------------------------ #
-def batch_process(images, masks, patch_size=256, target_shape=(1024, 1440)):
-    """Process all images and masks in dataset"""
-    rule("IMAGE PROCESSING START")
+def batch_process(images_dir, masks_dir, patches_img_dir, patches_mask_dir,
+                  cropped_img_dir, cropped_mask_dir, mag, log):
+    """
+    Process all images and masks.
+    Returns (n_img_patches, n_mask_patches).
+    """
+    from utils.helpers import list_files
+
+    config = load_config()
+    patch_size = config.get("patch_size", {}).get(mag, 256)
+
+    images = list_files(images_dir, extensions=('.tif', '.tiff'))
+    masks  = list_files(masks_dir,  extensions=('.tif', '.tiff', '.png'))
+
+    log.rule("IMAGE PROCESSING")
+    log.info(f"Patch size: {patch_size}px | Overlap: 50%")
+    total_img = 0
     for img_path in images:
-        process_single_image(img_path, patch_size=patch_size, target_shape=target_shape)
+        total_img += process_single_image(
+            str(img_path), patches_img_dir, cropped_img_dir,
+            patch_size=patch_size, is_mask=False, log=log
+        )
 
-    rule("MASK PROCESSING START")
+    log.rule("MASK PROCESSING")
+    total_mask = 0
     for mask_path in masks:
-        process_single_image(mask_path, patch_size=patch_size, target_shape=target_shape)
+        total_mask += process_single_image(
+            str(mask_path), patches_mask_dir, cropped_mask_dir,
+            patch_size=patch_size, is_mask=True, log=log
+        )
+
+    return total_img, total_mask

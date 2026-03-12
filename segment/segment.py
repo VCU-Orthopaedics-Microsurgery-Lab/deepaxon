@@ -1,220 +1,273 @@
-'''
--------------------------------- DEEPAXON --------------------------------
-obtain segmented image file where the meylin is a middle grey and the axons are white
-'''
-# ------------------------------ Standard Libraries ---------------------------------- #
-import os
-import time
-from datetime import datetime
+"""
+segment/segment.py
+
+Core segmentation logic for DeepAxon.
+- Position-aware Hann window blending (9-position grid)
+- 50% overlap patching
+- Center crop
+- Weak CLAHE for contrast standardisation (configurable)
+- Per-patch normalisation matching original training pipeline
+- BGW output (Black=background, Grey=axon, White=myelin)
+- Saves cropped image to Cropped\ subfolder
+"""
+
+from __future__ import annotations
+
 import csv
-from PIL import Image                   # Image processing
-import numpy as np                      # Numerical operations
+import time
+import numpy as np
+import cv2
+from pathlib import Path
+from patchify import patchify
 
-# ------------------------------ Third-Party Libraries ------------------------------- # 
-import cv2                              # Computer vision library 
-import tensorflow as tf
-from keras.models import load_model     # Load trained UNet++ model
-from keras.utils import normalize       # Normalize image pixel values
-from patchify import patchify           # Splits large images into smaller overlapping patches
+from utils.resize import resize_img
+from utils.console import DeepAxonLogger
+from utils.helpers import load_config
 
-# ------------------------------- Local Imports -------------------------------------- #
-from resize import resize_img           # Custom function: resize images to a standard size
 
-# ------------------------------- Patch Utilities ------------------------------------- #
-def get_pos(shape, i,j):
-    '''
-    Determine the relative position of a patch within the full image.
-    Returns an integer (0-8) indicating patch location (corner, edge, or center).
-    '''
-    i_max, j_max = shape[0]-1, shape[1]-1
-    if i == 0 and j == 0: return 0
-    if i == 0 and j == j_max: return 2
-    if i == i_max and j == 0: return 6
-    if i == i_max and j == j_max: return 8
-    if i == 0: return 1
-    if i == i_max: return 7
-    if j == 0: return 3
-    if j == j_max: return 5
-    return 4
+# ─── Hann window (position-aware) ────────────────────────────────────────────
 
-def hann_fn(x, patch_size):
-    '''
-    1D Hann window function scaled to patch size.
-    '''
-    return (1 - np.cos(2 * np.pi * x / (patch_size - 1))) / 2
+def _hann_fn(x):
+    return (1 - np.cos(2 * np.pi * x / 255)) / 2
 
-def hann_window(pos, patch_size):
-    '''
-     Generate 2D Hann window for a given patch position and size.
-    '''
+
+def get_pos(shape, i, j):
+    i_max = shape[0] - 1
+    j_max = shape[1] - 1
+    if   i == 0     and j == 0:     return 0
+    elif i == 0     and j == j_max: return 2
+    elif i == i_max and j == 0:     return 6
+    elif i == i_max and j == j_max: return 8
+    elif i == 0:                    return 1
+    elif i == i_max:                return 7
+    elif j == 0:                    return 3
+    elif j == j_max:                return 5
+    else:                           return 4
+
+
+def hann_window(pos, patch_size=256):
+    half = patch_size // 2
     i, j = np.meshgrid(np.arange(patch_size), np.arange(patch_size), indexing='ij')
-    center = patch_size // 2
-    cond1 = (i <= center) & (j <= center)
-    cond2 = (i > center) & (j <= center)
-    cond3 = (i <= center) & (j > center)
-    cond4 = ~cond1 & ~cond2 & ~cond3
-    
-    scaler = np.zeros((patch_size, patch_size), dtype=float)
-    
-    # Hann weighting for each of the 9 possible patch positions
+    c1 = (i <= half) & (j <= half)
+    c2 = (i > half)  & (j <  half)
+    c3 = (i <  half) & (j >  half)
+    c4 = ~c1 & ~c2 & ~c3
+    s = np.zeros((patch_size, patch_size), dtype=float)
+    hi = _hann_fn(i.astype(float))
+    hj = _hann_fn(j.astype(float))
     if pos == 0:
-        scaler[cond1] = 1
-        scaler[cond2] = hann_fn(i[cond2], patch_size)
-        scaler[cond3] = hann_fn(j[cond3], patch_size)
-        scaler[cond4] = hann_fn(i[cond4], patch_size) * hann_fn(j[cond4], patch_size)
+        s[c1]=1;             s[c2]=hi[c2];          s[c3]=hj[c3];          s[c4]=hi[c4]*hj[c4]
     elif pos == 1:
-        scaler[cond1] = hann_fn(j[cond1], patch_size)
-        scaler[cond2] = hann_fn(i[cond2], patch_size) * hann_fn(j[cond2], patch_size)
-        scaler[cond3] = hann_fn(j[cond3], patch_size)
-        scaler[cond4] = hann_fn(i[cond4], patch_size) * hann_fn(j[cond4], patch_size)
+        s[c1]=hj[c1];        s[c2]=hi[c2]*hj[c2];   s[c3]=hj[c3];          s[c4]=hi[c4]*hj[c4]
     elif pos == 2:
-        scaler[cond1] = hann_fn(j[cond1], patch_size)
-        scaler[cond2] = hann_fn(i[cond2], patch_size) * hann_fn(j[cond2], patch_size)
-        scaler[cond3] = 1
-        scaler[cond4] = hann_fn(i[cond4], patch_size)
+        s[c1]=hj[c1];        s[c2]=hi[c2]*hj[c2];   s[c3]=1;               s[c4]=hi[c4]
     elif pos == 3:
-        scaler[cond1] = hann_fn(i[cond1], patch_size)
-        scaler[cond2] = hann_fn(i[cond2], patch_size)
-        scaler[cond3] = hann_fn(i[cond3], patch_size) * hann_fn(j[cond3], patch_size)
-        scaler[cond4] = hann_fn(i[cond4], patch_size) * hann_fn(j[cond4], patch_size)
+        s[c1]=hi[c1];        s[c2]=hi[c2];           s[c3]=hi[c3]*hj[c3];   s[c4]=hi[c4]*hj[c4]
     elif pos == 4:
-        scaler[cond1] = hann_fn(i[cond1], patch_size) * hann_fn(j[cond1], patch_size)
-        scaler[cond2] = hann_fn(i[cond2], patch_size) * hann_fn(j[cond2], patch_size)
-        scaler[cond3] = hann_fn(i[cond3], patch_size) * hann_fn(j[cond3], patch_size)
-        scaler[cond4] = hann_fn(i[cond4], patch_size) * hann_fn(j[cond4], patch_size)
+        s[c1]=hi[c1]*hj[c1]; s[c2]=hi[c2]*hj[c2];   s[c3]=hi[c3]*hj[c3];   s[c4]=hi[c4]*hj[c4]
     elif pos == 5:
-        scaler[cond1] = hann_fn(i[cond1], patch_size) * hann_fn(j[cond1], patch_size)
-        scaler[cond2] = hann_fn(i[cond2], patch_size) * hann_fn(j[cond2], patch_size)
-        scaler[cond3] = hann_fn(i[cond3], patch_size)
-        scaler[cond4] = hann_fn(i[cond4], patch_size)
+        s[c1]=hi[c1]*hj[c1]; s[c2]=hi[c2]*hj[c2];   s[c3]=hi[c3];          s[c4]=hi[c4]
     elif pos == 6:
-        scaler[cond1] = hann_fn(i[cond1], patch_size)
-        scaler[cond2] = 1
-        scaler[cond3] = hann_fn(i[cond3], patch_size) * hann_fn(j[cond3], patch_size)
-        scaler[cond4] = hann_fn(j[cond4], patch_size)
+        s[c1]=hi[c1];        s[c2]=1;                s[c3]=hi[c3]*hj[c3];   s[c4]=hj[c4]
     elif pos == 7:
-        scaler[cond1] = hann_fn(i[cond1], patch_size) * hann_fn(j[cond1], patch_size)
-        scaler[cond2] = hann_fn(j[cond2], patch_size)
-        scaler[cond3] = hann_fn(i[cond3], patch_size) * hann_fn(j[cond3], patch_size)
-        scaler[cond4] = hann_fn(j[cond4], patch_size)
+        s[c1]=hi[c1]*hj[c1]; s[c2]=hj[c2];          s[c3]=hi[c3]*hj[c3];   s[c4]=hj[c4]
     elif pos == 8:
-        scaler[cond1] = hann_fn(i[cond1], patch_size) * hann_fn(j[cond1], patch_size)
-        scaler[cond2] = hann_fn(j[cond2], patch_size)
-        scaler[cond3] = hann_fn(i[cond3], patch_size)
-        scaler[cond4] = 1
-        
-    return scaler
+        s[c1]=hi[c1]*hj[c1]; s[c2]=hj[c2];          s[c3]=hi[c3];          s[c4]=1
+    return s
 
-# ------------------------------ Visualization ----------------------------------- #
-def recolor(img):
-    '''
-    Map integer labels (0=background, 1=myelin, 2=axon) to RGB colors for visualization.
-    '''
-    colors = {
-        0: (0, 0, 0),           # background
-        1: (128, 128, 128),     # myelin
-        2: (255, 255, 255),     # axon
-    }
-    img_color = np.zeros((img.shape[0], img.shape[1], 3), dtype=np.uint8)
-    for value, color in colors.items():
-        img_color[img == value, :] = color 
-    return img_color
 
-# ------------------------------ Image Segmentation ------------------------------ #
-# Main segmentation function for a single image
-def segment(img_path, model, output_path, patch_size=256):
-    '''
-    Segment a single image using the trained UNet++ model.
-    Applies patch-based prediction with Hann window blending.
-    '''
-    img = resize_img(img_path)             # Resize image to standard dimensions
+# ─── Recolor ──────────────────────────────────────────────────────────────────
 
-    
-    SIZE_X = img.shape[1] // patch_size * patch_size
-    SIZE_Y = img.shape[0] // patch_size * patch_size
-    
-    img = Image.fromarray(img)
-    img = img.crop((0,0,SIZE_X, SIZE_Y))    # Ensure divisible by patch size
-    img = np.array(img)
-    
-    patches = patchify(img, (patch_size, patch_size), patch_size//2) # 50% overlap
-    
-    pred_img = np.zeros(img.shape)  # Placeholder for reconstructed prediction
-    
-    # Loop through patches and predict
-    for i in range(patches.shape[0]):
-        for j in range(patches.shape[1]):
-            patch = patches[i,j,:,:]
-            patch = normalize(patch)
-            patch = np.expand_dims(patch, axis=(0,3))       # Add batch and channel dims
-            pred = model.predict(patch)                     # UNet++ prediction
-            pred = np.argmax(pred, axis=3)[0,:,:]           # Remove batch dim
-            
-            patch_pos = get_pos(patches.shape, i, j)
-            hann_matrix = hann_window(patch_pos, patch_size)
-            adj_pred = pred * hann_matrix                   # Apply Hann weighting
-            
-            i_start = i*patch_size//2
-            i_end = i_start+patch_size
-            j_start = j*patch_size//2
-            j_end = j_start+patch_size
-            pred_img[i_start:i_end, j_start:j_end] += adj_pred
-            
-    pred_img = np.round(pred_img).astype(int)
-    pred_img = recolor(pred_img)
-    
-    pred_img = Image.fromarray(pred_img)
-    img_name = os.path.basename(img_path)
-    pred_path = os.path.join(output_path,img_name.split('.')[0] + "_seg." + img_name.split('.')[1])
-    pred_img.save(pred_path)
-    
-    return pred_path
+def recolor(pred):
+    """BGW: 0=black, 1=grey(128), 2=white(255)"""
+    out = np.zeros(pred.shape, dtype=np.uint8)
+    out[pred == 1] = 128
+    out[pred == 2] = 255
+    return np.stack([out, out, out], axis=-1)
 
-# ------------------------------ Directory Segmentation ------------------------------ #
-def segment_dir(dir_path, model, output_path, patch_size=256):
-    '''
-    Apply segmentation to all images in a folder using the trained UNet++ model.
-    Loads the model once to avoid reloading for every image.
-    Per Image timing (print + csv saved)
-    '''
-    valid_exts = ('.tif', '.tiff', '.png')
-    times = {}
-    folder_start = time.time() #folder-level timer
-    
-    for img_name in os.listdir(dir_path):
-        if img_name != "Thumbs.db" and img_name.lower().endswith(valid_exts):
-            img_path = os.path.join(dir_path, img_name)
-            start_time = time.time()
-            
-            try:
-                segment(img_path, model, output_path, patch_size)
-                
-            except Exception as e:
-                print(f"Error processing {img_name}:{e}")
-                continue
-            
-            elapsed = time.time() - start_time
-            times[img_name] = elapsed
-            
-            print(f"Segmented {img_name} in {elapsed:.2f} s")
-            
-    total_time = sum(times.values())
-    avg_time = total_time / len(times) if times else 0.0
-    folder_end = time.time()
-        
-    print(f"\nFolder '{dir_path}' segmentation complete ✅")
-    print(f"Total segmentation time (images only): {total_time:.2f} s")
-    print(f"Average time per image: {avg_time:.2f} s")
-    print(f"Total folder runtime (including overhead): {folder_end - folder_start:.2f} s")
-            
-    # Save CSV in output folder
-    date_str = datetime.now().strftime("%Y%m%d")  # e.g., 20260212
-    csv_path = os.path.join(output_path, f"segmentation_times_{date_str}.csv")
-    with open(csv_path, 'w', newline='') as csvfile:
-        writer = csv.writer(csvfile)
-        writer.writerow(["Image", "Time_s"])
-        for img_name, t in times.items():
-            writer.writerow([img_name, t])
-                
-    print(f"Segmentation times saved to {csv_path}")
-    return times
+
+# ─── Normalise (per-patch, matching original training pipeline) ───────────────
+
+def normalize_patch(patch: np.ndarray) -> np.ndarray:
+    """
+    Per-patch min-max normalisation to [0, 1].
+    Matches keras.utils.normalize() behaviour from original code.
+    """
+    p_min = patch.min()
+    p_max = patch.max()
+    if p_max - p_min > 0:
+        return (patch - p_min) / (p_max - p_min)
+    return np.zeros_like(patch, dtype=np.float32)
+
+
+# ─── CLAHE ────────────────────────────────────────────────────────────────────
+
+def apply_clahe(img: np.ndarray) -> np.ndarray:
+    """
+    Apply weak CLAHE for contrast standardisation.
+    Parameters loaded from config.json.
+    """
+    config = load_config()
+    clahe_cfg = config.get("clahe", {})
+    clip_limit = clahe_cfg.get("clip_limit", 1.5)
+    tile_size = clahe_cfg.get("tile_grid_size", [8, 8])
+    clahe = cv2.createCLAHE(
+        clipLimit=clip_limit,
+        tileGridSize=tuple(tile_size)
+    )
+    return clahe.apply(img)
+
+
+# ─── Center crop ──────────────────────────────────────────────────────────────
+
+def center_crop(img, patch_size):
+    h, w = img.shape[:2]
+    crop_h = (h // patch_size) * patch_size
+    crop_w = (w // patch_size) * patch_size
+    start_h = (h - crop_h) // 2
+    start_w = (w - crop_w) // 2
+    return img[start_h:start_h + crop_h, start_w:start_w + crop_w]
+
+
+# ─── Segment single image ─────────────────────────────────────────────────────
+
+def segment_image(img_path, model, patch_size=256, cropped_dir=None, log=None):
+    t0 = time.time()
+    step = patch_size // 2  # 50% overlap
+
+    # Resize
+    img = resize_img(img_path, is_mask=False)
+
+    # Center crop
+    img_crop = center_crop(img, patch_size)
+    crop_h, crop_w = img_crop.shape[:2]
+
+    # Save cropped image
+    if cropped_dir:
+        Path(cropped_dir).mkdir(parents=True, exist_ok=True)
+        stem = Path(img_path).stem
+        cv2.imwrite(str(Path(cropped_dir) / f"{stem}_cropped.tif"), img_crop)
+
+    # CLAHE — applied to full cropped image before patchifying
+    img_clahe = apply_clahe(img_crop)
+
+    # Patchify (still uint8 at this point)
+    patches = patchify(img_clahe, (patch_size, patch_size), step=step)
+    n_rows, n_cols = patches.shape[:2]
+
+    pred_img = np.zeros((crop_h, crop_w), dtype=float)
+
+    for i in range(n_rows):
+        for j in range(n_cols):
+            patch = patches[i, j].astype(np.float32)
+
+            # Per-patch normalisation — matches original training pipeline
+            patch_norm = normalize_patch(patch)
+            patch_input = np.expand_dims(patch_norm, axis=(0, -1))  # (1, H, W, 1)
+
+            pred = model.predict(patch_input, verbose=0)
+            pred_cls = np.argmax(pred, axis=-1)[0]  # (H, W)
+
+            pos = get_pos((n_rows, n_cols), i, j)
+            hann = hann_window(pos, patch_size)
+            adj = pred_cls * hann
+
+            i_start = i * step
+            j_start = j * step
+            pred_img[i_start:i_start + patch_size, j_start:j_start + patch_size] += adj
+
+    result = recolor(np.round(pred_img).astype(int))
+    elapsed = time.time() - t0
+    return result, elapsed, crop_w
+
+
+# ─── Segment directory ────────────────────────────────────────────────────────
+
+def segment_dir(tiff_dir, output_dir, model, mag, log, timing_csv=None):
+    from utils.resize import get_image_resolution
+    from utils.helpers import list_files
+
+    config = load_config()
+    patch_size = config.get("patch_size", {}).get(mag, 256)
+    cropped_folder = config.get("cropped_folder", "Cropped")
+
+    tiff_dir = Path(tiff_dir)
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    cropped_dir = tiff_dir.parent / cropped_folder
+
+    images = list_files(str(tiff_dir), extensions=('.tif', '.tiff'))
+    if not images:
+        log.warn(f"No TIFF images found in {tiff_dir}")
+        return
+
+    log.rule(f"SEGMENTING {tiff_dir.name}")
+    log.info(f"Found {len(images)} image(s) | patch_size={patch_size}px | overlap=50% | CLAHE=ON")
+
+    # Resolution check
+    resolutions = {}
+    for img_path in images:
+        try:
+            w, h = get_image_resolution(str(img_path))
+            resolutions[img_path.name] = (w, h)
+        except Exception as e:
+            log.warn(f"Could not read resolution for {img_path.name}: {e}")
+
+    unique_res = set(resolutions.values())
+    if len(unique_res) > 1:
+        log.warn("Resolution mismatch detected:")
+        for name, res in resolutions.items():
+            log.warn(f"  {name}: {res[0]}x{res[1]}")
+        if input("Continue anyway? [y/N]: ").strip().lower() != 'y':
+            log.warn("Aborted.")
+            return
+    else:
+        res = list(unique_res)[0] if unique_res else ('?', '?')
+        log.info(f"Original resolution: {res[0]}x{res[1]} px")
+        crop_w = (1440 // patch_size) * patch_size
+        crop_h = (1024 // patch_size) * patch_size
+        log.info(f"Center crop: {crop_w}x{crop_h} px")
+
+    timing_rows = []
+    success = 0
+    failed = 0
+
+    for img_path in images:
+        stem = img_path.stem
+        out_path = output_dir / f"{stem}_segmented.tif"
+        res_str = "x".join(str(x) for x in resolutions.get(img_path.name, ('?', '?')))
+
+        try:
+            mask, elapsed, crop_w = segment_image(
+                str(img_path), model,
+                patch_size=patch_size,
+                cropped_dir=str(cropped_dir),
+                log=log
+            )
+            cv2.imwrite(str(out_path), cv2.cvtColor(mask, cv2.COLOR_RGB2BGR))
+            log.success(f"{img_path.name} [{res_str}] -> {elapsed:.1f}s")
+            timing_rows.append({
+                'image': img_path.name, 'resolution': res_str,
+                'crop_width': crop_w, 'patch_size': patch_size,
+                'time_s': f"{elapsed:.2f}", 'status': 'ok'
+            })
+            success += 1
+        except Exception as e:
+            log.error(f"{img_path.name} - FAILED: {e}")
+            timing_rows.append({
+                'image': img_path.name, 'resolution': res_str,
+                'crop_width': '', 'patch_size': patch_size,
+                'time_s': '', 'status': f'FAILED: {e}'
+            })
+            failed += 1
+
+    if timing_csv:
+        with open(timing_csv, 'w', newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=[
+                'image', 'resolution', 'crop_width', 'patch_size', 'time_s', 'status'
+            ])
+            writer.writeheader()
+            writer.writerows(timing_rows)
+
+    log.rule()
+    log.success(f"Done - {success} succeeded, {failed} failed")
