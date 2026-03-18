@@ -32,24 +32,24 @@ def resize_img(img_path: str, is_mask: bool = False) -> np.ndarray:
     Raises:
         ValueError: if the image cannot be read
     """
-    img = cv2.imread(img_path, cv2.IMREAD_UNCHANGED)
+    
+    img = cv2.imread(img_path, 0)
     if img is None:
         raise ValueError(f"Could not read image: {img_path}")
 
-    # Convert to greyscale if multi-channel
-    if img.ndim == 3:
-        if img.shape[2] == 4:
-            img = cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
-        else:
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    # # Convert to greyscale if multi-channel
+    # if img.ndim == 3:
+    #     if img.shape[2] == 4:
+    #         img = cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
+    #     else:
+    #         img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
     # Only resize if not already target size
     h, w = img.shape[:2]
     if (w, h) == TARGET_SIZE:
         return img
 
-    interp = cv2.INTER_NEAREST if is_mask else cv2.INTER_AREA
-    img = cv2.resize(img, TARGET_SIZE, interpolation=interp)
+    img = cv2.resize(img, TARGET_SIZE)
     return img
 
 

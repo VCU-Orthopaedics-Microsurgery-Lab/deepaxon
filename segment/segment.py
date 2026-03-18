@@ -19,6 +19,7 @@ import numpy as np
 import cv2
 from pathlib import Path
 from patchify import patchify
+from keras.utils import normalize
 
 from utils.resize import resize_img
 from utils.console import DeepAxonLogger
@@ -143,40 +144,41 @@ def segment_image(img_path, model, patch_size=256, cropped_dir=None, log=None):
     crop_h, crop_w = img_crop.shape[:2]
 
     # Save cropped image
-    if cropped_dir:
-        Path(cropped_dir).mkdir(parents=True, exist_ok=True)
-        stem = Path(img_path).stem
-        cv2.imwrite(str(Path(cropped_dir) / f"{stem}_cropped.tif"), img_crop)
+    # if cropped_dir:
+    #     Path(cropped_dir).mkdir(parents=True, exist_ok=True)
+    #     stem = Path(img_path).stem
+    #     cv2.imwrite(str(Path(cropped_dir) / f"{stem}_cropped.tif"), img_crop)
 
     # CLAHE — applied to full cropped image before patchifying
     img_clahe = apply_clahe(img_crop)
 
     # Patchify (still uint8 at this point)
-    patches = patchify(img_clahe, (patch_size, patch_size), step=step)
+    patches = patchify(img_crop, (patch_size, patch_size), step=step)
     n_rows, n_cols = patches.shape[:2]
 
     pred_img = np.zeros((crop_h, crop_w), dtype=float)
 
     for i in range(n_rows):
         for j in range(n_cols):
-            patch = patches[i, j].astype(np.float32)
-
-            # Per-patch normalisation — matches original training pipeline
-            patch_norm = normalize_patch(patch)
-            patch_input = np.expand_dims(patch_norm, axis=(0, -1))  # (1, H, W, 1)
-
-            pred = model.predict(patch_input, verbose=0)
-            pred_cls = np.argmax(pred, axis=-1)[0]  # (H, W)
+            
+            patch = patches[i,j,:,:]
+            patch = normalize(patch)
+            patch = np.expand_dims(patch, axis=(0,3))
+            pred = model.predict(patch)
+            pred = np.argmax(pred, axis=3)
+            pred = pred[0,:,:]
 
             pos = get_pos((n_rows, n_cols), i, j)
             hann = hann_window(pos, patch_size)
-            adj = pred_cls * hann
+            adj = pred * hann
 
             i_start = i * step
             j_start = j * step
             pred_img[i_start:i_start + patch_size, j_start:j_start + patch_size] += adj
 
-    result = recolor(np.round(pred_img).astype(int))
+    pred_img = np.round(pred_img).astype(int)
+    result = recolor(pred_img)
+    
     elapsed = time.time() - t0
     return result, elapsed, crop_w
 
@@ -244,7 +246,8 @@ def segment_dir(tiff_dir, output_dir, model, mag, log, timing_csv=None):
                 cropped_dir=str(cropped_dir),
                 log=log
             )
-            cv2.imwrite(str(out_path), cv2.cvtColor(mask, cv2.COLOR_RGB2BGR))
+            cv2.imwrite(str(out_path), mask)
+            # cv2.imwrite(str(out_path), cv2.cvtColor(mask, cv2.COLOR_RGB2BGR))
             log.success(f"{img_path.name} [{res_str}] -> {elapsed:.1f}s")
             timing_rows.append({
                 'image': img_path.name, 'resolution': res_str,

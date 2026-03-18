@@ -36,7 +36,7 @@
     "cropped_folder": "Cropped",
     "clahe": {
     "_comment": "Contrast Limited Adaptive Histogram Equalization. Applied during segmentation before patchifying. clip_limit=1.0 is very mild — minimal noise amplification.",
-    "enabled": true,
+    "enabled": false,
     "clip_limit": 1.0,
     "tile_grid_size": [8, 8]
     }
