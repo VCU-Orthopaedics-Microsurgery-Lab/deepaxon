@@ -25,7 +25,7 @@
     "_100x_comment": "100X conversion factor not yet calibrated. Physical unit output will be unavailable for 100X images until this is set. Set to: { '1440': X.XXX, '2880': X.XXX }",
     "csa_suffix": "_CSA.tif",
     "csa_folder": "CSA",
-    "tiff_suffix": "_TIFF",
+    "tiff_suffixes": ["_TIFF", "_TIFF_r", "_TIFF_edit"],
     "segmented_folder": "Segmented",
     "morphometrics_folder": "Morphometrics",
     "patch_size": {
@@ -35,9 +35,11 @@
     },
     "cropped_folder": "Cropped",
     "clahe": {
-    "_comment": "Contrast Limited Adaptive Histogram Equalization. Applied during segmentation before patchifying. clip_limit=1.0 is very mild — minimal noise amplification.",
-    "enabled": false,
-    "clip_limit": 1.0,
-    "tile_grid_size": [8, 8]
-    }
+        "_comment": "Contrast Limited Adaptive Histogram Equalization. Applied during segmentation before patchifying. clip_limit=1.0 is very mild — minimal noise amplification.",
+        "enabled": false,
+        "clip_limit": 1.0,
+        "tile_grid_size": [8, 8]
+    },
+    "logging": false,
+    "timing": false
 }

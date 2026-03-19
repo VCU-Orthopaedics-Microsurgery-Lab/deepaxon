@@ -21,9 +21,9 @@ from pathlib import Path
 from patchify import patchify
 from keras.utils import normalize
 
-from utils.resize import resize_img
+from utils.resize import resize_img, get_image_resolution
 from utils.console import DeepAxonLogger
-from utils.helpers import load_config
+from utils.helpers import load_config, list_files
 
 
 # ─── Hann window (position-aware) ────────────────────────────────────────────
@@ -89,16 +89,16 @@ def recolor(pred):
 
 # ─── Normalise (per-patch, matching original training pipeline) ───────────────
 
-def normalize_patch(patch: np.ndarray) -> np.ndarray:
-    """
-    Per-patch min-max normalisation to [0, 1].
-    Matches keras.utils.normalize() behaviour from original code.
-    """
-    p_min = patch.min()
-    p_max = patch.max()
-    if p_max - p_min > 0:
-        return (patch - p_min) / (p_max - p_min)
-    return np.zeros_like(patch, dtype=np.float32)
+#def normalize_patch(patch: np.ndarray) -> np.ndarray:
+#    """
+#    Per-patch min-max normalisation to [0, 1].
+#    Matches keras.utils.normalize() behaviour from original code.
+#    """
+#    p_min = patch.min()
+#    p_max = patch.max()
+#    if p_max - p_min > 0:
+#        return (patch - p_min) / (p_max - p_min)
+#    return np.zeros_like(patch, dtype=np.float32)
 
 
 # ─── CLAHE ────────────────────────────────────────────────────────────────────
@@ -132,7 +132,7 @@ def center_crop(img, patch_size):
 
 # ─── Segment single image ─────────────────────────────────────────────────────
 
-def segment_image(img_path, model, patch_size=256, cropped_dir=None, log=None):
+def segment_image(img_path, model, patch_size=256, cropped_dir=None, log=None, use_clahe=False):
     t0 = time.time()
     step = patch_size // 2  # 50% overlap
 
@@ -143,17 +143,20 @@ def segment_image(img_path, model, patch_size=256, cropped_dir=None, log=None):
     img_crop = center_crop(img, patch_size)
     crop_h, crop_w = img_crop.shape[:2]
 
-    # Save cropped image
+    # Save cropped image if desired
     # if cropped_dir:
     #     Path(cropped_dir).mkdir(parents=True, exist_ok=True)
     #     stem = Path(img_path).stem
     #     cv2.imwrite(str(Path(cropped_dir) / f"{stem}_cropped.tif"), img_crop)
 
-    # CLAHE — applied to full cropped image before patchifying
-    img_clahe = apply_clahe(img_crop)
+    # CLAHE — applied to full cropped image before patchifying if enabled
+    if use_clahe:
+        img_to_patch = apply_clahe(img_crop)
+    else:
+        img_to_patch = img_crop
 
     # Patchify (still uint8 at this point)
-    patches = patchify(img_crop, (patch_size, patch_size), step=step)
+    patches = patchify(img_to_patch, (patch_size, patch_size), step=step)
     n_rows, n_cols = patches.shape[:2]
 
     pred_img = np.zeros((crop_h, crop_w), dtype=float)
@@ -164,7 +167,7 @@ def segment_image(img_path, model, patch_size=256, cropped_dir=None, log=None):
             patch = patches[i,j,:,:]
             patch = normalize(patch)
             patch = np.expand_dims(patch, axis=(0,3))
-            pred = model.predict(patch)
+            pred = model.predict(patch, verbose=0)
             pred = np.argmax(pred, axis=3)
             pred = pred[0,:,:]
 
@@ -186,9 +189,6 @@ def segment_image(img_path, model, patch_size=256, cropped_dir=None, log=None):
 # ─── Segment directory ────────────────────────────────────────────────────────
 
 def segment_dir(tiff_dir, output_dir, model, mag, log, timing_csv=None):
-    from utils.resize import get_image_resolution
-    from utils.helpers import list_files
-
     config = load_config()
     patch_size = config.get("patch_size", {}).get(mag, 256)
     cropped_folder = config.get("cropped_folder", "Cropped")
@@ -204,7 +204,16 @@ def segment_dir(tiff_dir, output_dir, model, mag, log, timing_csv=None):
         return
 
     log.rule(f"SEGMENTING {tiff_dir.name}")
-    log.info(f"Found {len(images)} image(s) | patch_size={patch_size}px | overlap=50% | CLAHE=ON")
+    clahe_cfg = config.get("clahe", {})
+    clahe_on = clahe_cfg.get("enabled", False)
+    logging_on = config.get("logging", True)
+    timing_on = config.get("timing", True)
+    log.info(
+        f"Found {len(images)} image(s) | patch_size={patch_size}px | "
+        f"CLAHE={'ON' if clahe_on else 'OFF'} | "
+        f"Logging={'ON' if logging_on else 'OFF'} | "
+        f"Timing={'ON' if timing_on else 'OFF'}"
+    )
 
     # Resolution check
     resolutions = {}
@@ -244,7 +253,8 @@ def segment_dir(tiff_dir, output_dir, model, mag, log, timing_csv=None):
                 str(img_path), model,
                 patch_size=patch_size,
                 cropped_dir=str(cropped_dir),
-                log=log
+                log=log,
+                use_clahe=clahe_on
             )
             cv2.imwrite(str(out_path), mask)
             # cv2.imwrite(str(out_path), cv2.cvtColor(mask, cv2.COLOR_RGB2BGR))

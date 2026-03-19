@@ -17,11 +17,13 @@ from datetime import datetime
 import xlsxwriter
 from rich.console import Console
 from rich.panel import Panel
+from rich.box import DOUBLE
+from rich.align import Align
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from utils.console import DeepAxonLogger
-from utils.helpers import scan_study, detect_study_mag
+from utils.helpers import detect_study_mag, resolve_scan, load_config
 from batch_axon.analyze_nerve import get_nerve_data
 
 console = Console()
@@ -111,29 +113,33 @@ def write_nerve_block(worksheet, row, nerve_name, animal_name, image_rows, aggre
 
 def main():
     console.print(Panel(
-        "[bold white]Study-Level Morphometric Compilation[/bold white]",
-        title="[bold cyan]DeepAxon — Batch Axon[/bold cyan]",
-        border_style="cyan",
-        expand=False
+        Align.center("[bold white]Study-Level Morphometric\nCompilation[/bold white]"),
+        title="[bold cyan]DEEPAXON — BATCH AXON[/bold cyan]",
+        border_style="bright_cyan",
+        box=DOUBLE,
+        expand=True,
+        padding=(1, 4)
     ))
 
     # ── Study folder input ────────────────────────────────────────────────────
-    study_dir = input("\nInput the path to the study folder: ").strip().strip('"')
-    if not os.path.isdir(study_dir):
-        console.print(f"[red]Study folder not found: {study_dir}[/red]")
+    input_dir = input("\nInput the path to the study, animal, or nerve folder: ").strip().strip('"')
+    if not os.path.isdir(input_dir):
+        console.print(f"[red]Folder not found: {input_dir}[/red]")
         sys.exit(1)
+        
+    study, study_dir = resolve_scan(input_dir)
 
     study_path = Path(study_dir)
     study_name = study_path.name
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_path = str(study_path / f"batch_axon_log_{timestamp}.txt")
+    config = load_config()
+    log_path = str(study_path / f"batch_axon_log_{timestamp}.txt") if config.get("logging", True) else None
     log = DeepAxonLogger(log_path=log_path, program="DeepAxon Batch Axon")
 
     log.info(f"Study: {study_dir}")
 
     # ── Scan study ────────────────────────────────────────────────────────────
     log.rule("SCANNING STUDY")
-    study = scan_study(study_dir)
     mag = detect_study_mag(study)
     log.info(f"Detected magnification: [bold]{mag}[/bold]")
 

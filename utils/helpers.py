@@ -75,7 +75,7 @@ def scan_study(study_dir: str, ignore_4x: bool = True) -> dict:
     Ignores 4X_TIFF folders if ignore_4x=True.
     """
     config = load_config()
-    tiff_suffix = config.get("tiff_suffix", "_TIFF")
+    tiff_suffixes = [s.upper() for s in config.get("tiff_suffixes", ["_TIFF"])]
     seg_folder = config.get("segmented_folder", "Segmented")
     morph_folder = config.get("morphometrics_folder", "Morphometrics")
     csa_folder = config.get("csa_folder", "CSA")
@@ -98,8 +98,10 @@ def scan_study(study_dir: str, ignore_4x: bool = True) -> dict:
             mag = None
             tiff_dir = None
             for sub in nerve_path.iterdir():
-                if sub.is_dir() and sub.name.upper().endswith(tiff_suffix.upper()):
-                    detected_mag = sub.name.upper().replace(tiff_suffix.upper(), "")
+                matched_suffix = next((s for s in tiff_suffixes if sub.name.upper().endswith(s)), None)
+                if sub.is_dir() and matched_suffix:
+                    detected_mag = sub.name.upper().replace(matched_suffix, "")
+                    
                     if ignore_4x and detected_mag == "4X":
                         continue
                     mag = detected_mag
@@ -137,6 +139,101 @@ def scan_study(study_dir: str, ignore_4x: bool = True) -> dict:
 
     return result
 
+
+def detect_input_level(path: str) -> str:
+    """
+    Detect whether a path is at study, animal, or nerve level.
+    
+    Returns: 'study', 'animal', or 'nerve'
+    
+    Logic:
+        nerve  — contains a *_TIFF subfolder directly
+        animal — contains subfolders that each contain a *_TIFF folder
+        study  — contains subfolders whose subfolders contain *_TIFF folders
+    """
+    config = load_config()
+    tiff_suffixes = [s.upper() for s in config.get("tiff_suffixes", ["_TIFF"])]
+    p = Path(path)
+
+    def has_tiff(folder):
+        return any(
+            sub.is_dir() and any(sub.name.upper().endswith(s) for s in tiff_suffixes)
+            for sub in folder.iterdir()
+        )
+
+    # TIFF folder: the folder itself ends with a known suffix
+    if any(p.name.upper().endswith(s) for s in tiff_suffixes):
+        return 'tiff'
+    
+    # Nerve: direct *_TIFF child
+    if has_tiff(p):
+        return 'nerve'
+
+    # Animal: immediate subdirs contain *_TIFF
+    subdirs = [s for s in p.iterdir() if s.is_dir()]
+    if subdirs and any(has_tiff(s) for s in subdirs):
+        return 'animal'
+
+    # Study: subdirs of subdirs contain *_TIFF
+    return 'study'
+
+
+def resolve_scan(input_dir: str) -> tuple:
+    """
+    Accepts study, animal, or nerve level input.
+    Returns (study_dict, study_dir) in the same format scan_study produces.
+    """
+    level = detect_input_level(input_dir)
+    p = Path(input_dir)
+
+    if level == 'tiff':
+        nerve_path = p.parent
+        animal_path = nerve_path.parent
+        study_dir = str(animal_path.parent)
+        config = load_config()
+        seg_folder = config.get("segmented_folder", "Segmented")
+        morph_folder = config.get("morphometrics_folder", "Morphometrics")
+        csa_folder = config.get("csa_folder", "CSA")
+        tiff_suffixes = [s.upper() for s in config.get("tiff_suffixes", ["_TIFF"])]
+        matched = next((s for s in tiff_suffixes if p.name.upper().endswith(s)), "_TIFF")
+        mag = p.name.upper().replace(matched, "")
+        seg_dir = nerve_path / seg_folder
+        morph_dir = nerve_path / morph_folder
+        csa_dir = nerve_path / csa_folder
+        nerve_data = {
+            'mag': mag,
+            'tiff_dir': p,
+            'segmented_dir': None,  # always reprocess when TIFF folder passed directly
+            'morphometrics_dir': morph_dir if morph_dir.exists() else None,
+            'csa_dir': csa_dir if csa_dir.exists() else None,
+        }
+        return {
+            animal_path.name: {nerve_path.name: nerve_data}
+        }, study_dir
+        
+    if level == 'nerve':
+        animal_path = p.parent
+        study_dir = str(animal_path.parent)
+        full = scan_study(study_dir)
+        animal_name = animal_path.name
+        nerve_name = p.name
+        return {
+            animal_name: {
+                nerve_name: full.get(animal_name, {}).get(nerve_name, {})
+            }
+        }, study_dir
+
+    elif level == 'animal':
+        study_dir = str(p.parent)
+        full = scan_study(study_dir)
+        animal_name = p.name
+        return {
+            animal_name: full.get(animal_name, {})
+        }, study_dir
+
+    else:  # study
+        return scan_study(input_dir), input_dir
+    
 
 def detect_study_mag(study_result: dict) -> str | None:
     """Detect the dominant magnification across a study (ignoring 4X)."""

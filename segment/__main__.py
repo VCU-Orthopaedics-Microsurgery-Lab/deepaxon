@@ -10,35 +10,47 @@ segments all nerves. Skips nerves that already have a Segmented folder.
 import sys
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' # Suppress TF warnings 0=all, 1=info, 2=warning, 3=error
+os.environ['PYTHONDONTWRITEBYTECODE'] = '1'
 from pathlib import Path
 from datetime import datetime
 
 from rich.console import Console
 from rich.table import Table
-from rich import box
+from rich.box import DOUBLE
 from rich.panel import Panel
+from rich.align import Align
 
 # Ensure repo root is on path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from utils.console import DeepAxonLogger
-from utils.helpers import scan_study, detect_study_mag, list_models, load_config
+from utils.helpers import detect_study_mag, list_models, load_config, resolve_scan
 from utils.gpu import setup_gpu_console
+from utils.metrics import dice_coef, dice_loss, iou_coef, combined_loss
 from segment.segment import segment_dir
+
+import tensorflow as tf
 
 console = Console()
 
 
 def select_model(models: list) -> Path:
     """Present an interactive model selection menu."""
-    console.print("\n[bold cyan]Available models:[/bold cyan]")
-    table = Table(box=box.SIMPLE, show_header=True, header_style="bold")
-    table.add_column("#", style="cyan", width=4)
-    table.add_column("Model", style="white")
-    
+    table = Table(
+        box=DOUBLE,
+        show_header=True,
+        header_style="bold bright_cyan",
+        border_style="bright_cyan",
+        expand=True,
+        padding=(0, 2)
+    )
+    table.add_column("#", style="bold cyan", width=4, justify="center")
+    table.add_column("Model", style="bold white", justify="left")
+
     for i, m in enumerate(models, 1):
         table.add_row(str(i), m.stem)
-        
+
+    console.print("\n")
     console.print(table)
 
     while True:
@@ -53,28 +65,31 @@ def select_model(models: list) -> Path:
 
 def main():
     console.print(Panel(
-        "[bold white]Nerve Cross-Section Segmentation[/bold white]",
-        title="[bold cyan]DeepAxon — Segment[/bold cyan]",
-        border_style="cyan",
-        expand=False
+        Align.center("[bold white]Automated Axon-Myelin Brightfield Image Segmentation[/bold white]"),
+        title="[bold cyan]DEEPAXON — SEGMENT[/bold cyan]",
+        border_style="bright_cyan",
+        box=DOUBLE,
+        expand=True,
+        padding=(1, 4)
     ))
 
     # ── Study folder input ────────────────────────────────────────────────────
-    study_dir = input("\nInput the path to the study folder: ").strip().strip('"')
-    if not os.path.isdir(study_dir):
-        console.print(f"[red]Study folder not found: {study_dir}[/red]")
+    input_dir = input("\nInput the path to the study, animal, or nerve folder: ").strip().strip('"')
+    if not os.path.isdir(input_dir):
+        console.print(f"[red]Folder not found: {input_dir}[/red]")
         sys.exit(1)
+        
+    study, study_dir = resolve_scan(input_dir)
 
-    study_name = Path(study_dir).name
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_path = str(Path(study_dir) / f"segment_log_{timestamp}.txt")
+    config = load_config()
+    log_path = str(Path(study_dir) / f"segment_log_{timestamp}.txt") if config.get("logging", True) else None
     log = DeepAxonLogger(log_path=log_path, program="DeepAxon Segment")
 
     log.info(f"Study: {study_dir}")
 
     # ── Scan study ────────────────────────────────────────────────────────────
     log.rule("SCANNING STUDY")
-    study = scan_study(study_dir)
 
     total_nerves = sum(len(nerves) for nerves in study.values())
     if total_nerves == 0:
@@ -121,8 +136,6 @@ def main():
 
     # ── Load model ────────────────────────────────────────────────────────────
     log.rule("LOADING MODEL")
-    import tensorflow as tf
-    from utils.metrics import dice_coef, dice_loss, iou_coef, combined_loss
 
     custom_objects = {
         'dice_coef': dice_coef,
@@ -143,14 +156,13 @@ def main():
         sys.exit(1)
 
     # ── Process nerves ────────────────────────────────────────────────────────
-    config = load_config()
     seg_folder = config.get("segmented_folder", "Segmented")
 
     for animal, nerve, info in to_process:
         tiff_dir = info['tiff_dir']
         nerve_path = tiff_dir.parent
         output_dir = nerve_path / seg_folder
-        timing_csv = output_dir / "timing.csv"
+        timing_csv = str(output_dir / "timing.csv") if config.get("timing", True) else None
 
         log.rule(f"{animal} / {nerve}")
         segment_dir(

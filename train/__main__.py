@@ -9,11 +9,15 @@ User provides only the images folder path — everything else is derived.
 
 import sys
 import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' # Suppress TF warnings 0=all, 1=info, 2=warning, 3=error
+os.environ['PYTHONDONTWRITEBYTECODE'] = '1' 
 from pathlib import Path
 from datetime import datetime
 
 from rich.console import Console
 from rich.panel import Panel
+from rich.box import DOUBLE
+from rich.align import Align
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -32,10 +36,12 @@ console = Console()
 
 def main():
     console.print(Panel(
-        "[bold white]UNet++ Nerve Segmentation Training[/bold white]",
-        title="[bold cyan]DeepAxon — Train[/bold cyan]",
-        border_style="cyan",
-        expand=False
+        Align.center("[bold white]UNet++ Nerve Segmentation\nModel Training[/bold white]"),
+        title="[bold cyan]DEEPAXON — TRAIN[/bold cyan]",
+        border_style="bright_cyan",
+        box=DOUBLE,
+        expand=True,
+        padding=(1, 4)
     ))
 
     # ── GPU setup ─────────────────────────────────────────────────────────────
@@ -48,7 +54,6 @@ def main():
         sys.exit(1)
 
     images_path = Path(images_dir).resolve()
-    training_root = images_path.parent
     model_dir = get_model_dir(str(images_path))
     log_dir = get_log_dir(str(images_path))
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -62,10 +67,13 @@ def main():
 
     if use_aug:
         console.print(Panel(
-            f"[green]Data augmentation ENABLED[/green]\n"
-            f"  • Global augmentation probability: {aug_prob:.2f}\n"
-            f"  • Random flips, small rotations, brightness/gamma jitter, light noise",
-            expand=False
+            Align.center(
+                f"[green]Data augmentation ENABLED[/green]\n"
+                f"Probability: {aug_prob:.2f}  |  Flips, rotations, brightness/gamma, noise"
+            ),
+            border_style="green",
+            box=DOUBLE,
+            expand=True
         ))
 
     # ── Model name ────────────────────────────────────────────────────────────

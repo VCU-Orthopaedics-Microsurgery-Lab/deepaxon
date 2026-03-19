@@ -15,11 +15,13 @@ from datetime import datetime
 
 from rich.console import Console
 from rich.panel import Panel
+from rich.box import DOUBLE
+from rich.align import Align
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from utils.console import DeepAxonLogger
-from utils.helpers import scan_study, detect_study_mag, load_config, list_files
+from utils.helpers import detect_study_mag, load_config, list_files, resolve_scan
 from morphometrics.morphometrics import get_morphometrics, save_morphometrics
 
 console = Console()
@@ -27,32 +29,35 @@ console = Console()
 
 def main():
     console.print(Panel(
-        "[bold white]Per-Image Nerve Morphometrics[/bold white]",
-        title="[bold cyan]DeepAxon — Morphometrics[/bold cyan]",
-        border_style="cyan",
-        expand=False
+        Align.center("[bold white]Automated Axon-Myelin\nBrightfield Image Morphometrics[/bold white]"),
+        title="[bold cyan]DEEPAXON — MORPHOMETRICS[/bold cyan]",
+        border_style="bright_cyan",
+        box=DOUBLE,
+        expand=True,
+        padding=(1, 4)
     ))
 
     # ── Study folder input ────────────────────────────────────────────────────
-    study_dir = input("\nInput the path to the study folder: ").strip().strip('"')
-    if not os.path.isdir(study_dir):
-        console.print(f"[red]Study folder not found: {study_dir}[/red]")
+    input_dir = input("\nInput the path to the study, animal, or nerve folder: ").strip().strip('"')
+    if not os.path.isdir(input_dir):
+        console.print(f"[red]Folder not found: {input_dir}[/red]")
         sys.exit(1)
+        
+    study, study_dir = resolve_scan(input_dir)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_path = str(Path(study_dir) / f"morphometrics_log_{timestamp}.txt")
+    config = load_config()
+    log_path = str(Path(study_dir) / f"morphometrics_log_{timestamp}.txt") if config.get("logging", True) else None
     log = DeepAxonLogger(log_path=log_path, program="DeepAxon Morphometrics")
 
     log.info(f"Study: {study_dir}")
 
     # ── Scan study ────────────────────────────────────────────────────────────
     log.rule("SCANNING STUDY")
-    study = scan_study(study_dir)
 
     mag = detect_study_mag(study)
     log.info(f"Detected magnification: [bold]{mag}[/bold]")
 
-    config = load_config()
     morph_folder = config.get("morphometrics_folder", "Morphometrics")
 
     to_process = []

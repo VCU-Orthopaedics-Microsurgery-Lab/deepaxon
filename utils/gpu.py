@@ -8,6 +8,8 @@ Called once at startup by train/__main__.py.
 import os
 from rich.console import Console
 from rich.panel import Panel
+from rich.box import DOUBLE
+from rich.text import Text
 
 console = Console()
 
@@ -27,12 +29,15 @@ def setup_gpu_console(use_gpu: bool = None) -> bool:
     gpus = tf.config.list_physical_devices('GPU')
 
     if not gpus:
+        t = Text(justify="center")
+        t.append("No GPU detected — running on CPU only.\n", style="yellow")
+        t.append("Training will be slower. Consider using a machine with a CUDA-capable GPU.")
         console.print(Panel(
-            "[yellow]No GPU detected — running on CPU only.[/yellow]\n"
-            "Training will be slower. Consider using a machine with a CUDA-capable GPU.",
+            t,
             title="[bold yellow]Device[/bold yellow]",
             border_style="yellow",
-            expand=False
+            box=DOUBLE,
+            expand=True
         ))
         return False
 
@@ -45,13 +50,16 @@ def setup_gpu_console(use_gpu: bool = None) -> bool:
             for gpu in gpus:
                 tf.config.experimental.set_memory_growth(gpu, True)
             gpu_names = [gpu.name for gpu in gpus]
+            t = Text(justify="center")
+            t.append("GPU acceleration ENABLED\n", style="green")
+            t.append(f"Device(s): {', '.join(gpu_names)}\n")
+            t.append("Memory growth: enabled")
             console.print(Panel(
-                f"[green]GPU acceleration ENABLED[/green]\n"
-                f"Device(s): {', '.join(gpu_names)}\n"
-                f"Memory growth: enabled",
+                t,
                 title="[bold green]Device[/bold green]",
                 border_style="green",
-                expand=False
+                box=DOUBLE,
+                expand=True
             ))
             return True
         except RuntimeError as e:
@@ -60,10 +68,12 @@ def setup_gpu_console(use_gpu: bool = None) -> bool:
             return False
     else:
         os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+        t = Text("Running on CPU only (user selected).", justify="center")
         console.print(Panel(
-            "[cyan]Running on CPU only (user selected).[/cyan]",
+            t,
             title="[bold cyan]Device[/bold cyan]",
             border_style="cyan",
-            expand=False
+            box=DOUBLE,
+            expand=True
         ))
         return False
