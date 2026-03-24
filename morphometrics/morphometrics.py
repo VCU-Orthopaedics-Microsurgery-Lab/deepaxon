@@ -16,8 +16,6 @@ from __future__ import annotations
 
 import gc
 import os
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-
 import numpy as np
 import pandas as pd
 import cv2

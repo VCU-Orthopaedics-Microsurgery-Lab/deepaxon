@@ -171,7 +171,7 @@ def main():
             model=model,
             mag=mag,
             log=log,
-            timing_csv=str(timing_csv)
+            timing_csv=timing_csv
         )
 
     log.finalize(summary={

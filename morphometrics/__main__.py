@@ -54,7 +54,7 @@ def main():
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     config = load_config()
-    log_path = str(Path(study_dir) / f"morphometrics_log_{timestamp}.txt") if config.get("logging", True) else None
+    log_path = str(Path(input_dir) / f"morphometrics_log_{timestamp}.txt") if config.get("logging", True) else None
     log = DeepAxonLogger(log_path=log_path, program="DeepAxon Morphometrics")
 
     log.info(f"Study: {study_dir}")
