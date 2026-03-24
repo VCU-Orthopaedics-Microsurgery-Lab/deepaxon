@@ -1,4 +1,0 @@
-image,resolution,crop_width,patch_size,time_s,status
-Rb41_LE_40X_001.tif,1440x1024,1280,256,7.16,ok
-Rb41_LE_40X_002.tif,1440x1024,1280,256,6.85,ok
-Rb41_LE_40X_003.tif,1440x1024,1280,256,7.65,ok

@@ -186,6 +186,18 @@ def resolve_scan(input_dir: str) -> tuple:
     level = detect_input_level(input_dir)
     p = Path(input_dir)
 
+    # Guard: if the folder name matches a known output folder, reject it
+    config = load_config()
+    reserved = {
+        config.get("segmented_folder", "Segmented").lower(),
+        config.get("morphometrics_folder", "Morphometrics").lower(),
+        config.get("csa_folder", "CSA").lower(),
+    }
+    if p.name.lower() in reserved:
+        raise ValueError(
+            f"'{p.name}' is an output subfolder — please pass the nerve, animal, or study folder instead."
+        )
+        
     if level == 'tiff':
         nerve_path = p.parent
         animal_path = nerve_path.parent

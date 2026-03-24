@@ -10,6 +10,8 @@ Skips nerves that already have a *_Morphometrics folder.
 
 import sys
 import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
 from pathlib import Path
 from datetime import datetime
 
@@ -29,7 +31,7 @@ console = Console()
 
 def main():
     console.print(Panel(
-        Align.center("[bold white]Automated Axon-Myelin\nBrightfield Image Morphometrics[/bold white]"),
+        Align.center("[bold white]Automated Axon-Myelin Histomorphometry of Brightfield Images[/bold white]"),
         title="[bold cyan]DEEPAXON — MORPHOMETRICS[/bold cyan]",
         border_style="bright_cyan",
         box=DOUBLE,
@@ -38,12 +40,17 @@ def main():
     ))
 
     # ── Study folder input ────────────────────────────────────────────────────
-    input_dir = input("\nInput the path to the study, animal, or nerve folder: ").strip().strip('"')
-    if not os.path.isdir(input_dir):
-        console.print(f"[red]Folder not found: {input_dir}[/red]")
-        sys.exit(1)
-        
-    study, study_dir = resolve_scan(input_dir)
+    while True:
+        input_dir = input("\nInput the path to the study, animal, or nerve folder containing the segmented images: ").strip().strip('"')
+        if not os.path.isdir(input_dir):
+            console.print(f"[red]✗  Folder not found: {input_dir}[/red]")
+            continue
+        try:
+            study, study_dir = resolve_scan(input_dir)
+            break
+        except ValueError as e:
+            console.print(f"[red]✗  {e}[/red]")
+            continue
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     config = load_config()
