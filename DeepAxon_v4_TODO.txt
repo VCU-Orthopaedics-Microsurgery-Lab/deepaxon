@@ -1,0 +1,799 @@
+================================================================================
+DEEPAXON v4 — COMPLETE TO-DO LIST
+Generated: 2026-03-24
+Session: Full codebase walkthrough with Claude (Sonnet 4.6)
+================================================================================
+
+Priority legend:
+  🔴  Critical   — bug or verification required before results can be trusted
+  🟠  High       — significant issue or planned breaking change
+  🟡  Medium     — improvement, cleanup, or minor bug
+  📄  Docs       — documentation or commenting task
+
+================================================================================
+SECTION 1 — CRITICAL BUGS (fix before trusting results)
+================================================================================
+
+[CRIT-01] Train/Inference Normalization Mismatch
+  File:    segment/segment.py  →  segment_image()
+  File:    train/data/data_loader.py  →  load_patches()
+  Issue:   keras.utils.normalize performs L2 normalization (divides by vector
+           norm). load_patches() normalizes by /= 255.0 (min-max to [0,1]).
+           These are different operations — train/inference mismatch means
+           model receives differently scaled inputs at inference than it saw
+           during training.
+  Action:  Verify which normalization was used during original training.
+           If min-max (likely): replace normalize(patch) in segment_image()
+           with patch.astype(np.float32) / 255.0
+           If L2: update load_patches() to use keras.utils.normalize instead
+           of /= 255.0. Document the decision in both files with a comment.
+
+[CRIT-02] BGW Color Mapping Mismatch
+  File:    morphometrics/morphometrics.py  →  get_morphometrics()
+  Issue:   axon_mask = cv2.inRange(img, 200, 255) captures white pixels.
+           But segment/segment.py recolor() maps: grey(128)=axon,
+           white(255)=myelin. So axon_mask is actually capturing myelin,
+           not axons. The comment "white = axon" contradicts segment.py.
+  Action:  Verify against actual segmented images. Expected correct masks:
+             axon_mask  = cv2.inRange(img, 100, 180)  # grey = axon
+             fibre_mask = cv2.inRange(img, 1, 255)    # all non-black
+           Add cross-reference comment in both recolor() and get_morphometrics()
+           stating the BGW contract explicitly.
+
+[CRIT-03] NameError in prepare_dataset() — Will crash before training starts
+  File:    train/train.py  →  prepare_dataset()
+  Issue:   Return dict references cropped_img and cropped_mask but these
+           variables are never defined in the function scope.
+  Action:  Add after patches_img/patches_mask definitions:
+             cropped_img  = images_dir / "cropped"
+             cropped_mask = masks_dir  / "cropped"
+
+[CRIT-04] Wrong Magnification Passed to batch_process()
+  File:    train/train.py  →  train_model()
+  Issue:   batch_process() called with mag=model_type, passing 'unet++' as
+           the magnification string. patch_size lookup fails silently and
+           falls back to default 256 — accidentally correct but semantically
+           wrong and fragile.
+  Action:  Add a mag parameter to train_model() signature. Prompt for
+           magnification in train/__main__.py using a selection menu
+           ('40X' / '100X') and pass through correctly to batch_process().
+
+[CRIT-05] Duplicate Axon Assignment Not Implemented
+  File:    morphometrics/morphometrics.py  →  get_morphometrics()
+  Issue:   Module docstring states duplicate assignments are removed but the
+           matching loop has no mechanism to track assigned axon labels.
+           Multiple fibres can silently match the same axon, inflating counts
+           and corrupting g-ratio measurements.
+  Action:  Add before the fibre loop:
+             assigned_axon_labels = set()
+           After get_axon_row() returns a match, check:
+             axon_label = int(axon_row['label'].iloc[0])
+             if axon_label in assigned_axon_labels:
+                 continue
+             assigned_axon_labels.add(axon_label)
+
+[CRIT-06] Mask Resize Interpolation Bug
+  File:    utils/resize.py  →  resize_img()
+  Issue:   is_mask parameter is accepted but ignored. cv2.resize() has no
+           interpolation argument so both images and masks use OpenCV default
+           INTER_LINEAR. For binary masks, INTER_LINEAR interpolates between
+           0 and label values, corrupting mask labels.
+           This cascades into train/data/preprocess.py where is_mask=True
+           is passed but has no effect.
+  Action:  Change cv2.resize call to:
+             interpolation = cv2.INTER_NEAREST if is_mask else cv2.INTER_AREA
+             img = cv2.resize(img, TARGET_SIZE, interpolation=interpolation)
+           Also fix docstring which claims INTER_AREA but no flag was set.
+           preprocess.py fix is automatic once resize.py is corrected.
+
+[CRIT-07] Mask Values Not Converted to Class Indices Before Training
+  File:    train/data/data_loader.py  →  load_patches()
+  File:    train/train.py  →  train_model()
+  Issue:   Masks loaded as raw float32 with values 0.0, 128.0, 255.0.
+           These are passed directly to model.fit() with softmax output and
+           combined_loss. Loss function expects integer class indices (0,1,2)
+           or one-hot encoding — raw 0/128/255 values will produce incorrect
+           loss calculations.
+  Action:  Verify combined_loss handles raw values. If not, add conversion
+           after loading: Y = np.round(Y / 128).astype(np.float32)
+           which maps 0→0, 128→1, 255→2 (rounded). Document the decision.
+
+[CRIT-08] ROI Coordinate Space — Potential Mismatch
+  File:    batch_axon/overlay/export_roi.ijm
+  File:    batch_axon/overlay/process_overlay.py  →  get_overlay_area()
+  Issue:   The macro crops the original resolution image (e.g. 2880×2048)
+           before exporting ROI coordinates. process_overlay.py then
+           rasterizes those coordinates onto an image opened via PIL at its
+           stored resolution. If the CSA .tif is stored at original resolution
+           but segmented outputs are resized to 1440×1024, coordinate spaces
+           may not align.
+  Action:  Confirm what resolution the CSA overlay .tif files are saved at
+           by Fiji. Ensure the image opened in get_overlay_area() is the same
+           resolution as the coordinate space the macro exports. Add a comment
+           documenting the confirmed resolution assumption.
+
+================================================================================
+SECTION 2 — HIGH PRIORITY
+================================================================================
+
+[HIGH-01] Python 3.14/3.15 Migration — Full Dependency Audit Required
+  Scope:   Entire project
+  Issue:   Python 3.14/3.15 migration is planned. TF 2.10.1 + Keras 2.10.0
+           almost certainly will not survive — this is the last native Windows
+           GPU build before WSL2 was required. All unpinned packages also need
+           re-testing.
+  Action:  Before migration: run pip freeze in current working environment and
+           record exact versions of all packages. Plan for TF/Keras replacement
+           (likely TF 2.16+, Keras 3, or consider PyTorch migration).
+           Audit tf.config.experimental.set_memory_growth — verify API path
+           under new TF version. Audit tensorflow.keras.backend (K) usage
+           in utils/metrics.py.
+
+[HIGH-02] 100X CSA Workflow Update Required
+  File:    batch_axon/analyze_nerve.py  →  get_image_csa()
+  File:    batch_axon/analyze_nerve.py  →  get_nerve_data()
+  Issue:   Current 100X branch in get_image_csa() uses hardcoded full image
+           area (img_width * img_height = 1440 * 1024). New workflow: 100X
+           per-image CSA is not needed — only 4X whole-nerve CSA applies for
+           100X images.
+  Action:  Update get_image_csa() so that mag == '100X' returns None (no
+           per-image CSA). Update get_nerve_data() so that for 100X, only
+           fourx_csa is used for density calculations. Remove hardcoded
+           img_height = 1024. Update all related comments and docstrings.
+
+================================================================================
+SECTION 3 — MEDIUM PRIORITY BUGS
+================================================================================
+
+[BUG-01] get_fiji_path() Cache Staleness
+  File:    utils/helpers.py  →  get_fiji_path()
+  Issue:   After writing new fiji_executable path to config.json, the
+           in-memory _config_cache is not updated. The saved value won't
+           be reflected until next process start.
+  Action:  After saving, add:
+             _config_cache["fiji_executable"] = fiji_path
+
+[BUG-02] compute_batch_size() Silent Fallback
+  File:    utils/helpers.py  →  compute_batch_size()
+  Issue:   Fallback returns 4 regardless of whether n_patches is divisible
+           by 4. No warning is issued, so uneven batches are silent.
+  Action:  After the for loop, before return 4, add:
+             import warnings
+             warnings.warn(f"No power-of-2 batch size divides {n_patches} "
+                           f"evenly. Defaulting to 4 — last batch may be "
+                           f"smaller.")
+
+[BUG-03] table() Log Output Broken
+  File:    utils/console.py  →  table()
+  Issue:   rich.Table has no public .rows attribute. Log file will only ever
+           receive column headers, never row data. hasattr guard always fails.
+  Action:  Access table._rows (private) or restructure to accept raw data
+           alongside the Table object. Alternatively, require callers to pass
+           both a Table and a list of row dicts for logging purposes.
+
+[BUG-04] logging/timing Config Default Mismatch
+  Files:   segment/__main__.py, segment/segment.py,
+           morphometrics/__main__.py, batch_axon/__main__.py
+  Issue:   config.get("logging", True) and config.get("timing", True)
+           default to True but config.json sets both to false. If the keys
+           were ever missing from config.json, behavior would differ from
+           intent.
+  Action:  Change all instances to config.get("logging", False) and
+           config.get("timing", False) to match config.json defaults.
+
+[BUG-05] morphometrics/__main__.py Log Path Uses input_dir Not study_dir
+  File:    morphometrics/__main__.py
+  Issue:   log_path uses input_dir — log file location varies depending on
+           whether user passes nerve/animal/study level path.
+  Action:  Change to use study_dir (returned from resolve_scan()) so log
+           always lands in study root regardless of input level. Match
+           behavior of segment/__main__.py.
+
+[BUG-06] No Image/Mask Pair Validation Before Preprocessing
+  File:    train/data/preprocess.py  →  batch_process()
+  Issue:   No check that image and mask counts match before processing begins.
+           A missing mask silently produces misaligned patch sets.
+  Action:  Before processing loop, add:
+             img_stems  = {Path(p).stem for p in images}
+             mask_stems = {Path(p).stem for p in masks}
+             missing = img_stems - mask_stems
+             if missing:
+                 raise ValueError(f"Missing masks for: {sorted(missing)}")
+
+[BUG-07] Silent Patch Load Failure
+  File:    train/data/data_loader.py  →  load_patches()
+  Issue:   continue on img is None silently drops failed files with no
+           indication of which file failed or how many were dropped.
+  Action:  Replace continue with:
+             print(f"[WARN] Could not load patch, skipping: {f}")
+             continue
+
+[BUG-08] Val Directory Check Includes Non-Image Files
+  File:    train/data/data_loader.py  →  load_all_patches()
+  Issue:   any(Path(val_img_patches_dir).iterdir()) returns True for any
+           file including .DS_Store, thumbs.db etc., falsely triggering
+           pre-split validation path.
+  Action:  Replace with:
+             any(p.suffix.lower() in ('.png', '.tif', '.tiff')
+                 for p in Path(val_img_patches_dir).iterdir())
+
+[BUG-09] workbook.close() Not Guaranteed on Exception
+  File:    batch_axon/__main__.py  →  main()
+  Issue:   workbook.close() only called at end of main(). Unhandled exception
+           mid-run leaves workbook open and corrupt.
+  Action:  Wrap workbook lifecycle:
+             workbook = xlsxwriter.Workbook(str(workbook_path))
+             try:
+                 ... processing ...
+             finally:
+                 workbook.close()
+
+[BUG-10] axon_diam_px Column Name Mismatch
+  File:    batch_axon/analyze_nerve.py  →  get_nerve_data()
+  Issue:   Fallback references img_df['axon_diam_px'] but morphometrics.py
+           outputs column named 'axon_diam' (pixel units), not 'axon_diam_px'.
+           Fallback silently returns None for all 100X images.
+  Action:  Change fallback to:
+             img_df['axon_diam'].mean() * px_size
+             if px_size and 'axon_diam' in img_df.columns else None
+
+================================================================================
+SECTION 4 — IMPORT CLEANUP (standardize across all files)
+================================================================================
+
+Standard import structure for all files:
+  # 1. Standard library (os, sys, pathlib, datetime, etc.)
+  # 2. Third-party packages (numpy, cv2, tensorflow, etc.)
+  # 3. Internal utils (from utils.X import Y)
+  # 4. Internal submodule imports (from segment.X import Y)
+  Blank line between each group.
+  Intentional deferred imports must have an explanatory comment.
+
+[IMP-01] utils/console.py
+  Move:    import re  →  from inside print() method to module-level imports
+
+[IMP-02] utils/gpu.py
+  Keep:    import tensorflow as tf inside setup_gpu_console() — intentional
+           to avoid TF initialization for non-training scripts.
+  Action:  Add comment: # Deferred import — avoids TF initialization at
+           module load time for scripts that do not use GPU
+
+[IMP-03] utils/resize.py
+  Move:    from PIL import Image  →  from inside get_image_resolution()
+           to module-level imports
+
+[IMP-04] train/data/preprocess.py
+  Move:    from utils.helpers import list_files  →  from inside batch_process()
+           to module-level imports
+
+[IMP-05] train/data/augment.py
+  Move:    import cv2  →  from inside rotation block to module-level imports
+
+[IMP-06] train/data/data_loader.py
+  Remove:  import os  →  imported at top but never used, remove entirely
+
+[IMP-07] train/models/unet_plus_plus.py
+  Keep:    from train.models.unet import UNET inside build_model() — avoids
+           circular import until build_model() is moved to __init__.py
+  Action:  Add comment: # Deferred import — avoids circular import.
+           Resolves when build_model() is moved to train/models/__init__.py
+
+[IMP-08] train/train.py
+  Move:    from rich.panel import Panel  →  3 inline occurrences inside
+           train_model() to module-level imports
+  Move:    from rich.console import Console  →  3 inline occurrences inside
+           train_model() to module-level imports
+  Move:    from utils.helpers import list_files  →  from inside
+           prepare_dataset() to module-level imports
+
+[IMP-09] morphometrics/__main__.py
+  Move:    from utils.resize import get_image_resolution  →  from inside
+           nerve loop to module-level imports
+
+[IMP-10] morphometrics/morphometrics.py
+  Remove:  from skimage.feature import peak_local_max  →  imported at top
+           but never used anywhere in the file, remove entirely
+
+================================================================================
+SECTION 5 — STRUCTURAL / ORGANIZATIONAL IMPROVEMENTS
+================================================================================
+
+[STR-01] Extract center_crop() to Shared Location
+  Current: Identically defined in BOTH segment/segment.py AND
+           train/data/preprocess.py
+  Action:  Move to utils/helpers.py as a module-level function.
+           Update imports in both segment/segment.py and preprocess.py:
+             from utils.helpers import center_crop
+
+[STR-02] Extract conv_block() to Shared Location
+  Current: Identically defined in BOTH train/models/unet.py AND
+           train/models/unet_plus_plus.py
+  Action:  Create train/models/blocks.py containing conv_block() and
+           upsample_concat(). Import from there in both architecture files:
+             from train.models.blocks import conv_block
+
+[STR-03] Move build_model() Factory to train/models/__init__.py
+  Current: build_model() defined in train/models/unet_plus_plus.py
+  Action:  Move to train/models/__init__.py as the public API for the
+           models subpackage. Resolve the deferred UNET import (IMP-07)
+           at the same time. Export both build_unet() and
+           build_unet_plus_plus() from __init__.py.
+
+[STR-04] Promote _has_images() in helpers.py
+  Current: Nested closure inside scan_study()
+  Action:  Extract to module-level private function _has_images(d, source_dir=None)
+           above scan_study(). Makes it independently testable.
+
+[STR-05] Extract select_model() to Shared Utility
+  Current: segment/__main__.py  →  select_model()
+  Issue:   Generic interactive selection pattern, potentially reusable
+           for architecture selection in train/__main__.py
+  Action:  Move to utils/helpers.py as select_from_list(items, prompt, display_fn)
+           and call from segment/__main__.py and any future selection menus
+
+[STR-06] Extract Excel Helpers to batch_axon/excel_utils.py
+  Current: add_formats() and write_nerve_block() in batch_axon/__main__.py
+  Issue:   As workbook complexity grows these will make __main__.py unwieldy
+  Action:  Create batch_axon/excel_utils.py containing add_formats(),
+           HEADERS constant, and write_nerve_block(). Import from __main__.py.
+
+[STR-07] apply_clahe() Future Location
+  Current: segment/segment.py  →  apply_clahe()
+  Issue:   If CLAHE is ever applied during training preprocessing it will
+           need to be shared
+  Action:  When/if CLAHE is enabled in training: move apply_clahe() to
+           utils/helpers.py or a new utils/image.py alongside center_crop()
+
+[STR-08] TARGET_SIZE Defined in One Place Only
+  Current: (1440, 1024) hardcoded independently in:
+             utils/resize.py  →  TARGET_SIZE
+             segment/segment.py  →  crop_w estimate (1440)
+             batch_axon/analyze_nerve.py  →  img_width = 1440 default
+             batch_axon/analyze_nerve.py  →  img_height = 1024 (100X branch)
+  Action:  Define once in utils/resize.py as:
+             TARGET_WIDTH, TARGET_HEIGHT = 1440, 1024
+             TARGET_SIZE = (TARGET_WIDTH, TARGET_HEIGHT)
+           Import TARGET_WIDTH and TARGET_HEIGHT in all other files.
+
+[STR-09] Add evaluate/ Module (Missing Pipeline Stage)
+  Issue:   No formal evaluation pipeline exists. After training, there is no
+           script to test a model against a held-out dataset and report
+           metrics (dice, IoU, per-class accuracy).
+  Action:  Create evaluate/ module with __main__.py that:
+             - Accepts a model path and a test image/mask directory
+             - Runs inference via segment_image()
+             - Computes dice_np() and iou_np() against ground truth masks
+             - Reports per-image and aggregate metrics
+             - Saves results to a .xlsx or .csv
+
+[STR-10] Add model_registry.json to deepaxon/models/
+  Action:  Create deepaxon/models/model_registry.json with one entry per
+           .keras file:
+           {
+             "models": [
+               {
+                 "file": "p_100x_v2r_256.keras",
+                 "magnification": "100X",
+                 "dataset": "peripheral",
+                 "version": "v2r",
+                 "patch_size": 256,
+                 "trained": "2025-10-24",
+                 "val_dice": null,
+                 "notes": ""
+               },
+               ...
+             ]
+           }
+
+[STR-11] Archive Superseded Models
+  Action:  Create deepaxon/models/archive/ and move rb_40x_v1_256.keras
+           (Nov 2024, oldest model) there. Keeps selection menu clean.
+
+[STR-12] Root Directory Cleanup
+  Action:  Create notebooks/ in repo root. Move all .ipynb files:
+             clahe_design.ipynb
+             clahe_design - Marc.ipynb
+             clahe_design_Marc_v2.ipynb
+             segmentation_viewer.ipynb
+             morphometrics/check_watershed.ipynb
+             morphometrics/Napari.ipynb
+           Consider notebooks/morphometrics/ subfolder for the last two.
+  Action:  Create sample_images/ in repo root. Move all loose .tif files:
+             1502_RUNDist_100X_001.tif
+             1504_CMNProx_100X_001.tif
+             P1503_RUNDist_40X_005.tif
+             P2502_CMNProx_40X_001.tif
+             P2502_CUNProx_40X_004.tif
+             P2502_RUNProx_40X_005.tif
+             P2503_RUNProx_40X_012.tif
+             Rb41_RA_40X_003.tif
+             Rb41_RA_40X_007.tif
+             Rb44_LA_40X_007.tif
+           sample_images/ is the designated landing folder for images
+           shared by remote collaborators without drive access.
+
+================================================================================
+SECTION 6 — FEATURE IMPROVEMENTS
+================================================================================
+
+[FEAT-01] setup_gpu_console() Non-Interactive Mode
+  File:    utils/gpu.py  →  setup_gpu_console()
+  File:    segment/__main__.py
+  Action:  Add use_gpu parameter to setup_gpu_console() signature (already
+           exists). Pass use_gpu=True from batch_axon to avoid interactive
+           prompt during automated runs.
+
+[FEAT-02] Retry Input Loop in segment/__main__.py
+  File:    segment/__main__.py
+  Action:  Replace sys.exit(1) on bad path with a retry loop matching
+           morphometrics/__main__.py — prompt again rather than exiting.
+
+[FEAT-03] Auto-Promote Trained Model to deepaxon/models/
+  File:    train/train.py  →  train_model()
+  Action:  After training completes, add prompt:
+             "Copy model to deepaxon/models/? [Y/n]"
+           If yes: shutil.copy(model_path, repo_root / "models" / model_path.name)
+           Removes the current manual model promotion step.
+
+[FEAT-04] Architecture Selection in train/__main__.py
+  File:    train/__main__.py
+  Action:  Add CLI prompt before training:
+             "Architecture: (1) UNet++  (2) UNet [default: 1]: "
+           Pass selection as model_type to train_model() instead of
+           hardcoding 'unet++'.
+
+[FEAT-05] aug_prob From Actual Patch Count
+  File:    train/__main__.py and train/train.py
+  Action:  Move aug_prob computation to after batch_process() completes
+           in train_model(), where actual patch count is known. Pass
+           updated aug_prob back or recompute using compute_aug_prob()
+           with real n_patches before calling augment_dataset_np().
+
+[FEAT-06] Standardize Resolution Mismatch Handling
+  File:    segment/segment.py  →  segment_dir()
+  File:    morphometrics/__main__.py
+  Action:  Remove interactive input() prompt from segment_dir() resolution
+           mismatch check — replace with warn-only to match morphometrics
+           behavior. Add force=True parameter to segment_dir() for cases
+           where caller wants to guarantee continuation.
+
+[FEAT-07] Configurable Loss Weights
+  File:    utils/metrics.py  →  combined_loss()
+  Action:  Add to config.json:
+             "loss_weights": {"dice": 0.5, "bce": 0.5}
+           Read via load_config() in combined_loss(). Allows tuning without
+           code changes.
+
+[FEAT-08] Configurable Augmentation Parameters
+  File:    train/data/augment.py
+  Action:  Add to config.json:
+             "augmentation": {
+               "rotation_deg": 15,
+               "brightness_range": [0.8, 1.2],
+               "brightness_offset": [-0.1, 0.1],
+               "gamma_range": [0.7, 1.4],
+               "noise_sigma": 0.02
+             }
+           Read via load_config() in augment_pair().
+
+[FEAT-09] Configurable Watershed Parameters
+  File:    morphometrics/morphometrics.py  →  get_labels()
+  Action:  Add to config.json:
+             "watershed": {
+               "distance_threshold": 0.1,
+               "dilation_disk": 5
+             }
+           Read via load_config() in get_labels(). These are key tuning
+           parameters that currently require code edits to adjust.
+
+[FEAT-10] Configurable Patch Overlap
+  File:    train/data/preprocess.py and segment/segment.py
+  Action:  Add to config.json patch_size section:
+             "overlap": 0.5
+           Compute step as: int(patch_size * (1 - overlap))
+           Currently hardcoded as patch_size // 2 in both files.
+
+[FEAT-11] Configurable Segmented Output Suffix
+  File:    segment/segment.py and morphometrics/__main__.py
+  Action:  Add to config.json:
+             "segmented_suffix": "_segmented"
+           Use in segment/segment.py when naming output files and in
+           morphometrics/__main__.py when stripping suffix from stem.
+           Prevents silent breakage if naming convention changes.
+
+[FEAT-12] Validate write_nerve_block() Input Keys
+  File:    batch_axon/__main__.py  →  write_nerve_block()
+  Action:  Use .get() with explicit defaults for all keys accessed from
+           image_rows entries: gratio, axon_diam_um, csa_um2,
+           total_axons, axon_density_per_um2. Prevents KeyError on
+           incomplete data rows.
+
+[FEAT-13] Cache .xlsx Reads in get_nerve_data()
+  File:    batch_axon/analyze_nerve.py  →  get_nerve_data()
+  Action:  In make_aggregate_df(), build a dict {filename: DataFrame}
+           instead of just concatenating. Return both the aggregate df
+           and the per-file dict. Reuse per-file dict in the per-image
+           loop instead of reading each .xlsx file a second time.
+
+[FEAT-14] pass patch_size to export_roi.ijm as Argument
+  File:    batch_axon/overlay/process_overlay.py  →  run_fiji_export()
+  File:    batch_axon/overlay/export_roi.ijm
+  Action:  Update command_args in run_fiji_export():
+             command_args = f"{img_path},{roi_path},{patch_size}"
+           Parse args[2] in macro and use instead of hardcoded 256.
+           Pass patch_size from config via get_overlay_area() parameter.
+
+[FEAT-15] Surface Fiji stderr on Failure
+  File:    batch_axon/overlay/process_overlay.py  →  run_fiji_export()
+  Action:  On CalledProcessError, add:
+             stderr_msg = e.stderr.decode(errors='replace')
+             print(f"[ERROR] Fiji stderr: {stderr_msg}")
+           Or pass to logger if log parameter is added (see FEAT-16).
+
+[FEAT-16] Add Logger Parameter to process_overlay.py Functions
+  File:    batch_axon/overlay/process_overlay.py
+  Action:  Add log: DeepAxonLogger = None parameter to both
+           run_fiji_export() and get_overlay_area(). Use log.warn() /
+           log.error() when provided, fall back to print() otherwise.
+           All overlay processing errors currently bypass the log file.
+
+[FEAT-17] ROI Coordinate Validation Before Polygon Draw
+  File:    batch_axon/overlay/process_overlay.py  →  get_overlay_area()
+  Action:  After roi.coordinates(), add:
+             coords = list(roi.coordinates())
+             if len(coords) < 3:
+                 print(f"[WARN] Degenerate ROI in {img_path.name} "
+                       f"({len(coords)} points) — skipping")
+                 return None
+
+[FEAT-18] Use tempfile for .roi Temp Files
+  File:    batch_axon/overlay/process_overlay.py  →  get_overlay_area()
+  Action:  Replace roi_path = img_path.with_suffix('.roi') with:
+             import tempfile
+             tmp = tempfile.NamedTemporaryFile(suffix='.roi', delete=False)
+             roi_path = Path(tmp.name)
+             tmp.close()
+           Avoids write permission issues in CSA/ folder and parallel
+           run conflicts.
+
+[FEAT-19] Per-Line Timestamps in Log File
+  File:    utils/console.py
+  Action:  Add optional timestamp_lines: bool = False parameter to
+           DeepAxonLogger.__init__(). When True, prefix each _append()
+           call with datetime.now().strftime('%H:%M:%S'). Aids post-run
+           debugging of long segmentation or training runs.
+
+[FEAT-20] Callback Parameters as Named Constants
+  File:    train/train.py and train/__main__.py
+  Action:  Define at top of train/train.py:
+             REDUCE_LR_PATIENCE  = 15
+             REDUCE_LR_FACTOR    = 0.5
+             REDUCE_LR_MIN_LR    = 1e-6
+             EARLY_STOP_PATIENCE = 40
+             EARLY_STOP_MIN_DELTA = 0.001
+           Import and use in callbacks. Import into __main__.py for log
+           header so values stay in sync automatically.
+
+================================================================================
+SECTION 7 — DOCUMENTATION / COMMENTING
+================================================================================
+
+[DOC-01] hann_window() Explanation
+  File:    segment/segment.py  →  hann_window()
+  Action:  Add block comment above function explaining:
+           - 9-position grid: corners (0,2,6,8), edges (1,3,5,7), center (4)
+           - Why asymmetric weights: edge/corner patches should only taper
+             toward image interior, not toward image boundary
+           - How get_pos() maps (i,j) grid index to position number
+
+[DOC-02] BGW Contract Comment in recolor()
+  File:    segment/segment.py  →  recolor()
+  Action:  Add comment:
+           # BGW contract: 0=background(black), 1→128=axon(grey),
+           # 2→255=myelin(white). morphometrics.py depends on this mapping.
+           # Update morphometrics/morphometrics.py inRange() values if changed.
+
+[DOC-03] Normalization Decision Comment
+  File:    segment/segment.py  →  segment_image()
+  File:    train/data/data_loader.py  →  load_patches()
+  Action:  After resolving CRIT-01, add comment at the normalization line
+           in both files stating which method is used and why, and
+           referencing the other file to make the contract explicit.
+
+[DOC-04] Dead Code — segment/segment.py
+  File:    segment/segment.py
+  Action:  Resolve three commented-out blocks:
+           1. normalize_patch() function — remove if L2 norm confirmed;
+              restore with explanation if min-max is correct
+           2. cropped_dir save block (cv2.imwrite cropped) — remove if
+              permanently disabled; restore if needed
+           3. cv2.cvtColor BGR conversion — remove, was debugging artifact
+
+[DOC-05] Dead Code — export_roi.ijm
+  File:    batch_axon/overlay/export_roi.ijm
+  Action:  Remove the commented-out single ROI save block (2 lines:
+           roiManager("select", 0) and roiManager("save", outputRoiPath))
+           — superseded by multi-ROI combine logic directly below it.
+
+[DOC-06] get_labels() Threshold Rationale
+  File:    morphometrics/morphometrics.py  →  get_labels()
+  Action:  Add comment on distance > 0.1 * distance.max() line:
+           # Low threshold (0.1) intentional — maximizes seed count to
+           # separate closely packed axons. V3 validated value. See
+           # config.json watershed.distance_threshold to adjust.
+           Add comment on disk(5):
+           # disk(5) provides background marker margin. See
+           # config.json watershed.dilation_disk to adjust.
+
+[DOC-07] G-Ratio Option Labels
+  File:    morphometrics/morphometrics.py  →  get_morphometrics()
+  Action:  Remove "Option 2" and "Option 4" labels — they reference an
+           internal numbering system with no context. Replace with
+           descriptive names:
+             gratio_equiv_diam — area-based equivalent circle diameter ratio
+             gratio_mean_axes  — mean of (major+minor) axis ratio
+             gratio            — average of the two above
+           Update output column names and all downstream references in
+           batch_axon/analyze_nerve.py accordingly.
+
+[DOC-08] myelin_thickness Formula
+  File:    morphometrics/morphometrics.py  →  get_morphometrics()
+  Action:  Add comment on myelin_thickness calculation:
+           # V3 formula: uses fiber equiv diameter and axon major axis.
+           # Note: mixes two different shape measures intentionally — V3
+           # validated. Alternative: (fiber_equiv_diam - axon_equiv_diam)/2
+           # for fully consistent area-based calculation.
+
+[DOC-09] TF 2.10.1 Pin Rationale
+  File:    requirements.txt  and  README.md
+  Action:  Add comment in requirements.txt:
+           # tensorflow==2.10.1  — pinned: last native Windows GPU build
+           # before WSL2 required. DO NOT upgrade without testing.
+           # keras==2.10.0       — must match TF version exactly.
+           Add corresponding note in README.md setup section.
+
+[DOC-10] Pin All Package Versions
+  File:    requirements.txt
+  Action:  Run pip freeze in current working environment and record exact
+           versions for all currently unpinned packages:
+           opencv-python, Pillow, patchify, scikit-image, scipy, numpy,
+           pandas, openpyxl, xlsxwriter, roifile, rich, scikit-learn
+
+[DOC-11] train/train.py Flow Comment
+  File:    train/train.py  →  train_model()
+  Action:  Add top-of-function docstring or comment block describing the
+           full pipeline sequence:
+           # Pipeline: prepare_dataset → preprocess (if needed) →
+           # verify alignment → load patches → augment → build model →
+           # compile → callbacks → fit → summarize → (optionally promote)
+
+[DOC-12] utils/metrics.py smooth Parameter
+  File:    utils/metrics.py  →  dice_coef() and iou_coef()
+  Action:  Add inline comment on smooth=1.0:
+           # smooth=1.0: Laplace smoothing — prevents division by zero
+           # on empty masks. Standard value for medical image segmentation.
+
+[DOC-13] train/models/unet_plus_plus.py filters Parameter
+  File:    train/models/unet_plus_plus.py  →  UNET_PLUS_PLUS()
+  Action:  Add comment on filters=16:
+           # filters=16: lightweight base chosen for 256×256 single-channel
+           # input. Gives 16→32→64→128→256 progression, sufficient capacity
+           # for 3-class axon/myelin segmentation without overfitting small
+           # training sets.
+
+[DOC-14] README.md — Major Additions Needed
+  File:    README.md
+  Action:  Add or expand the following sections:
+           1. BGW color convention (0=background, 128=axon, 255=myelin)
+              and why morphometrics depends on it
+           2. Normalization method used in training vs inference
+              (document after CRIT-01 resolved)
+           3. Expected study directory structure with example tree
+           4. Prerequisites before running batch_axon (segmentation,
+              morphometrics, and CSA overlay tracing must be complete)
+           5. sample_images/ as designated folder for remote collaborator
+              shared images
+           6. First-run Fiji setup — fiji_executable auto-prompted and
+              saved to config.json
+           7. 100X pixel_size_um not yet calibrated — physical units
+              unavailable for 100X until set
+
+[DOC-15] Expected ROI Type for CSA Tracing
+  File:    README.md  and  batch_axon/overlay/process_overlay.py docstring
+  Action:  Document that CSA overlays must be traced as polygon ROIs in
+           Fiji. Point, line, or freehand ROIs will produce incorrect or
+           zero-area results. Add to README user guide and to
+           get_overlay_area() docstring.
+
+================================================================================
+SECTION 8 — NAMING / RENAMING
+================================================================================
+
+[NAME-01] train/models/ → train/architectures/
+  Reason:  Avoids confusion with deepaxon/models/ which holds saved .keras
+           files. These are architecture definitions, not model files.
+  Scope:   Rename directory, update all imports referencing train.models.*
+           across train/train.py, train/__main__.py, train/models/__init__.py
+
+[NAME-02] train/data/ → train/dataset/
+  Reason:  'data' is too generic. 'dataset' better signals training data
+           handling responsibility.
+  Scope:   Rename directory, update all imports referencing train.data.*
+
+[NAME-03] UNET() → build_unet()
+  File:    train/models/unet.py (or train/architectures/unet.py post NAME-01)
+  Reason:  Uppercase function name violates Python convention. build_ prefix
+           makes it clear this is a factory/builder function.
+
+[NAME-04] UNET_PLUS_PLUS() → build_unet_plus_plus()
+  File:    train/models/unet_plus_plus.py
+  Reason:  Same as NAME-03.
+
+[NAME-05] fibre → fiber (or fiber → fibre) — pick one
+  File:    morphometrics/morphometrics.py
+  Reason:  Internal variables use fibre_ (British) but output DataFrame
+           columns use fiber_ (American). Recommend fiber_ throughout for
+           consistency with scientific literature. Update: fibre_mask,
+           fibre_df, fibre_label → fiber_mask, fiber_df, fiber_label
+
+[NAME-06] Formalize Model Naming Convention
+  File:    deepaxon/models/
+  Current: Informal — p_100x_v2r_256.keras
+  Proposed: {cohort}_{mag}_v{version}_{patch_size}_{YYYYMMDD}.keras
+  Example:  p_100x_v2r_256_20251024.keras
+  Action:  Apply to any newly trained models. Backfill dates for existing
+           models using file LastWriteTime as proxy.
+
+================================================================================
+SECTION 9 — GENERAL / MEDIUM PRIORITY
+================================================================================
+
+[GEN-01] 100X Pixel Size Calibration
+  File:    config.json  →  pixel_size_um  →  "100X"
+  Issue:   Currently null — physical unit output unavailable for all 100X
+           images until set.
+  Action:  Calibrate using a stage micrometer at 100X magnification.
+           Set to: {"1440": X.XXX} (post-resize width).
+           Physical unit columns in morphometrics output will then populate.
+
+[GEN-02] augment_dataset_np() Change Detection Overhead
+  File:    train/data/augment.py  →  augment_dataset_np()
+  Action:  Remove np.array_equal comparison on every sample. Always replace
+           aug_images[i] and aug_masks[i] with augmented versions.
+           Augmentation probability already controls how much actually changes.
+           Count augmented samples by tracking how many augment_pair() calls
+           returned changed data using a simpler flag approach if count needed.
+
+[GEN-03] Log File Location Consistency
+  File:    segment/__main__.py, morphometrics/__main__.py,
+           batch_axon/__main__.py
+  Action:  All log files should land in study_dir / "logs" / {filename}.
+           Currently segment and batch_axon use study_dir root,
+           morphometrics uses input_dir. Create logs/ subfolder in all
+           entry points for consistency.
+
+[GEN-04] add_formats() and write_nerve_block() → batch_axon/excel_utils.py
+  (See STR-06 — repeated here for cross-reference)
+
+[GEN-05] DeepAxonLogger — Add log Parameter to setup_gpu_console()
+  (See FEAT-16 cross-reference — GPU events bypass log file)
+
+[GEN-06] Multi-GPU Strategy Consideration
+  File:    utils/gpu.py  →  setup_gpu_console()
+  Action:  Document as a future enhancement: currently enables memory growth
+           on all devices but uses TF default strategy. For multi-GPU training
+           consider adding tf.distribute.MirroredStrategy option.
+
+================================================================================
+END OF TO-DO LIST
+Total items: 74
+  Critical bugs:     8  (CRIT-01 through CRIT-08)
+  High priority:     2  (HIGH-01 through HIGH-02)
+  Medium bugs:      10  (BUG-01 through BUG-10)
+  Import cleanup:   10  (IMP-01 through IMP-10)
+  Structural:       12  (STR-01 through STR-12)
+  Feature improve:  20  (FEAT-01 through FEAT-20)
+  Documentation:    15  (DOC-01 through DOC-15)
+  Naming:            6  (NAME-01 through NAME-06)
+  General:           6  (GEN-01 through GEN-06)
+================================================================================
