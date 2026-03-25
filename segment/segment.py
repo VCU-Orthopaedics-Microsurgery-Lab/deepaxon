@@ -6,9 +6,8 @@ Core segmentation logic for DeepAxon.
 - 50% overlap patching
 - Center crop
 - Weak CLAHE for contrast standardisation (configurable)
-- Per-patch normalisation matching original training pipeline
-- BGW output (Black=background, Grey=axon, White=myelin)
-- Saves cropped image to Cropped\ subfolder
+- Per-patch normalisation matching original training pipeline (keras.utils.normalize, axis=1)
+- BGW output (Black=background, Grey=myelin, White=axon)
 """
 
 from __future__ import annotations
@@ -27,6 +26,10 @@ from utils.helpers import load_config, list_files
 
 
 # ─── Hann window (position-aware) ────────────────────────────────────────────
+# 9-position grid: corners (0,2,6,8), edges (1,3,5,7), center (4)
+# Each position gets an asymmetric taper weight so that edge and corner patches
+# only blend toward the image interior, not toward the image boundary.
+# _hann_fn maps pixel index → weight in [0, 1] using a cosine taper.
 
 def _hann_fn(x):
     return (1 - np.cos(2 * np.pi * x / 255)) / 2
@@ -80,25 +83,17 @@ def hann_window(pos, patch_size=256):
 # ─── Recolor ──────────────────────────────────────────────────────────────────
 
 def recolor(pred):
-    """BGW: 0=black, 1=grey(128), 2=white(255)"""
+    """
+    Map class indices to BGW pixel values.
+
+    BGW contract: 0=background(black), 1→128=myelin(grey), 2→255=axon(white)
+    morphometrics/morphometrics.py inRange() thresholds depend on this mapping.
+    Update both files if class assignments ever change.
+    """
     out = np.zeros(pred.shape, dtype=np.uint8)
     out[pred == 1] = 128
     out[pred == 2] = 255
     return np.stack([out, out, out], axis=-1)
-
-
-# ─── Normalise (per-patch, matching original training pipeline) ───────────────
-
-#def normalize_patch(patch: np.ndarray) -> np.ndarray:
-#    """
-#    Per-patch min-max normalisation to [0, 1].
-#    Matches keras.utils.normalize() behaviour from original code.
-#    """
-#    p_min = patch.min()
-#    p_max = patch.max()
-#    if p_max - p_min > 0:
-#        return (patch - p_min) / (p_max - p_min)
-#    return np.zeros_like(patch, dtype=np.float32)
 
 
 # ─── CLAHE ────────────────────────────────────────────────────────────────────
@@ -143,12 +138,6 @@ def segment_image(img_path, model, patch_size=256, cropped_dir=None, log=None, u
     img_crop = center_crop(img, patch_size)
     crop_h, crop_w = img_crop.shape[:2]
 
-    # Save cropped image if desired
-    # if cropped_dir:
-    #     Path(cropped_dir).mkdir(parents=True, exist_ok=True)
-    #     stem = Path(img_path).stem
-    #     cv2.imwrite(str(Path(cropped_dir) / f"{stem}_cropped.tif"), img_crop)
-
     # CLAHE — applied to full cropped image before patchifying if enabled
     if use_clahe:
         img_to_patch = apply_clahe(img_crop)
@@ -163,13 +152,13 @@ def segment_image(img_path, model, patch_size=256, cropped_dir=None, log=None, u
 
     for i in range(n_rows):
         for j in range(n_cols):
-            
-            patch = patches[i,j,:,:]
-            patch = normalize(patch)
-            patch = np.expand_dims(patch, axis=(0,3))
+            patch = patches[i, j, :, :]
+            # L2 normalisation along axis=1 — matches original DeepAxon training pipeline
+            patch = normalize(patch, axis=1)
+            patch = np.expand_dims(patch, axis=(0, 3))
             pred = model.predict(patch, verbose=0)
             pred = np.argmax(pred, axis=3)
-            pred = pred[0,:,:]
+            pred = pred[0, :, :]
 
             pos = get_pos((n_rows, n_cols), i, j)
             hann = hann_window(pos, patch_size)
@@ -181,7 +170,7 @@ def segment_image(img_path, model, patch_size=256, cropped_dir=None, log=None, u
 
     pred_img = np.round(pred_img).astype(int)
     result = recolor(pred_img)
-    
+
     elapsed = time.time() - t0
     return result, elapsed, crop_w
 
@@ -190,10 +179,11 @@ def segment_image(img_path, model, patch_size=256, cropped_dir=None, log=None, u
 
 def segment_dir(tiff_dir, output_dir, model, mag, log, timing_csv=None):
     config = load_config()
-    patch_size = config.get("patch_size", {}).get(mag, 256)
+    patch_size     = config.get("patch_size", {}).get(mag, 256)
     cropped_folder = config.get("cropped_folder", "Cropped")
+    seg_suffix     = config.get("segmented_suffix", "_segmented")
 
-    tiff_dir = Path(tiff_dir)
+    tiff_dir   = Path(tiff_dir)
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     cropped_dir = tiff_dir.parent / cropped_folder
@@ -204,10 +194,10 @@ def segment_dir(tiff_dir, output_dir, model, mag, log, timing_csv=None):
         return
 
     log.rule(f"SEGMENTING {tiff_dir.name}")
-    clahe_cfg = config.get("clahe", {})
-    clahe_on = clahe_cfg.get("enabled", False)
-    logging_on = config.get("logging", True)
-    timing_on = config.get("timing", True)
+    clahe_cfg  = config.get("clahe", {})
+    clahe_on   = clahe_cfg.get("enabled", False)
+    logging_on = config.get("logging", False)
+    timing_on  = config.get("timing", False)
     log.info(
         f"Found {len(images)} image(s) | patch_size={patch_size}px | "
         f"CLAHE={'ON' if clahe_on else 'OFF'} | "
@@ -229,24 +219,22 @@ def segment_dir(tiff_dir, output_dir, model, mag, log, timing_csv=None):
         log.warn("Resolution mismatch detected:")
         for name, res in resolutions.items():
             log.warn(f"  {name}: {res[0]}x{res[1]}")
-        if input("Continue anyway? [y/N]: ").strip().lower() != 'y':
-            log.warn("Aborted.")
-            return
+        log.warn("Continuing with mismatched resolutions.")
     else:
-        res = list(unique_res)[0] if unique_res else ('?', '?')
-        log.info(f"Original resolution: {res[0]}x{res[1]} px")
+        res    = list(unique_res)[0] if unique_res else ('?', '?')
         crop_w = (1440 // patch_size) * patch_size
         crop_h = (1024 // patch_size) * patch_size
+        log.info(f"Original resolution: {res[0]}x{res[1]} px")
         log.info(f"Center crop: {crop_w}x{crop_h} px")
 
     timing_rows = []
     success = 0
-    failed = 0
+    failed  = 0
 
     for img_path in images:
-        stem = img_path.stem
-        out_path = output_dir / f"{stem}_segmented.tif"
-        res_str = "x".join(str(x) for x in resolutions.get(img_path.name, ('?', '?')))
+        stem     = img_path.stem
+        out_path = output_dir / f"{stem}{seg_suffix}.tif"
+        res_str  = "x".join(str(x) for x in resolutions.get(img_path.name, ('?', '?')))
 
         try:
             mask, elapsed, crop_w = segment_image(
@@ -257,7 +245,6 @@ def segment_dir(tiff_dir, output_dir, model, mag, log, timing_csv=None):
                 use_clahe=clahe_on
             )
             cv2.imwrite(str(out_path), mask)
-            # cv2.imwrite(str(out_path), cv2.cvtColor(mask, cv2.COLOR_RGB2BGR))
             log.success(f"{img_path.name} [{res_str}] -> {elapsed:.1f}s")
             timing_rows.append({
                 'image': img_path.name, 'resolution': res_str,

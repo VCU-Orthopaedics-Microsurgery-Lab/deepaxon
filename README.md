@@ -108,8 +108,8 @@ Segmented images use a fixed 3-class grayscale encoding:
 | Pixel value | Color  | Class      |
 |-------------|--------|------------|
 | 0           | Black  | Background |
-| 128         | Grey   | Axon       |
-| 255         | White  | Myelin     |
+| 128         | Grey   | Myelin     |
+| 255         | White  | Axon       |
 
 **This convention is the contract between `python -m segment` and
 `python -m morphometrics`.** Do not alter output colormap without updating

@@ -7,15 +7,13 @@ resize -> center crop -> save cropped image -> patchify (50% overlap) -> save pa
 
 from __future__ import annotations
 
-import os
-import numpy as np
 import cv2
 from pathlib import Path
 from patchify import patchify
 
 from utils.resize import resize_img
 from utils.console import DeepAxonLogger
-from utils.helpers import load_config
+from utils.helpers import load_config, list_files
 
 
 def center_crop(img, patch_size):
@@ -37,18 +35,23 @@ def process_single_image(
 ):
     """
     Process a single image: resize -> center crop -> save cropped -> patchify (50% overlap) -> save patches.
+
+    Resize interpolation:
+      Images: INTER_LANCZOS4 (via resize_img is_mask=False)
+      Masks:  INTER_NEAREST  (via resize_img is_mask=True) — preserves label values
+
     Returns number of patches saved.
     """
     step = patch_size // 2  # 50% overlap
 
-    img = resize_img(img_path, is_mask=is_mask)
+    img      = resize_img(img_path, is_mask=is_mask)
     img_crop = center_crop(img, patch_size)
     crop_h, crop_w = img_crop.shape[:2]
 
     # Save cropped image
-    stem = Path(img_path).stem
-    Path(cropped_dir).mkdir(parents=True, exist_ok=True)
+    stem     = Path(img_path).stem
     crop_ext = '.tif' if not is_mask else '.png'
+    Path(cropped_dir).mkdir(parents=True, exist_ok=True)
     crop_out = Path(cropped_dir) / f"{stem}_cropped{crop_ext}"
     cv2.imwrite(str(crop_out), img_crop)
 
@@ -60,8 +63,8 @@ def process_single_image(
     count = 0
     for i in range(n_rows):
         for j in range(n_cols):
-            patch = patches[i, j]
-            out_path = Path(patches_dir) / f"{stem}_{i:02d}{j:02d}.png"
+            patch     = patches[i, j]
+            out_path  = Path(patches_dir) / f"{stem}_{i:02d}{j:02d}.png"
             cv2.imwrite(str(out_path), patch)
             count += 1
 
@@ -79,15 +82,23 @@ def batch_process(images_dir, masks_dir, patches_img_dir, patches_mask_dir,
                   cropped_img_dir, cropped_mask_dir, mag, log):
     """
     Process all images and masks.
+    Validates that every image has a corresponding mask before processing.
     Returns (n_img_patches, n_mask_patches).
     """
-    from utils.helpers import list_files
-
-    config = load_config()
+    config     = load_config()
     patch_size = config.get("patch_size", {}).get(mag, 256)
 
     images = list_files(images_dir, extensions=('.tif', '.tiff'))
     masks  = list_files(masks_dir,  extensions=('.tif', '.tiff', '.png'))
+
+    # Validate image/mask pairing before processing
+    img_stems  = {Path(p).stem for p in images}
+    mask_stems = {Path(p).stem for p in masks}
+    missing    = img_stems - mask_stems
+    if missing:
+        raise ValueError(
+            f"Missing masks for {len(missing)} image(s): {sorted(missing)}"
+        )
 
     log.rule("IMAGE PROCESSING")
     log.info(f"Patch size: {patch_size}px | Overlap: 50%")

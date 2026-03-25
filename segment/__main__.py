@@ -1,7 +1,7 @@
 """
 segment/__main__.py
 
-Entry point for: python segment
+Entry point for: python -m segment
 
 Walks a study directory, detects magnification, presents model selection menu,
 segments all nerves. Skips nerves that already have a Segmented folder.
@@ -9,18 +9,18 @@ segments all nerves. Skips nerves that already have a Segmented folder.
 
 import sys
 import os
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' # Suppress TF warnings 0=all, 1=info, 2=warning, 3=error
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['PYTHONDONTWRITEBYTECODE'] = '1'
 from pathlib import Path
 from datetime import datetime
 
+import tensorflow as tf
 from rich.console import Console
 from rich.table import Table
 from rich.box import DOUBLE
 from rich.panel import Panel
 from rich.align import Align
 
-# Ensure repo root is on path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from utils.console import DeepAxonLogger
@@ -28,8 +28,6 @@ from utils.helpers import detect_study_mag, list_models, load_config, resolve_sc
 from utils.gpu import setup_gpu_console
 from utils.metrics import dice_coef, dice_loss, iou_coef, combined_loss
 from segment.segment import segment_dir
-
-import tensorflow as tf
 
 console = Console()
 
@@ -63,6 +61,7 @@ def select_model(models: list) -> Path:
             pass
         console.print(f"[red]Please enter a number between 1 and {len(models)}[/red]")
 
+
 def main():
     console.print(Panel(
         Align.center("[bold white]Automated Axon-Myelin Brightfield Image Segmentation[/bold white]"),
@@ -74,17 +73,22 @@ def main():
     ))
 
     # ── Study folder input ────────────────────────────────────────────────────
-    input_dir = input("\nInput the path to the study, animal, or nerve folder: ").strip().strip('"')
-    if not os.path.isdir(input_dir):
-        console.print(f"[red]Folder not found: {input_dir}[/red]")
-        sys.exit(1)
-        
-    study, study_dir = resolve_scan(input_dir)
+    while True:
+        input_dir = input("\nInput the path to the study, animal, or nerve folder: ").strip().strip('"')
+        if not os.path.isdir(input_dir):
+            console.print(f"[red]✗  Folder not found: {input_dir}[/red]")
+            continue
+        try:
+            study, study_dir = resolve_scan(input_dir)
+            break
+        except ValueError as e:
+            console.print(f"[red]✗  {e}[/red]")
+            continue
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    config = load_config()
-    log_path = str(Path(study_dir) / f"segment_log_{timestamp}.txt") if config.get("logging", True) else None
-    log = DeepAxonLogger(log_path=log_path, program="DeepAxon Segment")
+    config    = load_config()
+    log_path  = str(Path(study_dir) / f"segment_log_{timestamp}.txt") if config.get("logging", False) else None
+    log       = DeepAxonLogger(log_path=log_path, program="DeepAxon Segment")
 
     log.info(f"Study: {study_dir}")
 
@@ -103,7 +107,7 @@ def main():
 
     # Identify already-segmented nerves
     to_process = []
-    to_skip = []
+    to_skip    = []
     for animal, nerves in study.items():
         for nerve, info in nerves.items():
             if info['segmented_dir'] is not None:
@@ -138,10 +142,10 @@ def main():
     log.rule("LOADING MODEL")
 
     custom_objects = {
-        'dice_coef': dice_coef,
-        'dice_loss': dice_loss,
-        'iou_coef': iou_coef,
-        'combined_loss': combined_loss,
+        'dice_coef':    dice_coef,
+        'dice_loss':    dice_loss,
+        'iou_coef':     iou_coef,
+        'combined_loss':combined_loss,
     }
 
     try:
@@ -159,10 +163,10 @@ def main():
     seg_folder = config.get("segmented_folder", "Segmented")
 
     for animal, nerve, info in to_process:
-        tiff_dir = info['tiff_dir']
+        tiff_dir   = info['tiff_dir']
         nerve_path = tiff_dir.parent
         output_dir = nerve_path / seg_folder
-        timing_csv = str(output_dir / "timing.csv") if config.get("timing", True) else None
+        timing_csv = str(output_dir / "timing.csv") if config.get("timing", False) else None
 
         log.rule(f"{animal} / {nerve}")
         segment_dir(
@@ -175,11 +179,11 @@ def main():
         )
 
     log.finalize(summary={
-        "Study": study_dir,
-        "Model": selected_model_path.stem,
-        "Magnification": mag,
-        "Nerves processed": len(to_process),
-        "Nerves skipped": len(to_skip),
+        "Study":             study_dir,
+        "Model":             selected_model_path.stem,
+        "Magnification":     mag,
+        "Nerves processed":  len(to_process),
+        "Nerves skipped":    len(to_skip),
     })
     console.print(f"\n[dim]Log saved to: {log_path}[/dim]")
 
