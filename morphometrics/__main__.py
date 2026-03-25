@@ -26,6 +26,7 @@ from utils.console import DeepAxonLogger
 from utils.helpers import detect_study_mag, load_config, list_files, resolve_scan
 from utils.resize import get_image_resolution
 from morphometrics.morphometrics import get_morphometrics, save_morphometrics
+from morphometrics.distributions import bin_nerve_diameters, save_distributions
 
 console = Console()
 
@@ -129,6 +130,8 @@ def main():
             res = list(unique_res)[0] if unique_res else ('?', '?')
             log.info(f"Image resolution: {res[0]}×{res[1]} px")
 
+        # ── Per-image morphometrics ───────────────────────────────────────────
+        nerve_success = 0
         for img_path in seg_images:
             stem = img_path.stem.replace(seg_suffix, '')
             res  = resolutions.get(img_path.name, ('?', '?'))
@@ -140,11 +143,25 @@ def main():
                     out = save_morphometrics(df, str(morph_dir), stem)
                     log.success(f"  → {len(df)} axons → {Path(out).name}")
                     total_images += 1
+                    nerve_success += 1
                 else:
                     log.warn(f"  → No data extracted for {img_path.name}")
             except Exception as e:
                 log.error(f"  → FAILED: {e}")
                 total_failed += 1
+
+        # ── Distributions — runs per nerve after all images processed ─────────
+        if nerve_success > 0:
+            log.rule(f"DISTRIBUTIONS — {nerve}")
+            try:
+                data = bin_nerve_diameters(morph_dir, nerve_path.name, mag, log)
+                if data is not None:
+                    dist_out = save_distributions(data, str(morph_dir), nerve_path.name)
+                    log.success(f"  → {Path(dist_out).name}")
+                else:
+                    log.warn(f"  → No distribution data for {nerve}")
+            except Exception as e:
+                log.error(f"  → Distribution FAILED: {e}")
 
     log.finalize(summary={
         "Study":            study_dir,

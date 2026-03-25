@@ -17,6 +17,7 @@ from utils.helpers import get_pixel_size, load_config
 from utils.console import DeepAxonLogger
 from utils.resize import TARGET_SIZE
 from batch_axon.overlay.process_overlay import get_overlay_area
+from morphometrics.distributions import bin_nerve_diameters
 
 
 def make_aggregate_df(morph_dir: Path, log: DeepAxonLogger) -> tuple[pd.DataFrame, dict[str, pd.DataFrame]]:
@@ -158,6 +159,7 @@ def get_nerve_data(
 
     # Load all morphometrics — aggregate df and per-file cache
     agg_df, per_file = make_aggregate_df(morph_dir, log)
+    bins_df = bin_nerve_diameters(morph_dir, nerve_dir.name, mag, log)
     if agg_df.empty:
         log.warn(f"No morphometrics data found in {morph_dir}")
         return [], {}
@@ -246,4 +248,4 @@ def get_nerve_data(
     else:
         aggregate['estimated_total_axons'] = None
 
-    return image_rows, aggregate
+    return image_rows, aggregate, bins_df

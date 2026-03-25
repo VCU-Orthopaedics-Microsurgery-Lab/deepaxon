@@ -43,6 +43,9 @@
         "distance_threshold": 0.1,
         "dilation_disk": 5
     },
+    "morphometrics_bins": {
+        "axon_diameter_um": [0, 0.5, 5, 10, 15, 20, 25, 30, 999]
+    },
 
     "_section_training": "── Training ────────────────────────────────────────────────────────────",
     "training": {

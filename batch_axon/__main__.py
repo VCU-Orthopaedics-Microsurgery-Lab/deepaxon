@@ -25,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from utils.console import DeepAxonLogger
 from utils.helpers import detect_study_mag, resolve_scan, load_config
 from batch_axon.analyze_nerve import get_nerve_data
+from morphometrics.distributions import save_distributions
 
 console = Console()
 
@@ -179,7 +180,7 @@ def main():
                     continue
 
                 try:
-                    image_rows, aggregate = get_nerve_data(nerve_path, mag, log)
+                    image_rows, aggregate, bins_df = get_nerve_data(nerve_path, mag, log)
 
                     if not image_rows:
                         log.warn(f"  → No data returned for {nerve_name}")
@@ -191,7 +192,17 @@ def main():
                         nerve_name, animal_name,
                         image_rows, aggregate, formats
                     )
-
+                    
+                    # Save per-nerve binned distribution file
+                    if bins_df is not None and not bins_df.empty:
+                        try:
+                            morph_dir = nerve_path / config.get("morphometrics_folder", "Morphometrics")
+                            dist_out  = save_distributions(bins_df, str(morph_dir), nerve_path.name)
+                            log.success(f"  → Distribution saved: {Path(dist_out).name}")
+                        except Exception as e:
+                            log.error(f"  → Distribution save FAILED: {e}")
+                    
+                
                     log.success(
                         f"  → {nerve_name}: {aggregate.get('total_axons', 0)} axons, "
                         f"{aggregate.get('total_images', 0)} images"
