@@ -22,8 +22,8 @@ def base_label(arr: np.ndarray) -> np.ndarray:
 
     Pixel value → class index:
         0         → 0 (background)
-        127, 128  → 1 (axon / grey)
-        255       → 2 (myelin / white)
+        127, 128  → 1 (myelin / grey)
+        255       → 2 (axon / white)
 
     Args:
         arr: (N, H, W, 1) float32 mask array with raw pixel values
@@ -66,8 +66,9 @@ def load_patches(patches_dir: str, is_mask: bool = False) -> np.ndarray:
     if is_mask:
         arr = base_label(arr)
     else:
-        # Normalize along axis=1 (width) to match original training pipeline.
+        # Normalize along axis=1 (width) to match original training pipeline (v1 train.py).
         # keras.utils.normalize performs L2 normalization per row.
+        # Must stay in sync with segment/segment.py segment_image() normalization.
         # Do NOT change to /= 255.0 — existing models were trained with this method.
         arr = normalize(arr, axis=1)
 

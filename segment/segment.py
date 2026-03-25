@@ -22,7 +22,7 @@ from keras.utils import normalize
 
 from utils.resize import resize_img, get_image_resolution
 from utils.console import DeepAxonLogger
-from utils.helpers import load_config, list_files
+from utils.helpers import load_config, list_files, center_crop
 
 
 # ─── Hann window (position-aware) ────────────────────────────────────────────
@@ -114,17 +114,6 @@ def apply_clahe(img: np.ndarray) -> np.ndarray:
     return clahe.apply(img)
 
 
-# ─── Center crop ──────────────────────────────────────────────────────────────
-
-def center_crop(img, patch_size):
-    h, w = img.shape[:2]
-    crop_h = (h // patch_size) * patch_size
-    crop_w = (w // patch_size) * patch_size
-    start_h = (h - crop_h) // 2
-    start_w = (w - crop_w) // 2
-    return img[start_h:start_h + crop_h, start_w:start_w + crop_w]
-
-
 # ─── Segment single image ─────────────────────────────────────────────────────
 
 def segment_image(img_path, model, patch_size=256, cropped_dir=None, log=None, use_clahe=False):
@@ -153,7 +142,9 @@ def segment_image(img_path, model, patch_size=256, cropped_dir=None, log=None, u
     for i in range(n_rows):
         for j in range(n_cols):
             patch = patches[i, j, :, :]
-            # L2 normalisation along axis=1 — matches original DeepAxon training pipeline
+            # L2 normalisation along axis=1 — matches original DeepAxon training pipeline (v1 train.py).
+            # Must stay in sync with train/data/data_loader.py load_patches() normalization.
+            # Do NOT change without retraining all models.
             patch = normalize(patch, axis=1)
             patch = np.expand_dims(patch, axis=(0, 3))
             pred = model.predict(patch, verbose=0)

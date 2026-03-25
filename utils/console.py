@@ -8,25 +8,21 @@ the run's output directory. All output goes to both console and log file.
 
 from __future__ import annotations
 
+import re
 import os
 from datetime import datetime
 from rich.console import Console
-from rich.panel import Panel
-from rich.table import Table
-from rich import box
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 
 
 class DeepAxonLogger:
     def __init__(self, log_path: str = None, program: str = "DeepAxon"):
-        self.console = Console()
+        self.console  = Console()
         self.log_path = log_path
-        self.program = program
-        self._log_lines = []
+        self.program  = program
 
         if log_path:
             os.makedirs(os.path.dirname(log_path), exist_ok=True)
-            # Write header to log file
             self._write_log_header()
 
     def _write_log_header(self):
@@ -67,47 +63,18 @@ class DeepAxonLogger:
         self.console.rule(f"[bold]{title}[/bold]")
         self._append(f"\n{'─' * 70}  {title}\n")
 
-    def header(self, title: str, subtitle: str = ""):
-        panel = Panel(
-            f"[bold white]{subtitle}[/bold white]" if subtitle else "",
-            title=f"[bold cyan]{title}[/bold cyan]",
-            border_style="cyan",
-            expand=False
-        )
-        self.console.print(panel)
-        self._append(f"\n{'=' * 70}\n{title}\n{subtitle}\n{'=' * 70}\n")
-
-    def panel(self, content: str, title: str = "", style: str = "cyan"):
-        panel = Panel(content, title=title, border_style=style, expand=False)
-        self.console.print(panel)
-        self._append(f"\n[{title}]\n{content}\n")
-
     def print(self, msg: str):
         """Raw print — use for Rich markup that should also go to log."""
         self.console.print(msg)
-        # Strip basic Rich markup for log
-        import re
         plain = re.sub(r'\[.*?\]', '', msg)
         self._append(plain)
-
-    def table(self, table: Table):
-        """Render a Rich Table to console and a plain version to log."""
-        self.console.print(table)
-        # Write plain version to log
-        lines = []
-        for col in table.columns:
-            lines.append(str(col.header))
-        self._append(' | '.join(lines))
-        self._append('-' * 60)
-        for row in table.rows if hasattr(table, 'rows') else []:
-            self._append(str(row))
 
     def log_dict(self, data: dict, title: str = ""):
         """Log a dictionary as aligned key: value pairs."""
         if title:
             self._append(f"\n{title}")
-        lines = []
         max_key = max(len(k) for k in data.keys()) if data else 0
+        lines   = []
         for k, v in data.items():
             line = f"  {k:<{max_key}} : {v}"
             lines.append(line)

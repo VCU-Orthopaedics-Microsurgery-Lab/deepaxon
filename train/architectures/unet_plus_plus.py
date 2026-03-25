@@ -1,5 +1,5 @@
 """
-train/models/unet_plus_plus.py
+train/architectures/unet_plus_plus.py
 
 UNet++ (nested skip connections) — DeepAxon's primary architecture.
 """
@@ -25,7 +25,7 @@ def upsample_concat(x, *skips, filters: int):
     return x
 
 
-def UNET_PLUS_PLUS(
+def build_unet_plus_plus(
     input_shape: tuple = (256, 256, 1),
     n_classes: int = 3,
     filters: int = 16
@@ -33,22 +33,26 @@ def UNET_PLUS_PLUS(
     """
     UNet++ with dense nested skip connections.
     Node notation: x{depth}{column} following Zhou et al. 2018.
+
+    filters=16: lightweight base chosen for 256×256 single-channel input.
+    Gives 16→32→64→128→256 progression — sufficient capacity for 3-class
+    axon/myelin segmentation without overfitting small training sets.
     """
     inputs = layers.Input(shape=input_shape)
     f = filters
 
     # ── Encoder (column 0) ───────────────────────────────────────────────────
     x00 = conv_block(inputs, f * 1)
-    p0 = layers.MaxPooling2D()(x00)
+    p0  = layers.MaxPooling2D()(x00)
 
     x10 = conv_block(p0, f * 2)
-    p1 = layers.MaxPooling2D()(x10)
+    p1  = layers.MaxPooling2D()(x10)
 
     x20 = conv_block(p1, f * 4)
-    p2 = layers.MaxPooling2D()(x20)
+    p2  = layers.MaxPooling2D()(x20)
 
     x30 = conv_block(p2, f * 8)
-    p3 = layers.MaxPooling2D()(x30)
+    p3  = layers.MaxPooling2D()(x30)
 
     x40 = conv_block(p3, f * 16)   # bottleneck
 
@@ -73,21 +77,3 @@ def UNET_PLUS_PLUS(
 
     outputs = layers.Conv2D(n_classes, 1, activation='softmax')(x04)
     return Model(inputs, outputs, name="UNET_PLUS_PLUS")
-
-
-def build_model(
-    model_type: str = 'unet++',
-    input_shape: tuple = (256, 256, 1),
-    n_classes: int = 3,
-    filters: int = 16
-) -> Model:
-    """
-    Factory function. model_type: 'unet' or 'unet++'.
-    """
-    if model_type == 'unet++':
-        return UNET_PLUS_PLUS(input_shape, n_classes, filters)
-    elif model_type == 'unet':
-        from train.models.unet import UNET
-        return UNET(input_shape, n_classes, filters)
-    else:
-        raise ValueError(f"Unknown model_type: {model_type}. Use 'unet' or 'unet++'.")

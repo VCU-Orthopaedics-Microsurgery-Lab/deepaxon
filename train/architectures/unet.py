@@ -1,5 +1,5 @@
 """
-train/models/unet.py
+train/architectures/unet.py
 
 Standard UNet architecture for DeepAxon.
 """
@@ -25,7 +25,13 @@ def exp_block(x, skip, filters: int):
     return x
 
 
-def UNET(input_shape=(256, 256, 1), n_classes: int = 3, filters: int = 16) -> Model:
+def build_unet(input_shape=(256, 256, 1), n_classes: int = 3, filters: int = 16) -> Model:
+    """
+    Standard UNet architecture.
+
+    filters=16: lightweight base for 256×256 single-channel input.
+    Gives 16→32→64→128→256 progression — sufficient for 3-class segmentation.
+    """
     inputs = layers.Input(shape=input_shape)
 
     # Encoder

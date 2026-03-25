@@ -13,16 +13,7 @@ from patchify import patchify
 
 from utils.resize import resize_img
 from utils.console import DeepAxonLogger
-from utils.helpers import load_config, list_files
-
-
-def center_crop(img, patch_size):
-    h, w = img.shape[:2]
-    crop_h = (h // patch_size) * patch_size
-    crop_w = (w // patch_size) * patch_size
-    start_h = (h - crop_h) // 2
-    start_w = (w - crop_w) // 2
-    return img[start_h:start_h + crop_h, start_w:start_w + crop_w]
+from utils.helpers import load_config, list_files, center_crop
 
 
 def process_single_image(

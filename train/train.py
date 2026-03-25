@@ -2,7 +2,7 @@
 train/train.py
 
 Training orchestrator for DeepAxon.
-Imports exclusively from train/data/ and train/models/ — no inline duplicates.
+Imports exclusively from train/dataset/ and train/architectures/ — no inline duplicates.
 """
 
 from __future__ import annotations
@@ -26,10 +26,10 @@ from utils.helpers import (
     count_patches, list_files, load_config
 )
 from utils.metrics import dice_coef, iou_coef, combined_loss
-from train.data.preprocess import batch_process
-from train.data.data_loader import load_all_patches
-from train.data.augment import augment_dataset_np
-from train.models.unet_plus_plus import build_model
+from train.dataset.preprocess import batch_process
+from train.dataset.data_loader import load_all_patches
+from train.dataset.augment import augment_dataset_np
+from train.architectures import build_model
 
 
 # ─── Constants ────────────────────────────────────────────────────────────────

@@ -105,3 +105,49 @@ def get_overlay_area(img_path: str) -> int | None:
     finally:
         if roi_path.exists():
             roi_path.unlink()
+            
+            
+def get_overlay_mask(img_path: str) -> np.ndarray | None:
+    """
+    Returns full binary ROI mask aligned to the CSA image.
+
+    This is used for:
+    - morphometrics masking
+    - Jupyter notebook QC
+    - segmentation filtering
+    """
+    img_path = Path(img_path)
+    roi_path = img_path.with_suffix('.roi')
+
+    if not img_path.exists():
+        print(f"[WARN] CSA overlay not found: {img_path}")
+        return None
+
+    success = run_fiji_export(str(img_path), str(roi_path))
+    if not success:
+        return None
+
+    try:
+        roi = roifile.ImagejRoi.fromfile(str(roi_path))
+
+        with Image.open(str(img_path)) as img:
+            image_width, image_height = img.size
+
+        mask = Image.new('L', (image_width, image_height), 0)
+        draw = ImageDraw.Draw(mask)
+
+        coords = [tuple(map(int, np.round(p))) for p in roi.coordinates()]
+
+        draw.polygon(coords, outline=1, fill=1)
+
+        mask_array = np.array(mask).astype(bool)
+
+        return mask_array
+
+    except Exception as e:
+        print(f"[WARN] Failed to generate ROI mask for {img_path.name}: {e}")
+        return None
+
+    finally:
+        if roi_path.exists():
+            roi_path.unlink()
