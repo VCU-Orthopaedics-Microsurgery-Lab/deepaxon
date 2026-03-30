@@ -25,9 +25,11 @@ import pandas as pd
 import cv2
 from pathlib import Path
 from scipy import ndimage as ndi
-from skimage.measure import label, regionprops_table
+from scipy.spatial import cKDTree
+from skimage.measure import label, regionprops_table, regionprops
 from skimage.morphology import dilation, disk
 from skimage.segmentation import watershed
+
 
 from utils.console import DeepAxonLogger
 from utils.helpers import get_pixel_size, load_config
@@ -35,7 +37,7 @@ from utils.helpers import get_pixel_size, load_config
 
 # ─── Watershed labelling ──────────────────────────────────────────────────────
 
-def get_labels(img: np.ndarray) -> np.ndarray:
+def get_labels_axons(img: np.ndarray) -> np.ndarray:
     """
     Watershed segmentation using V3 threshold-based seeding.
 
@@ -49,7 +51,7 @@ def get_labels(img: np.ndarray) -> np.ndarray:
     """
     config    = load_config()
     wsh_cfg   = config.get("watershed", {})
-    threshold = wsh_cfg.get("distance_threshold", 0.1)
+    threshold = wsh_cfg.get("distance_threshold", 0.17)
     disk_r    = wsh_cfg.get("dilation_disk", 5)
 
     distance     = ndi.distance_transform_edt(img)
@@ -61,6 +63,62 @@ def get_labels(img: np.ndarray) -> np.ndarray:
     del distance, sure_fg_mask, sure_bg_mask, markers
     return segmented
 
+def get_labels_fiber(
+    fiber_mask: np.ndarray,
+    axon_label: np.ndarray,
+) -> np.ndarray:
+    """
+    Watershed segmentation of fiber_mask seeded from axon labels.
+
+    Instead of deriving markers from fiber_mask's own distance transform
+    (which fails when myelin sheaths touch), we transfer one seed per
+    axon region from the already-labelled axon_mask.
+
+    Foreground seeds: distance-transform peak of each axon region,
+      guaranteed to land interior to the corresponding fiber region
+      since axon ⊂ fiber geometrically.
+
+    Background marker: dilation of fiber_mask with disk(5) — same
+      logic as original get_labels().
+    """
+    config    = load_config()
+    wsh_cfg   = config.get("watershed", {})
+    disk_r    = wsh_cfg.get("dilation_disk", 5)
+
+    # ── 1. Extract one seed per axon at its distance-transform peak ──────────
+    # Using distance peak (not centroid) so seed is maximally interior —
+    # centroid can fall outside non-convex shapes
+    axon_distance = ndi.distance_transform_edt(axon_label > 0)
+    markers       = np.zeros_like(fiber_mask, dtype=int)
+
+    for region in regionprops(axon_label):
+        region_dist = np.where(axon_label == region.label, axon_distance, 0)
+        peak        = np.unravel_index(np.argmax(region_dist), region_dist.shape)
+        markers[peak] = region.label
+
+    # ── 2. Snap any seeds that fall outside fiber_mask to nearest fg pixel ───
+    # Shouldn't happen (axon ⊂ fiber) but guards against mask misalignment
+    lost = (markers > 0) & (fiber_mask == 0)
+    if np.any(lost):
+        fg_coords   = np.array(np.where(fiber_mask > 0)).T
+        lost_coords = np.array(np.where(lost)).T
+        tree        = cKDTree(fg_coords)
+        for coord in lost_coords:
+            _, idx  = tree.query(coord)
+            nearest = tuple(fg_coords[idx])
+            markers[nearest]     = markers[tuple(coord)]
+            markers[tuple(coord)] = 0
+
+    # ── 3. Background marker — same as original get_labels() ─────────────────
+    sure_bg              = dilation(fiber_mask, disk(disk_r))
+    markers[sure_bg == 0] = markers.max() + 1
+
+    # ── 4. Watershed on fiber_mask ────────────────────────────────────────────
+    fiber_distance = ndi.distance_transform_edt(fiber_mask)
+    segmented      = watershed(-fiber_distance, markers, mask=fiber_mask)
+
+    del axon_distance, fiber_distance, sure_bg, markers
+    return segmented
 
 # ─── Matching helpers ─────────────────────────────────────────────────────────
 
@@ -115,8 +173,8 @@ def get_morphometrics(
         return pd.DataFrame()
 
     # Watershed both masks using V3 get_labels
-    axon_label  = get_labels(axon_mask.astype(bool))
-    fiber_label = get_labels(fiber_mask.astype(bool))
+    axon_label  = get_labels_axons(axon_mask.astype(bool))
+    fiber_label = get_labels_fiber(fiber_mask.astype(bool), axon_label)
 
     # regionprops_table on full label arrays — memory efficient
     axon_props = regionprops_table(axon_label, properties=(

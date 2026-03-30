@@ -40,7 +40,7 @@
 
     "_section_morphometrics": "── Morphometrics ───────────────────────────────────────────────────────",
     "watershed": {
-        "distance_threshold": 0.1,
+        "distance_threshold": 0.17,
         "dilation_disk": 5
     },
     "morphometrics_bins": {

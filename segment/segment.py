@@ -126,6 +126,8 @@ def segment_image(img_path, model, patch_size=256, cropped_dir=None, log=None, u
     # Center crop
     img_crop = center_crop(img, patch_size)
     crop_h, crop_w = img_crop.shape[:2]
+    
+    #SAVE (OVERWRITE ORIGINAL) img_crop saved at img_path
 
     # CLAHE — applied to full cropped image before patchifying if enabled
     if use_clahe:
