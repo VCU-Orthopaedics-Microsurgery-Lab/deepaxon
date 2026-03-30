@@ -22,7 +22,7 @@ import numpy as np
 from pathlib import Path
 
 from utils.helpers import load_config
-from utils.console import DeepAxonLogger
+from utils.logger import DeepAxonLogger
 
 
 def bin_nerve_diameters(

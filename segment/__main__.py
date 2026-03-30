@@ -23,10 +23,10 @@ from rich.align import Align
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from utils.console import DeepAxonLogger
+from utils.logger import DeepAxonLogger
 from utils.helpers import detect_study_mag, list_models, load_config, resolve_scan
 from utils.gpu import setup_gpu_console
-from utils.metrics import dice_coef, dice_loss, iou_coef, combined_loss
+from utils.metrics import dice_coef, dice_coef_axon, dice_coef_myelin, dice_loss, iou_coef, combined_loss
 from segment.segment import segment_dir
 
 console = Console()
@@ -87,7 +87,9 @@ def main():
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     config    = load_config()
-    log_path  = str(Path(study_dir) / f"segment_log_{timestamp}.txt") if config.get("logging", False) else None
+    logging_cfg = config.get("logging", {})
+    logging_on  = logging_cfg.get("segment", False) if isinstance(logging_cfg, dict) else bool(logging_cfg)
+    log_path    = str(Path(study_dir) / f"segment_log_{timestamp}.txt") if logging_on else None
     log       = DeepAxonLogger(log_path=log_path, program="DeepAxon Segment")
 
     log.info(f"Study: {study_dir}")
@@ -142,10 +144,12 @@ def main():
     log.rule("LOADING MODEL")
 
     custom_objects = {
-        'dice_coef':    dice_coef,
-        'dice_loss':    dice_loss,
-        'iou_coef':     iou_coef,
-        'combined_loss':combined_loss,
+        'dice_coef':        dice_coef,
+        'dice_coef_axon':   dice_coef_axon,
+        'dice_coef_myelin': dice_coef_myelin,
+        'dice_loss':        dice_loss,
+        'iou_coef':         iou_coef,
+        'combined_loss':    combined_loss,
     }
 
     try:
@@ -170,13 +174,14 @@ def main():
 
         log.rule(f"{animal} / {nerve}")
         segment_dir(
-            tiff_dir=str(tiff_dir),
-            output_dir=str(output_dir),
-            model=model,
-            mag=mag,
-            log=log,
-            timing_csv=timing_csv
-        )
+        tiff_dir=str(tiff_dir),
+        output_dir=str(output_dir),
+        model=model,
+        model_path=selected_model_path,
+        mag=mag,
+        log=log,
+        timing_csv=timing_csv
+    )
 
     log.finalize(summary={
         "Study":             study_dir,

@@ -20,12 +20,12 @@ from rich.panel import Panel
 from rich.console import Console
 from rich import box
 
-from utils.console import DeepAxonLogger
+from utils.logger import DeepAxonLogger
 from utils.helpers import (
     get_model_dir, compute_aug_prob,
     count_patches, list_files, load_config
 )
-from utils.metrics import dice_coef, iou_coef, combined_loss
+from utils.metrics import dice_coef, dice_coef_axon, dice_coef_myelin, iou_coef, combined_loss
 from train.dataset.preprocess import batch_process
 from train.dataset.data_loader import load_all_patches
 from train.dataset.augment import augment_dataset_np
@@ -64,17 +64,22 @@ class TrainingLogger(Callback):
             'epoch':    epoch + 1,
             'loss':     logs.get('loss',          float('nan')),
             'dice':     logs.get('dice_coef',     float('nan')),
+            'dice_axon':     logs.get('dice_coef_axon',     float('nan')),
+            'dice_myelin':   logs.get('dice_coef_myelin',   float('nan')),
             'iou':      logs.get('iou_coef',      float('nan')),
             'val_loss': logs.get('val_loss',       float('nan')),
             'val_dice': logs.get('val_dice_coef', float('nan')),
+            'val_dice_axon': logs.get('val_dice_coef_axon',  float('nan')),
+            'val_dice_myel': logs.get('val_dice_coef_myelin',float('nan')),
             'val_iou':  logs.get('val_iou_coef',  float('nan')),
             'lr':       logs.get('lr',             float('nan')),
         }
         self.epoch_rows.append(row)
         self.log.print(
             f"  Ep {row['epoch']:>4} | "
-            f"loss {row['loss']:.4f} dice {row['dice']:.4f} iou {row['iou']:.4f} | "
-            f"val_loss {row['val_loss']:.4f} val_dice {row['val_dice']:.4f} | "
+            f"loss {row['loss']:.4f} | "
+            f"dice {row['dice']:.4f} axon {row['dice_axon']:.4f} myel {row['dice_myelin']:.4f} | "
+            f"val_dice {row['val_dice']:.4f} val_axon {row['val_dice_axon']:.4f} | "
             f"lr {row['lr']:.2e}"
         )
 
@@ -281,7 +286,7 @@ def train_model(
     model.compile(
         optimizer=Adam(learning_rate=LEARNING_RATE),
         loss=combined_loss,
-        metrics=[dice_coef, iou_coef]
+        metrics=[dice_coef, dice_coef_axon, dice_coef_myelin, iou_coef]
     )
     log.success(f"Model built: {model.count_params():,} parameters")
 

@@ -357,3 +357,15 @@ def compute_aug_prob(n_patches: int) -> float:
     elif n_patches < 300:
         return 0.35
     return 0.25
+
+def get_git_commit() -> str:
+    """Return current git commit hash for model provenance tracking."""
+    try:
+        import subprocess
+        result = subprocess.run(
+            ['git', 'rev-parse', '--short', 'HEAD'],
+            capture_output=True, text=True
+        )
+        return result.stdout.strip()
+    except Exception:
+        return 'unknown'

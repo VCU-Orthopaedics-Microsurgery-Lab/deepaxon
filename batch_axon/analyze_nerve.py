@@ -14,7 +14,7 @@ import pandas as pd
 from pathlib import Path
 
 from utils.helpers import get_pixel_size, load_config
-from utils.console import DeepAxonLogger
+from utils.logger import DeepAxonLogger
 from utils.resize import TARGET_SIZE
 from batch_axon.overlay.process_overlay import get_overlay_area
 from morphometrics.distributions import bin_nerve_diameters

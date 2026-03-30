@@ -21,7 +21,7 @@ from patchify import patchify
 from keras.utils import normalize
 
 from utils.resize import resize_img, get_image_resolution
-from utils.console import DeepAxonLogger
+from utils.logger import DeepAxonLogger
 from utils.helpers import load_config, list_files, center_crop
 
 

@@ -8,6 +8,7 @@ Algorithm matches V3 exactly:
   - Full V3 column set including equiv diameters, deformation, minor axes
   - Myelin-first matching loop with g_ratio < 1 filter
   - Duplicate assignments removed
+  - Quality filters applied from config.json quality_filters block
 
 BGW color scheme:
   - Black (0)   = background
@@ -30,8 +31,7 @@ from skimage.measure import label, regionprops_table, regionprops
 from skimage.morphology import dilation, disk
 from skimage.segmentation import watershed
 
-
-from utils.console import DeepAxonLogger
+from utils.logger import DeepAxonLogger
 from utils.helpers import get_pixel_size, load_config
 
 
@@ -63,6 +63,7 @@ def get_labels_axons(img: np.ndarray) -> np.ndarray:
     del distance, sure_fg_mask, sure_bg_mask, markers
     return segmented
 
+
 def get_labels_fiber(
     fiber_mask: np.ndarray,
     axon_label: np.ndarray,
@@ -81,13 +82,11 @@ def get_labels_fiber(
     Background marker: dilation of fiber_mask with disk(5) — same
       logic as original get_labels().
     """
-    config    = load_config()
-    wsh_cfg   = config.get("watershed", {})
-    disk_r    = wsh_cfg.get("dilation_disk", 5)
+    config  = load_config()
+    wsh_cfg = config.get("watershed", {})
+    disk_r  = wsh_cfg.get("dilation_disk", 5)
 
     # ── 1. Extract one seed per axon at its distance-transform peak ──────────
-    # Using distance peak (not centroid) so seed is maximally interior —
-    # centroid can fall outside non-convex shapes
     axon_distance = ndi.distance_transform_edt(axon_label > 0)
     markers       = np.zeros_like(fiber_mask, dtype=int)
 
@@ -97,7 +96,6 @@ def get_labels_fiber(
         markers[peak] = region.label
 
     # ── 2. Snap any seeds that fall outside fiber_mask to nearest fg pixel ───
-    # Shouldn't happen (axon ⊂ fiber) but guards against mask misalignment
     lost = (markers > 0) & (fiber_mask == 0)
     if np.any(lost):
         fg_coords   = np.array(np.where(fiber_mask > 0)).T
@@ -106,11 +104,11 @@ def get_labels_fiber(
         for coord in lost_coords:
             _, idx  = tree.query(coord)
             nearest = tuple(fg_coords[idx])
-            markers[nearest]     = markers[tuple(coord)]
+            markers[nearest]      = markers[tuple(coord)]
             markers[tuple(coord)] = 0
 
-    # ── 3. Background marker — same as original get_labels() ─────────────────
-    sure_bg              = dilation(fiber_mask, disk(disk_r))
+    # ── 3. Background marker ──────────────────────────────────────────────────
+    sure_bg               = dilation(fiber_mask, disk(disk_r))
     markers[sure_bg == 0] = markers.max() + 1
 
     # ── 4. Watershed on fiber_mask ────────────────────────────────────────────
@@ -119,6 +117,7 @@ def get_labels_fiber(
 
     del axon_distance, fiber_distance, sure_bg, markers
     return segmented
+
 
 # ─── Matching helpers ─────────────────────────────────────────────────────────
 
@@ -151,16 +150,40 @@ def get_morphometrics(
 
     Returns:
         DataFrame of per-axon measurements, or None on failure.
+
+    Quality filters applied from config.json quality_filters block:
+        min/max axon area, solidity, eccentricity, myelin thickness,
+        g-ratio range, min/max fiber area.
+        All filters require physical units — skipped if px_size uncalibrated.
+        G-ratio range filter always applied (dimensionless).
     """
     img = cv2.imread(seg_path, cv2.IMREAD_GRAYSCALE)
     if img is None:
         log.error(f"Could not read: {seg_path}")
         return None
 
-    h, w = img.shape
+    h, w    = img.shape
     px_size = get_pixel_size(mag, w)
+    config  = load_config()
+
     if px_size is None:
         log.warn(f"No pixel size for {mag} at width {w}px — outputting pixel units only")
+
+    # ── Quality filter thresholds ─────────────────────────────────────────────
+    # All configurable via config.json quality_filters block.
+    # Physical unit filters only applied when px_size is available.
+    # G-ratio filters always applied (dimensionless).
+    qf = config.get("quality_filters", {})
+
+    min_axon_area_um2      = qf.get("min_axon_area_um2",      1.0)
+    max_axon_area_um2      = qf.get("max_axon_area_um2",      500.0)
+    min_axon_solidity      = qf.get("min_axon_solidity",      0.7)
+    max_axon_eccentricity  = qf.get("max_axon_eccentricity",  0.95)
+    min_myelin_thick_um    = qf.get("min_myelin_thickness_um", 0.3)
+    gratio_min             = qf.get("gratio_min",             0.2)
+    gratio_max             = qf.get("gratio_max",             0.9)
+    min_fiber_area_um2     = qf.get("min_fiber_area_um2",     2.0)
+    max_fiber_area_um2     = qf.get("max_fiber_area_um2",     800.0)
 
     # ── Extract masks from BGW image ─────────────────────────────────────────
     # BGW contract: white(255)=axon, grey(128)=myelin
@@ -172,11 +195,10 @@ def get_morphometrics(
         log.warn(f"No axons detected in {Path(seg_path).name}")
         return pd.DataFrame()
 
-    # Watershed both masks using V3 get_labels
+    # Watershed both masks
     axon_label  = get_labels_axons(axon_mask.astype(bool))
     fiber_label = get_labels_fiber(fiber_mask.astype(bool), axon_label)
 
-    # regionprops_table on full label arrays — memory efficient
     axon_props = regionprops_table(axon_label, properties=(
         'label', 'centroid', 'area',
         'axis_minor_length', 'axis_major_length',
@@ -198,9 +220,10 @@ def get_morphometrics(
         log.warn(f"No regions found in {Path(seg_path).name}")
         return pd.DataFrame()
 
-    # ── Myelin-first matching loop (V3 active loop) ───────────────────────────
-    rows = []
-    assigned_axon_labels = set()  # Tracks matched axons — prevents one axon being assigned to multiple fibers
+    # ── Myelin-first matching loop ────────────────────────────────────────────
+    rows                 = []
+    assigned_axon_labels = set()
+    n_filtered           = 0  # track how many pairs were filtered
 
     for _, row in fiber_df.iterrows():
         left   = row['bbox-0']
@@ -212,13 +235,12 @@ def get_morphometrics(
         if axon_row.empty:
             continue
 
-        # Skip if this axon has already been matched to a different fiber
         axon_label_id = int(axon_row['label'].iloc[0])
         if axon_label_id in assigned_axon_labels:
             continue
         assigned_axon_labels.add(axon_label_id)
 
-        # ── Axon morphology ───────────────────────────────────────────────
+        # ── Axon morphology ───────────────────────────────────────────────────
         axon_area         = float(axon_row['area'].iloc[0])
         axon_perimeter    = float(axon_row['perimeter'].iloc[0])
         axon_major        = float(axon_row['axis_major_length'].iloc[0])
@@ -229,11 +251,10 @@ def get_morphometrics(
         x                 = float(axon_row['centroid-0'].iloc[0])
         y                 = float(axon_row['centroid-1'].iloc[0])
 
-        # Area-based equivalent circle diameter (V3)
         axon_equiv_diam  = np.sqrt(4 * axon_area / np.pi)
         axon_deformation = axon_major / axon_equiv_diam if axon_equiv_diam > 0 else np.nan
 
-        # ── Fiber / Myelin morphology ─────────────────────────────────────
+        # ── Fiber / Myelin morphology ─────────────────────────────────────────
         fiber_area         = float(row['area'])
         fiber_major        = float(row['axis_major_length'])
         fiber_minor        = float(row['axis_minor_length'])
@@ -243,33 +264,57 @@ def get_morphometrics(
 
         fiber_equiv_diam  = np.sqrt(fiber_area / np.pi) * 2
         fiber_deformation = fiber_major / fiber_minor if fiber_minor > 0 else np.nan
+        myelin_area       = fiber_area - axon_area
+        myelin_thickness  = (fiber_equiv_diam - axon_major) / 2
 
-        myelin_area      = fiber_area - axon_area
-
-        # V3 formula: uses fiber equiv diameter and axon major axis.
-        # Intentional mix of shape measures — V3 validated.
-        # Alternative: (fiber_equiv_diam - axon_equiv_diam) / 2 for
-        # fully area-based calculation.
-        myelin_thickness = (fiber_equiv_diam - axon_major) / 2
-
-        # ── Derived: three g-ratio measures ──────────────────────────────
-        # gratio_area: equiv circle diam ratio (area-based)
+        # ── G-ratios ──────────────────────────────────────────────────────────
         gratio_area = axon_equiv_diam / fiber_equiv_diam if fiber_equiv_diam > 0 else np.nan
-
-        # gratio_axes: mean of major+minor axes ratio
         axon_mean_axis  = (axon_major + axon_minor) / 2
         fiber_mean_axis = (fiber_major + fiber_minor) / 2
         gratio_axes     = axon_mean_axis / fiber_mean_axis if fiber_mean_axis > 0 else np.nan
 
-        # gratio: average of both — primary output column
         if np.isnan(gratio_area) or np.isnan(gratio_axes):
             continue
         gratio = (gratio_area + gratio_axes) / 2
 
-        # Filter: discard if ANY gratio is outside (0, 1) — physically impossible
+        # ── Quality filters ───────────────────────────────────────────────────
+        # Applied before appending — all configurable via config.json.
+        # Biologically justified: excludes measurements inconsistent with
+        # myelinated axon morphology. Applied consistently to all images.
+
+        # G-ratio range — always applied (dimensionless, no px_size needed)
         if not (0 < gratio_area < 1 and 0 < gratio_axes < 1 and 0 < gratio < 1):
+            n_filtered += 1
+            continue
+        if not (gratio_min < gratio < gratio_max):
+            n_filtered += 1
             continue
 
+        # Shape filters — always applied (dimensionless)
+        if axon_solidity < min_axon_solidity:
+            n_filtered += 1
+            continue
+        if axon_eccentricity > max_axon_eccentricity:
+            n_filtered += 1
+            continue
+
+        # Physical unit filters — only applied when px_size is calibrated
+        if px_size is not None:
+            axon_area_um2   = axon_area   * px_size ** 2
+            fiber_area_um2  = fiber_area  * px_size ** 2
+            myelin_thick_um = myelin_thickness * px_size
+
+            if not (min_axon_area_um2 <= axon_area_um2 <= max_axon_area_um2):
+                n_filtered += 1
+                continue
+            if not (min_fiber_area_um2 <= fiber_area_um2 <= max_fiber_area_um2):
+                n_filtered += 1
+                continue
+            if myelin_thick_um < min_myelin_thick_um:
+                n_filtered += 1
+                continue
+
+        # ── Build output row ──────────────────────────────────────────────────
         new_row = {
             # Identification
             'label': int(row['label']),
@@ -300,12 +345,12 @@ def get_morphometrics(
             'fiber_orientation':  round(fiber_orientation, 4),
 
             # G-ratios
-            'gratio_area': round(gratio_area, 4),  # equiv circle diam / equiv circle diam
-            'gratio_axes': round(gratio_axes, 4),  # mean(axon axes) / mean(fiber axes)
-            'gratio':      round(gratio, 4),        # average of gratio_area and gratio_axes
+            'gratio_area': round(gratio_area, 4),
+            'gratio_axes': round(gratio_axes, 4),
+            'gratio':      round(gratio, 4),
         }
 
-        # Physical units — only appended if pixel size is calibrated for this mag
+        # Physical units — only when px_size calibrated
         if px_size is not None:
             new_row['axon_area_um2']       = round(axon_area        * px_size ** 2, 3)
             new_row['myelin_area_um2']     = round(myelin_area      * px_size ** 2, 3)
@@ -326,6 +371,9 @@ def get_morphometrics(
     if not rows:
         log.warn(f"No valid axon-fiber pairs in {Path(seg_path).name}")
         return pd.DataFrame()
+
+    if n_filtered > 0:
+        log.info(f"  Quality filters removed {n_filtered} axon-fiber pair(s)")
 
     df = pd.DataFrame(rows)
     df.insert(0, 'image', Path(seg_path).stem)

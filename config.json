@@ -46,6 +46,17 @@
     "morphometrics_bins": {
         "axon_diameter_um": [0, 0.5, 5, 10, 15, 20, 25, 30, 999]
     },
+    "quality_filters": {
+        "min_axon_area_um2": 1.0,
+        "max_axon_area_um2": 500.0,
+        "min_axon_solidity": 0.7,
+        "max_axon_eccentricity": 0.95,
+        "min_myelin_thickness_um": 0.3,
+        "gratio_min": 0.2,
+        "gratio_max": 0.9,
+        "min_fiber_area_um2": 2.0,
+        "max_fiber_area_um2": 800.0
+    },
 
     "_section_training": "── Training ────────────────────────────────────────────────────────────",
     "training": {
@@ -66,6 +77,11 @@
     },
 
     "_section_pipeline": "── Pipeline behaviour ──────────────────────────────────────────────────",
-    "logging": false,
+    "logging": {
+        "segment":       false,
+        "morphometrics": false,
+        "batch_axon":    false,
+        "train":         true
+    },
     "timing": false
 }

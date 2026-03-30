@@ -22,7 +22,7 @@ from rich.align import Align
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from utils.console import DeepAxonLogger
+from utils.logger import DeepAxonLogger
 from utils.helpers import detect_study_mag, resolve_scan, load_config
 from batch_axon.analyze_nerve import get_nerve_data
 from morphometrics.distributions import save_distributions
@@ -139,7 +139,9 @@ def main():
     study_name = study_path.name
     timestamp  = datetime.now().strftime("%Y%m%d_%H%M%S")
     config     = load_config()
-    log_path   = str(study_path / f"batch_axon_log_{timestamp}.txt") if config.get("logging", False) else None
+    logging_cfg = config.get("logging", {})
+    logging_on  = logging_cfg.get("batch_axon", False) if isinstance(logging_cfg, dict) else bool(logging_cfg)
+    log_path    = str(study_path / f"batch_axon_log_{timestamp}.txt") if logging_on else None
     log        = DeepAxonLogger(log_path=log_path, program="DeepAxon Batch Axon")
 
     log.info(f"Study: {study_dir}")
@@ -194,7 +196,7 @@ def main():
                     )
                     
                     # Save per-nerve binned distribution file
-                    if bins_df is not None and not bins_df.empty:
+                    if bins_df is not None:
                         try:
                             morph_dir = nerve_path / config.get("morphometrics_folder", "Morphometrics")
                             dist_out  = save_distributions(bins_df, str(morph_dir), nerve_path.name)

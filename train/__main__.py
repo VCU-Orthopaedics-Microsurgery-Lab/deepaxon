@@ -21,7 +21,7 @@ from rich.align import Align
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from utils.console import DeepAxonLogger
+from utils.logger import DeepAxonLogger
 from utils.gpu import setup_gpu_console
 from utils.helpers import (
     get_int_input, get_float_input, get_yes_no,
@@ -144,8 +144,9 @@ def main():
     )
 
     # ── Log setup ─────────────────────────────────────────────────────────────
+    # Training always logs — config logging.train flag reserved for future verbosity control
     log_path = str(log_dir / f"{model_name}_training_log.txt")
-    log = DeepAxonLogger(log_path=log_path, program="DeepAxon Train")
+    log      = DeepAxonLogger(log_path=log_path, program="DeepAxon Train")
 
     patch_size = patch_cfg.get(mag, 256)
 

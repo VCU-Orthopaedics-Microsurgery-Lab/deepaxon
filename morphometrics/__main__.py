@@ -22,7 +22,7 @@ from rich.align import Align
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from utils.console import DeepAxonLogger
+from utils.logger import DeepAxonLogger
 from utils.helpers import detect_study_mag, load_config, list_files, resolve_scan
 from utils.resize import get_image_resolution
 from morphometrics.morphometrics import get_morphometrics, save_morphometrics
@@ -56,7 +56,9 @@ def main():
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     config    = load_config()
-    log_path  = str(Path(study_dir) / f"morphometrics_log_{timestamp}.txt") if config.get("logging", False) else None
+    logging_cfg = config.get("logging", {})
+    logging_on  = logging_cfg.get("morphometrics", False) if isinstance(logging_cfg, dict) else bool(logging_cfg)
+    log_path    = str(Path(study_dir) / f"morphometrics_log_{timestamp}.txt") if logging_on else None
     log       = DeepAxonLogger(log_path=log_path, program="DeepAxon Morphometrics")
 
     log.info(f"Study: {study_dir}")
