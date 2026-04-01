@@ -9,7 +9,6 @@ from __future__ import annotations
 import numpy as np
 import cv2
 from pathlib import Path
-from keras.utils import normalize
 from sklearn.model_selection import train_test_split
 
 from utils.helpers import list_files
@@ -70,7 +69,10 @@ def load_patches(patches_dir: str, is_mask: bool = False) -> np.ndarray:
         # keras.utils.normalize performs L2 normalization per row.
         # Must stay in sync with segment/segment.py segment_image() normalization.
         # Do NOT change to /= 255.0 — existing models were trained with this method.
-        arr = normalize(arr, axis=1)
+        norms = np.linalg.norm(arr, axis=1, keepdims=True)
+        norms = np.where(norms == 0, 1, norms)  # avoid division by zero
+        arr = arr / norms
+
 
     return arr
 

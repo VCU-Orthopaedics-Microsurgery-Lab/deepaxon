@@ -108,8 +108,8 @@ def augment_dataset_np(
 
     for i in range(len(images)):
         aug_img, aug_mask    = augment_pair(images[i], masks[i], prob)
-        aug_images[i]        = aug_img
-        aug_masks[i]         = aug_mask
+        aug_images[i]        = aug_img[...,np.newaxis] if aug_img.ndim == 2 else aug_img
+        aug_masks[i]         = aug_mask[...,np.newaxis] if aug_mask.ndim == 2 else aug_mask
         count               += 1
 
     return aug_images, aug_masks, count

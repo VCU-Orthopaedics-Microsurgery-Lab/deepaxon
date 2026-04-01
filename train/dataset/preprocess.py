@@ -12,7 +12,6 @@ from pathlib import Path
 from patchify import patchify
 
 from utils.resize import resize_img
-from utils.logger import DeepAxonLogger
 from utils.helpers import load_config, list_files, center_crop
 
 

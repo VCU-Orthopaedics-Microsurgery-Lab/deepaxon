@@ -18,7 +18,7 @@ import numpy as np
 import cv2
 from pathlib import Path
 from patchify import patchify
-from keras.utils import normalize
+import torch
 
 from utils.resize import resize_img, get_image_resolution
 from utils.logger import DeepAxonLogger
@@ -147,11 +147,16 @@ def segment_image(img_path, model, patch_size=256, cropped_dir=None, log=None, u
             # L2 normalisation along axis=1 — matches original DeepAxon training pipeline (v1 train.py).
             # Must stay in sync with train/data/data_loader.py load_patches() normalization.
             # Do NOT change without retraining all models.
-            patch = normalize(patch, axis=1)
-            patch = np.expand_dims(patch, axis=(0, 3))
-            pred = model.predict(patch, verbose=0)
-            pred = np.argmax(pred, axis=3)
-            pred = pred[0, :, :]
+            norms = np.linalg.norm(patch, axis=1, keepdims=True)
+            norms = np.where(norms == 0, 1, norms)  # avoid division by zero
+            patch = patch / norms
+            patch = torch.from_numpy(patch).float().unsqueeze(0).unsqueeze(0)  # (1, 1, H, W)
+            patch = patch.to(next(model.parameters()).device)
+            model.eval()
+            with torch.no_grad():
+                pred = model(patch)                     # (1, 3, H, W) logits
+            pred = pred.argmax(dim=1).squeeze(0)        # (H, W)
+            pred = pred.cpu().numpy()
 
             pos = get_pos((n_rows, n_cols), i, j)
             hann = hann_window(pos, patch_size)

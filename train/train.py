@@ -12,9 +12,7 @@ import numpy as np
 from pathlib import Path
 from datetime import datetime
 
-from keras.callbacks import ReduceLROnPlateau, EarlyStopping, Callback, ModelCheckpoint
-from keras.optimizers import Adam
-from keras.utils import to_categorical
+
 from rich.table import Table
 from rich.panel import Panel
 from rich.console import Console
@@ -25,11 +23,14 @@ from utils.helpers import (
     get_model_dir, compute_aug_prob,
     count_patches, list_files, load_config
 )
-from utils.metrics import dice_coef, dice_coef_axon, dice_coef_myelin, iou_coef, combined_loss
 from train.dataset.preprocess import batch_process
 from train.dataset.data_loader import load_all_patches
 from train.dataset.augment import augment_dataset_np
-from train.architectures import build_model
+
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader, TensorDataset
+import segmentation_models_pytorch as smp
 
 
 # ─── Constants ────────────────────────────────────────────────────────────────
@@ -42,10 +43,16 @@ REDUCE_LR_MIN_LR     = _train_cfg.get("reduce_lr_min_lr",    1e-6)
 EARLY_STOP_PATIENCE  = _train_cfg.get("early_stop_patience",  40)
 EARLY_STOP_MIN_DELTA = _train_cfg.get("early_stop_min_delta", 0.001)
 
+dice_loss = smp.losses.DiceLoss(mode="multiclass")
+ce_loss   = smp.losses.SoftCrossEntropyLoss(smooth_factor=0.1)
+
+def loss_fn(pred, target):
+    return 0.5 * dice_loss(pred, target) + 0.5 * ce_loss(pred, target)
+
 
 # ─── Training logger callback ─────────────────────────────────────────────────
 
-class TrainingLogger(Callback):
+class TrainingLogger():
     """
     Keras callback that logs per-epoch metrics to DeepAxonLogger
     and builds a summary table at the end of training.
@@ -124,7 +131,7 @@ def prepare_dataset(images_dir: str, mag: str, log: DeepAxonLogger) -> dict:
     Verify and prepare the dataset structure.
     Returns paths dict used by train_model().
     """
-    images_dir = Path(images_dir).resolve()
+    images_dir = Path(images_dir).resolve() / "images"
     masks_dir  = images_dir.parent / "masks"
 
     cropped_img  = images_dir / "cropped"
@@ -242,16 +249,8 @@ def train_model(
     )
     log.info(f"Train: {len(X_train)} patches | Val: {len(X_val)} patches | Classes: 3")
 
-    # ── One-hot encode masks ──────────────────────────────────────────────────
-    # Masks from load_all_patches() are class indices (0/1/2).
-    # to_categorical() converts to one-hot (N, H, W, 3) for softmax training.
-    # Matches the original DeepAxon v1 training pipeline.
-    Y_train = to_categorical(Y_train, num_classes=3).reshape(
-        Y_train.shape[0], Y_train.shape[1], Y_train.shape[2], 3
-    ).astype(np.float32)
-    Y_val = to_categorical(Y_val, num_classes=3).reshape(
-        Y_val.shape[0], Y_val.shape[1], Y_val.shape[2], 3
-    ).astype(np.float32)
+    Y_train = Y_train.astype(np.int64)
+    Y_val   = Y_val.astype(np.int64)
 
     # ── Augmentation ──────────────────────────────────────────────────────────
     aug_count = 0
@@ -282,52 +281,143 @@ def train_model(
 
     # ── Build and compile model ───────────────────────────────────────────────
     log.rule("BUILDING MODEL")
-    model = build_model(model_type=model_type, input_shape=(256, 256, 1), n_classes=3)
-    model.compile(
-        optimizer=Adam(learning_rate=LEARNING_RATE),
-        loss=combined_loss,
-        metrics=[dice_coef, dice_coef_axon, dice_coef_myelin, iou_coef]
-    )
-    log.success(f"Model built: {model.count_params():,} parameters")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # ── Callbacks ─────────────────────────────────────────────────────────────
+    model = smp.UnetPlusPlus(
+        encoder_name="resnet34",
+        encoder_weights="imagenet",
+        in_channels=1,
+        classes=3,
+        activation=None,  # raw logits; loss handles softmax
+    )
+    model = model.to(device)
+
+    optimizer  = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    scheduler  = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, mode='min', factor=REDUCE_LR_FACTOR,
+        patience=REDUCE_LR_PATIENCE, min_lr=REDUCE_LR_MIN_LR
+    )
+
+    n_params = sum(p.numel() for p in model.parameters())
+    log.success(f"Model built: {n_params:,} parameters")
+
+    # ── DataLoaders ───────────────────────────────────────────────────────────────
+    # PyTorch expects (N, C, H, W) — add channel dim and convert to tensors
+    X_train_t = torch.from_numpy(X_train.transpose(0, 3, 1, 2)).float()  # (N,1,H,W)
+    X_val_t   = torch.from_numpy(X_val.transpose(0, 3, 1, 2)).float()
+    Y_train_t = torch.from_numpy(Y_train.squeeze(-1)).long()                          # (N,H,W)
+    Y_val_t   = torch.from_numpy(Y_val.squeeze(-1)).long()
+
+    train_loader = DataLoader(TensorDataset(X_train_t, Y_train_t), batch_size=batch_size, shuffle=True)
+    val_loader   = DataLoader(TensorDataset(X_val_t,   Y_val_t),   batch_size=batch_size, shuffle=False)
+
+    # ── Callbacks setup ───────────────────────────────────────────────────────────
     model_dir  = get_model_dir(images_dir)
     model_dir.mkdir(parents=True, exist_ok=True)
-    model_path = model_dir / f"{model_name}.keras"
+    model_path = model_dir / f"{model_name}.pt"
 
-    callbacks = [
-        TrainingLogger(log, use_aug, aug_prob),
-        ReduceLROnPlateau(
-            monitor='val_loss', factor=REDUCE_LR_FACTOR,
-            patience=REDUCE_LR_PATIENCE, min_delta=EARLY_STOP_MIN_DELTA,
-            min_lr=REDUCE_LR_MIN_LR, verbose=1
-        ),
-        EarlyStopping(
-            monitor='val_loss', patience=EARLY_STOP_PATIENCE,
-            min_delta=EARLY_STOP_MIN_DELTA, restore_best_weights=True, verbose=1
-        ),
-        ModelCheckpoint(
-            str(model_path), monitor='val_loss',
-            save_best_only=True, verbose=0
-        ),
-    ]
+    best_val_loss   = float('inf')
+    epochs_no_improve = 0
+    training_logger = TrainingLogger(log, use_aug, aug_prob)
+    history         = {'loss': [], 'val_loss': [], 'dice_coef': [], 'val_dice_coef': [],
+                    'iou_coef': [], 'val_iou_coef': [], 'lr': []}
 
-    # ── Training ──────────────────────────────────────────────────────────────
+    # ── Training loop ─────────────────────────────────────────────────────────────
     log.rule("TRAINING")
-    history = model.fit(
-        X_train, Y_train,
-        validation_data=(X_val, Y_val),
-        epochs=epochs,
-        batch_size=batch_size,
-        callbacks=callbacks,
-        verbose=0  # Handled by TrainingLogger
-    )
+    for epoch in range(epochs):
+        # — Train —
+        model.train()
+        train_loss = 0.0
+        train_tp, train_fp, train_fn, train_tn = [], [], [], []
+        for xb, yb in train_loader:
+            xb, yb = xb.to(device), yb.to(device)
+            optimizer.zero_grad()
+            preds = model(xb)
+            loss  = loss_fn(preds, yb)
+            loss.backward()
+            optimizer.step()
+            train_loss += loss.item() * len(xb)
+            tp, fp, fn, tn = smp.metrics.get_stats(preds.argmax(dim=1), yb, mode="multiclass", num_classes=3)
+            train_tp.append(tp); train_fp.append(fp); train_fn.append(fn); train_tn.append(tn)
+
+        train_tp = torch.cat(train_tp)
+        train_fp = torch.cat(train_fp)
+        train_fn = torch.cat(train_fn)
+        train_tn = torch.cat(train_tn)
+
+        # — Validate —
+        model.eval()
+        val_loss = 0.0
+        val_tp, val_fp, val_fn, val_tn = [], [], [], []
+        with torch.no_grad():
+            for xb, yb in val_loader:
+                xb, yb = xb.to(device), yb.to(device)
+                preds  = model(xb)
+                val_loss += loss_fn(preds, yb).item() * len(xb)
+                tp, fp, fn, tn = smp.metrics.get_stats(preds.argmax(dim=1), yb, mode="multiclass", num_classes=3)
+                val_tp.append(tp); val_fp.append(fp); val_fn.append(fn); val_tn.append(tn)
+            
+        val_tp = torch.cat(val_tp)
+        val_fp = torch.cat(val_fp)
+        val_fn = torch.cat(val_fn)
+        val_tn = torch.cat(val_tn)
+
+        # — Aggregate metrics —
+        train_loss /= len(X_train_t)
+        val_loss   /= len(X_val_t)
+        train_dice  = smp.metrics.f1_score( train_tp, train_fp, train_fn, train_tn, reduction="macro").item()
+        val_dice    = smp.metrics.f1_score( val_tp,   val_fp,   val_fn,   val_tn,   reduction="macro").item()
+        train_iou   = smp.metrics.iou_score(train_tp, train_fp, train_fn, train_tn, reduction="macro").item()
+        val_iou     = smp.metrics.iou_score(val_tp,   val_fp,   val_fn,   val_tn,   reduction="macro").item()
+        current_lr  = optimizer.param_groups[0]['lr']
+
+        # — Per-class dice (axon=1, myelin=2) —
+        train_dice_axon  = smp.metrics.f1_score(train_tp, train_fp, train_fn, train_tn, reduction="none")[:, 1].mean().item()
+        train_dice_myel  = smp.metrics.f1_score(train_tp, train_fp, train_fn, train_tn, reduction="none")[:, 2].mean().item()
+        val_dice_axon    = smp.metrics.f1_score(val_tp,   val_fp,   val_fn,   val_tn,   reduction="none")[:, 1].mean().item()
+        val_dice_myel    = smp.metrics.f1_score(val_tp,   val_fp,   val_fn,   val_tn,   reduction="none")[:, 2].mean().item()
+
+        # — Log history —
+        history['loss'].append(train_loss);         history['val_loss'].append(val_loss)
+        history['dice_coef'].append(train_dice);    history['val_dice_coef'].append(val_dice)
+        history['iou_coef'].append(train_iou);      history['val_iou_coef'].append(val_iou)
+        history['lr'].append(current_lr)
+
+        # — TrainingLogger —
+        training_logger.on_epoch_end(epoch, {
+            'loss': train_loss, 'val_loss': val_loss,
+            'dice_coef': train_dice, 'val_dice_coef': val_dice,
+            'dice_coef_axon': train_dice_axon, 'dice_coef_myelin': train_dice_myel,
+            'val_dice_coef_axon': val_dice_axon, 'val_dice_coef_myelin': val_dice_myel,
+            'iou_coef': train_iou, 'val_iou_coef': val_iou,
+            'lr': current_lr,
+        })
+
+        # — ReduceLROnPlateau —
+        scheduler.step(val_loss)
+
+        # — ModelCheckpoint —
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            torch.save(model.state_dict(), str(model_path))
+            epochs_no_improve = 0
+        else:
+            epochs_no_improve += 1
+
+        # — EarlyStopping —
+        if epochs_no_improve >= EARLY_STOP_PATIENCE:
+            log.info(f"Early stopping at epoch {epoch + 1}")
+            break
+
+    # Load best weights before summary
+    model.load_state_dict(torch.load(str(model_path), map_location=device))
+    training_logger.on_train_end()
 
     # ── Final summary ─────────────────────────────────────────────────────────
     t_elapsed   = datetime.now() - t_start
     elapsed_str = f"{int(t_elapsed.total_seconds() // 60)}m {int(t_elapsed.total_seconds() % 60)}s"
 
-    final    = history.history
+    final    = history
     n_epochs = len(final['loss'])
     total_patches_processed = n_epochs * len(X_train)
 
