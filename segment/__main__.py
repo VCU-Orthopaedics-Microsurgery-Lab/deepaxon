@@ -14,7 +14,6 @@ os.environ['PYTHONDONTWRITEBYTECODE'] = '1'
 from pathlib import Path
 from datetime import datetime
 
-import tensorflow as tf
 from rich.console import Console
 from rich.table import Table
 from rich.box import DOUBLE
@@ -26,8 +25,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from utils.logger import DeepAxonLogger
 from utils.helpers import detect_study_mag, list_models, load_config, resolve_scan
 from utils.gpu import setup_gpu_console
-from utils.metrics import dice_coef, dice_coef_axon, dice_coef_myelin, dice_loss, iou_coef, combined_loss
 from segment.segment import segment_dir
+
+import torch
+import segmentation_models_pytorch as smp
 
 console = Console()
 
@@ -143,21 +144,20 @@ def main():
     # ── Load model ────────────────────────────────────────────────────────────
     log.rule("LOADING MODEL")
 
-    custom_objects = {
-        'dice_coef':        dice_coef,
-        'dice_coef_axon':   dice_coef_axon,
-        'dice_coef_myelin': dice_coef_myelin,
-        'dice_loss':        dice_loss,
-        'iou_coef':         iou_coef,
-        'combined_loss':    combined_loss,
-    }
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     try:
-        model = tf.keras.models.load_model(
-            str(selected_model_path),
-            custom_objects=custom_objects,
-            compile=False
+        model = smp.UnetPlusPlus(
+            encoder_name="resnet34",
+            encoder_weights=None,
+            in_channels=1,
+            classes=3,
+            activation=None,
         )
+        model.load_state_dict(torch.load(str(selected_model_path), map_location=device))
+        model.to(device)
+        model.eval()
+
         log.success(f"Model loaded: {selected_model_path.stem}")
     except Exception as e:
         log.error(f"Failed to load model: {e}")
