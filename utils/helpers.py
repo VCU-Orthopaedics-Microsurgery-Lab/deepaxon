@@ -257,7 +257,7 @@ def list_models(models_dir: str = None) -> list[Path]:
         models_dir = Path(__file__).resolve().parent.parent / "models"
     else:
         models_dir = Path(models_dir)
-    return sorted(models_dir.glob("*.keras"))
+    return sorted(models_dir.glob("*.pt"))
 
 
 def list_files(directory: str, extensions: tuple = ('.tif', '.tiff', '.png')) -> list[Path]:

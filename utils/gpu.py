@@ -6,15 +6,15 @@ Called once at startup by train/__main__.py.
 """
 
 import os
-from rich.console import Console
 from rich.panel import Panel
 from rich.box import DOUBLE
 from rich.text import Text
+from utils.logger import console
 
-console = Console()
+import torch
 
 
-def setup_gpu_console(use_gpu: bool = None) -> bool:
+def setup_gpu_console() -> bool:
     """
     Configure PyTorch GPU and return whether GPU is active.
 
@@ -24,7 +24,6 @@ def setup_gpu_console(use_gpu: bool = None) -> bool:
     Returns:
         True if GPU is enabled, False if CPU only.
     """
-    import torch
 
     if not torch.cuda.is_available():
         t = Text(justify="center")
@@ -41,32 +40,17 @@ def setup_gpu_console(use_gpu: bool = None) -> bool:
 
     num_gpus = torch.cuda.device_count()
 
-    if use_gpu is None:
-        raw = input(f"GPU detected ({num_gpus} device(s)). Use GPU acceleration? [Y/n]: ").strip().lower()
-        use_gpu = raw not in ('n', 'no')
-
-    if use_gpu:
-        gpu_names = [torch.cuda.get_device_name(i) for i in range(num_gpus)]
-        t = Text(justify="center")
-        t.append("GPU acceleration ENABLED\n", style="green")
-        t.append(f"Device(s): {', '.join(gpu_names)}\n")
-        t.append(f"CUDA version: {torch.version.cuda}")
-        console.print(Panel(
-            t,
-            title="[bold green]Device[/bold green]",
-            border_style="green",
-            box=DOUBLE,
-            expand=True
-        ))
-        return True
-    else:
-        os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
-        t = Text("Running on CPU only (user selected).", justify="center")
-        console.print(Panel(
-            t,
-            title="[bold cyan]Device[/bold cyan]",
-            border_style="cyan",
-            box=DOUBLE,
-            expand=True
-        ))
-        return False
+    
+    gpu_names = [torch.cuda.get_device_name(i) for i in range(num_gpus)]
+    t = Text(justify="center")
+    t.append("GPU acceleration ENABLED\n", style="green")
+    t.append(f"Device(s): {', '.join(gpu_names)}\n")
+    t.append(f"CUDA version: {torch.version.cuda}")
+    console.print(Panel(
+        t,
+        title="[bold green]Device[/bold green]",
+        border_style="green",
+        box=DOUBLE,
+        expand=True
+    ))
+    return True
