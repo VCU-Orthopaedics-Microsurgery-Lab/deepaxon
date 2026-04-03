@@ -22,7 +22,7 @@ import torch
 
 from utils.resize import resize_img, get_image_resolution
 from utils.logger import DeepAxonLogger
-from utils.helpers import load_config, list_files, center_crop
+from utils.helpers import load_config, list_files, center_crop, get_hann_compatible_step
 
 
 # ─── Hann window (position-aware) ────────────────────────────────────────────
@@ -118,7 +118,7 @@ def apply_clahe(img: np.ndarray) -> np.ndarray:
 
 def segment_image(img_path, model, patch_size=256, cropped_dir=None, log=None, use_clahe=False):
     t0 = time.time()
-    step = patch_size // 2  # 50% overlap
+    step = get_hann_compatible_step(patch_size)  # 50% overlap
 
     # Resize
     img = resize_img(img_path, is_mask=False)
@@ -180,6 +180,8 @@ def segment_dir(tiff_dir, output_dir, model, mag, log, timing_csv=None):
     patch_size     = config.get("patch_size", {}).get(mag, 256)
     cropped_folder = config.get("cropped_folder", "Cropped")
     seg_suffix     = config.get("segmented_suffix", "_segmented")
+    step        = get_hann_compatible_step(patch_size)
+    overlap_pct = 100 - int(step / patch_size * 100)
 
     tiff_dir   = Path(tiff_dir)
     output_dir = Path(output_dir)
@@ -198,6 +200,7 @@ def segment_dir(tiff_dir, output_dir, model, mag, log, timing_csv=None):
     timing_on  = config.get("timing", False)
     log.info(
         f"Found {len(images)} image(s) | patch_size={patch_size}px | "
+        f"Overlap: {overlap_pct}% | Step: {step}px | "
         f"CLAHE={'ON' if clahe_on else 'OFF'} | "
         f"Logging={'ON' if logging_on else 'OFF'} | "
         f"Timing={'ON' if timing_on else 'OFF'}"

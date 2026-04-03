@@ -507,3 +507,13 @@ def get_git_commit() -> str:
         return result.stdout.strip()
     except Exception:
         return 'unknown'
+    
+    
+def get_hann_compatible_step(patch_size: int) -> int:
+    """
+    Return the patch step size compatible with Hann window blending.
+    50% overlap (step = patch_size // 2) is required — the 9-position
+    Hann grid in segment.py assumes each pixel is covered by exactly
+    4 patches. Changing this breaks the blending math.
+    """
+    return patch_size // 2

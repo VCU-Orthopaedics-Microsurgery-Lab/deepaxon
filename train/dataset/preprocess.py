@@ -12,7 +12,7 @@ from pathlib import Path
 from patchify import patchify
 
 from utils.resize import resize_img
-from utils.helpers import load_config, list_files, center_crop
+from utils.helpers import load_config, list_files, center_crop, get_hann_compatible_step
 
 
 def process_single_image(
@@ -32,7 +32,7 @@ def process_single_image(
 
     Returns number of patches saved.
     """
-    step = patch_size // 2  # 50% overlap
+    step = get_hann_compatible_step(patch_size)  # 50% overlap
 
     img      = resize_img(img_path, is_mask=is_mask)
     img_crop = center_crop(img, patch_size)
@@ -77,6 +77,8 @@ def batch_process(images_dir, masks_dir, patches_img_dir, patches_mask_dir,
     """
     config     = load_config()
     patch_size = config.get("patch_size", {}).get(mag, 256)
+    step = get_hann_compatible_step(patch_size)  # 50% overlap
+    overlap_pct = 100 - int(step / patch_size * 100)
 
     images = list_files(images_dir, extensions=('.tif', '.tiff', '.png'))
     masks  = list_files(masks_dir,  extensions=('.tif', '.tiff', '.png'))
@@ -91,7 +93,7 @@ def batch_process(images_dir, masks_dir, patches_img_dir, patches_mask_dir,
         )
 
     log.rule("IMAGE PREPROCESSING")
-    log.info(f"Patch size: {patch_size}px | Overlap: 50% | Interpolation: INTER_LANCZOS4 (image quality)" )
+    log.info(f"Patch size: {patch_size}px | Interpolation: INTER_LANCZOS4 (image quality)" )
     total_img = 0
     for img_path in images:
         total_img += process_single_image(
@@ -100,7 +102,7 @@ def batch_process(images_dir, masks_dir, patches_img_dir, patches_mask_dir,
         )
 
     log.rule("MASK PREPROCESSING")
-    log.info(f"Patch size: {patch_size}px | Overlap: 50% | Interpolation: INTER_NEAREST (preserves label values 0/128/255)" )
+    log.info(f"Patch size: {patch_size}px | Interpolation: INTER_NEAREST (preserves label values 0/128/255)" )
     total_mask = 0
     for mask_path in masks:
         total_mask += process_single_image(
@@ -114,7 +116,7 @@ def batch_process(images_dir, masks_dir, patches_img_dir, patches_mask_dir,
     log.info(f"Total masks processed  : {len(masks)}")
     log.info(f"Total patches created  : {total_img} image | {total_mask} mask")
     log.info(f"Patches per image      : {total_img // len(images) if images else 0}")
-    log.info(f"Patch size             : {patch_size}px | Overlap: {overlap} | Step: {patch_size // 2}px")
+    log.info(f"Patch size             : {patch_size}px | Overlap: {overlap_pct}% | Step: {step}px")
     log.info(f"Output (images)        : {patches_img_dir}")
     log.info(f"Output (masks)         : {patches_mask_dir}")
 

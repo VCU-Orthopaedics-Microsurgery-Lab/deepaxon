@@ -8,6 +8,7 @@ the run's output directory. All output goes to both console and log file.
 Log format:
     ======================================================================
     DEEPAXON SEGMENT LOG
+    DeepAxon v5.0.0 (v5_pytorch)
     ======================================================================
     Start time : 2026-04-01 14:32:11
     Git commit : 7560233
@@ -34,6 +35,7 @@ from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 
 from utils.helpers import get_git_commit
+from utils.version import __version__, __codename__
 
 
 class DeepAxonLogger:
@@ -70,6 +72,7 @@ class DeepAxonLogger:
         lines = [
             f"{'=' * 72}",
             f"{self.program} LOG",
+            f"DeepAxon v{__version__} ({__codename__})",
             f"{'=' * 72}",
             f"Start time : {self._t_start.strftime('%Y-%m-%d %H:%M:%S')}",
             f"Git commit : {git_commit}",
