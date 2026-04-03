@@ -1,0 +1,367 @@
+================================================================================
+DEEPAXON v5 — TO-DO LIST v3
+Updated: 2026-04-03
+Previous sessions: Full codebase audit (Session 1), Bug fixing + refactor (Session 2)
+This session: PyTorch migration, logger overhaul, augmentation refactor,
+              batch size calculator redesign, early stopping redesign,
+              overlap handling, version system (Session 3)
+================================================================================
+
+Priority legend:
+  🔴  Critical   — bug or verification required before results can be trusted
+  🟠  High       — significant issue or planned breaking change
+  🟡  Medium     — improvement, cleanup, or minor bug
+  📄  Docs       — documentation or commenting task
+  ✅  Resolved   — completed this or previous session
+
+================================================================================
+SECTION 1 — CRITICAL (remaining)
+================================================================================
+
+[CRIT-02] BGW Color Mapping — Verification Required
+  File:    morphometrics/morphometrics.py  →  get_morphometrics()
+  Status:  Docstrings and comments corrected. axon_mask = cv2.inRange(img, 200, 255)
+           confirmed correct (white=axon). Needs real-world verification pass
+           against actual segmented images to confirm results are anatomically correct.
+  Action:  Run morphometrics on a known sample, visually confirm axon count
+           and g-ratio values are physiologically plausible.
+
+[CRIT-08] ROI Coordinate Space — Verification Required
+  File:    batch_axon/overlay/export_roi.ijm
+  File:    batch_axon/overlay/process_overlay.py
+  Status:  Not yet verified.
+  Action:  Confirm what resolution CSA overlay .tif files are saved at by Fiji.
+           Ensure image opened in get_overlay_area() matches the coordinate
+           space the macro exports. Add comment documenting confirmed assumption.
+
+================================================================================
+SECTION 2 — HIGH PRIORITY (remaining)
+================================================================================
+
+[HIGH-01] Python 3.14/3.15 Migration
+  Status:  Not started — planned for future. Now on PyTorch (v5) — TF dependency
+           removed from training pipeline. segment.py still uses PyTorch for
+           inference. batch_axon and morphometrics have no ML dependencies.
+  Action:  Full dependency audit required when migration begins. All unpinned
+           packages need re-testing against new environment.
+
+[HIGH-03] Dataset Split — Phenotype Balance
+  File:    train/dataset/data_loader.py  →  load_all_patches()
+  Issue:   Val/test split is currently random — no guarantee of 50% regen /
+           50% control in the validation set. With a small dataset this can
+           produce unbalanced validation metrics that don't reflect real
+           model performance across phenotypes.
+  Action:  Implement stratified split by image filename prefix (e.g. 'P' for
+           pig/regen vs no prefix for control). Ensure val set always contains
+           equal representation of both phenotypes.
+
+[HIGH-04] Mask Annotation Protocol — Document
+  Issue:   No formal guidance on how many masks to annotate for first training
+           runs. Directly tied to batch size math and phenotype balance.
+  Recommendations (0.2 val split, 63 patches/image, target bs=128):
+    Minimum viable : 10 regen + 10 control = 20 total
+                     → 16 train images → 1008 patches → bs=128 at 88% ✅
+    Good           : 12 regen + 12 control = 24 total
+                     → 20 train images → 1260 patches → bs=128 at 97% ✅
+    Paper quality  : 18 regen + 18 control = 36 total
+                     → 29 train images → 1827 patches → bs=128 at 27% ❌
+                     → 32 train images → 2016 patches → bs=128 perfect ✅
+  Priority annotation order:
+    1. Regen images first (more morphological diversity)
+    2. Different nerve types within each phenotype
+    3. Different animals within each phenotype
+  Action:  Add annotation guidance to README.md under a new Training section.
+
+================================================================================
+SECTION 3 — RESOLVED THIS SESSION (Session 3)
+================================================================================
+
+✅ PyTorch migration — full TF → PyTorch rewrite of training pipeline.
+   smp.UnetPlusPlus, smp.losses, smp.metrics, manual training loop.
+   Training confirmed running on A100.
+
+✅ Logger overhaul — renamed console.py → logger.py. Per-line timestamps,
+   _ts(), _append(), _append_raw(). write_section() with grep-able markers.
+   finalize() computes elapsed time. context dict in header.
+
+✅ Version system — utils/version.py created. __version__ = "5.0.0",
+   __codename__ = "v5_pytorch". Imported in logger.py, shown in every log header.
+
+✅ Log header / training setup split — header (what user configured) vs
+   training setup (what model actually trained on). No duplication.
+
+✅ Augmentation refactor — geometric_prob / photometric_prob split.
+   augment_pair() returns applied list. augment_dataset_np() returns
+   (images, masks, n_augmented, aug_counts). Config nested into
+   augmentation.probabilities and augmentation.parameters.
+
+✅ Augmentation log — shows n_augmented/total, geo_prob, photo_prob,
+   per-transform counts split into Geometric and Photometric lines.
+
+✅ Early stopping — changed from val_loss to combined axon+myelin dice.
+   Primary trigger: combined > best_combined + EARLY_STOP_MIN_DELTA.
+   Tiebreaker: same combined but val_loss improves — updates checkpoint,
+   does NOT reset patience counter.
+   checkpoint_flag: '' | ' ← CHECKPOINT' | ' ← CHECKPOINT (loss tiebreak)'
+
+✅ Checkpoint summary — on_train_end() writes CHECKPOINT SUMMARY section
+   to log: best epoch, axon dice, myelin dice, val loss, filename.
+   Replaces redundant epoch metrics table.
+
+✅ TrainingLogger — renamed on_epoch_end() → log_epoch(checkpoint_flag).
+   Epoch line includes checkpoint flag inline. Rich table removed.
+
+✅ Loss constants — DICE_WEIGHT, CE_WEIGHT, CE_SMOOTH from config.
+   Loss function log line derived from constants, not hardcoded.
+   Config: training.dice_weight, training.ce_weight, training.ce_smooth.
+
+✅ Single global config load — _config = load_config() at module level
+   in train.py. GEO_PROB, PHOTO_PROB, all training constants derived once.
+
+✅ aug_prob fully removed — probabilities now in config. Removed from
+   train_model() signature, TrainingLogger, __main__.py, helpers.py.
+
+✅ Batch size calculator — full redesign.
+   VRAM-based GPU detection (_get_gpu_batch_candidates()) — works for any
+   GPU without name matching. Three-zone logic:
+     ≥ 75% full  → acceptable
+     25–75% full → excluded
+     < 25% full  → trim (drop remainder, present as perfect fit option)
+   Interactive menu with device info, ideal batch sizes, all options shown.
+   Custom entry with recalculation and zone classification.
+   val_fraction prompted before batch size — n_train_patches estimated
+   correctly using val split. compute_batch_options() returns structured dict.
+
+✅ Config additions — gpu_batch_candidates, cpu_batch_candidates,
+   min_last_batch_fullness (0.75), danger_last_batch_fullness (0.25)
+   all inside training block.
+
+✅ Overlap handling — get_hann_compatible_step(patch_size) added to
+   utils/helpers.py. Used in preprocess.py and segment.py.
+   Overlap derived from step in logs — not hardcoded percentage.
+   IMAGE PREPROCESSING and MASK PREPROCESSING lines show overlap and step.
+   PREPROCESSING SUMMARY shows patch_size, overlap_pct, step.
+   segment_dir() logs overlap and step.
+
+✅ Preprocessing summary — added after mask loop in batch_process().
+   Shows total images, masks, patches, patches per image, patch size,
+   overlap, step, output directories.
+
+✅ prepare_dataset() — .png added to mask extensions (fixes warning for
+   PNG masks not matching TIF images).
+
+✅ OpenCV warning suppression — cv2.setLogLevel(3) added in preprocess.py
+   and segment.py. Suppresses Olympus proprietary TIFF tag warnings.
+
+✅ morphometrics_bins floor — changed from 0 to 0.5 in config.json.
+
+✅ EarlyStopping log description — "— triggered on axon+myelin dice"
+   added to training setup dict.
+
+✅ model_path — renamed from {model_name}_best.pt to {model_name}.pt.
+
+✅ Prompt order — val_fraction now prompted before batch size in __main__.py.
+   Order: GPU → images folder → magnification → model name → epochs →
+   val fraction → augmentation → batch size menu → log setup → run.
+
+================================================================================
+SECTION 4 — REMAINING MEDIUM PRIORITY
+================================================================================
+
+[STR-02] Extract conv_block() to train/architectures/blocks.py
+  File:    train/architectures/unet.py
+  File:    train/architectures/unet_plus_plus.py
+  Issue:   conv_block() is identically defined in both architecture files.
+  Action:  Create train/architectures/blocks.py containing conv_block().
+           Import from there in both unet.py and unet_plus_plus.py.
+
+[STR-05] Extract select_model() to utils/helpers.py
+  File:    segment/__main__.py  →  select_model()
+  Issue:   Generic interactive selection pattern reusable elsewhere.
+  Action:  Move to utils/helpers.py as select_from_list(items, prompt, display_fn).
+           Update segment/__main__.py to call from utils.
+
+[STR-06] Extract Excel helpers to batch_axon/excel_utils.py
+  File:    batch_axon/__main__.py  →  add_formats(), write_nerve_block()
+  Action:  Create batch_axon/excel_utils.py. Import in __main__.py.
+
+[STR-09] Add evaluate/ module
+  Issue:   No formal evaluation pipeline. No way to test a model against
+           held-out data and report metrics.
+  Action:  Create evaluate/ module with __main__.py that accepts a model path
+           and test image/mask directory, runs inference, computes per-class
+           dice and IoU, saves results to .xlsx or .csv.
+
+[STR-10] Add models/model_registry.json
+  Action:  Create deepaxon/models/model_registry.json with entry per .pt file:
+           file, magnification, dataset, version, patch_size, trained date,
+           val_dice, best_axon_dice, best_myelin_dice, notes.
+
+[STR-11] Archive rb_40x_v1_256.keras
+  Action:  Move to deepaxon/models/archive/ — oldest model, superseded by v2.
+
+================================================================================
+SECTION 5 — REMAINING FEATURES
+================================================================================
+
+[FEAT-07] Configurable Loss Weights — already in config
+  File:    train/train.py
+  Status:  DICE_WEIGHT, CE_WEIGHT, CE_SMOOTH already read from config.
+           combined_loss() in utils/metrics.py still hardcodes 0.5/0.5.
+           Only relevant if combined_loss() is still used for inference
+           model loading. Training uses loss_fn() in train.py which is
+           already config-driven. Low priority.
+
+[FEAT-10] Configurable Patch Overlap — intentionally NOT in config
+  Status:  Decided against — Hann window math requires exactly 50% overlap.
+           get_hann_compatible_step() in helpers.py is the single source
+           of truth. Overlap derived from step in all logs. ✅ Closed.
+
+[FEAT-14] Pass patch_size to export_roi.ijm as Argument
+  File:    batch_axon/overlay/process_overlay.py
+  File:    batch_axon/overlay/export_roi.ijm
+  Action:  Update command_args to include patch_size as third argument.
+           Parse args[2] in macro. Currently hardcoded as 256.
+
+[FEAT-15] Surface Fiji stderr on Failure
+  File:    batch_axon/overlay/process_overlay.py  →  run_fiji_export()
+  Action:  On CalledProcessError, add:
+             stderr_msg = e.stderr.decode(errors='replace')
+             print(f"[ERROR] Fiji stderr: {stderr_msg}")
+
+[FEAT-16] Add Logger Parameter to process_overlay.py
+  File:    batch_axon/overlay/process_overlay.py
+  Action:  Add log: DeepAxonLogger = None parameter to run_fiji_export()
+           and get_overlay_area(). Use log.warn()/log.error() when provided,
+           fall back to print() otherwise.
+
+[FEAT-17] ROI Coordinate Validation
+  File:    batch_axon/overlay/process_overlay.py  →  get_overlay_area()
+  Action:  After roi.coordinates(), add:
+             coords = list(roi.coordinates())
+             if len(coords) < 3:
+                 print(f"[WARN] Degenerate ROI in {img_path.name}")
+                 return None
+
+[FEAT-18] Use tempfile for .roi Temp Files
+  File:    batch_axon/overlay/process_overlay.py
+  Action:  Replace roi_path = img_path.with_suffix('.roi') with
+           tempfile.NamedTemporaryFile(suffix='.roi', delete=False).
+           Avoids write permission issues and parallel run conflicts.
+
+[FEAT-21] Visualization / QC — visualize.py
+  Issue:   No automated QC visualization after segmentation or morphometrics.
+  Action:  Create or update visualize.py to generate watershed QC overlays:
+           raw image, segmentation overlay, watershed markers, rejected axons
+           (quality filter failures). Auto-generate after morphometrics run.
+
+[FEAT-22] Metrics improvements
+  Issue:   Background dominates (~70% of pixels), may suppress axon/myelin
+           learning signal.
+  Options to explore:
+    - Loss class weighting — upweight axon and myelin in loss_fn
+    - Post-processing size/morphology filters (already partially in quality_filters)
+    - Per-class performance already logged — use to guide weighting decisions
+    - Class-wise ensembling — deferred until more training data available
+  Action:  After first balanced training run, compare per-class dice to decide
+           whether loss weighting is needed.
+
+[FEAT-23] Stratified phenotype split in load_all_patches()
+  File:    train/dataset/data_loader.py
+  Action:  See HIGH-03. Implement stratified split ensuring equal regen/control
+           representation in val set.
+
+================================================================================
+SECTION 6 — REMAINING DOCUMENTATION
+================================================================================
+
+[DOC-07] G-Ratio Option Labels
+  File:    morphometrics/morphometrics.py
+  Status:  Variables renamed to gratio_area and gratio_axes. Consider whether
+           more descriptive names (gratio_equiv_diam, gratio_mean_axes) would
+           be clearer. Low priority since current names are reasonable.
+
+[DOC-10] Pin All Package Versions
+  File:    requirements.txt
+  Action:  Run pip freeze in current working environment and record exact
+           versions for all unpinned packages: opencv-python, Pillow,
+           patchify, scikit-image, scipy, numpy, pandas, openpyxl,
+           xlsxwriter, roifile, rich, scikit-learn, torch, segmentation-models-pytorch.
+
+[DOC-15] ROI Type Documentation
+  File:    README.md and batch_axon/overlay/process_overlay.py docstring
+  Action:  Document that CSA overlays must be polygon ROIs in Fiji.
+           Point, line, or freehand ROIs will produce incorrect results.
+
+[DOC-16] Annotation Protocol in README
+  Action:  See HIGH-04. Add Training section to README.md covering:
+           recommended image counts, phenotype balance requirements,
+           annotation priority order, batch size math implications.
+
+[DOC-17] Update README — v5 PyTorch migration
+  File:    README.md
+  Action:  Update installation section — remove TF/Keras pin rationale,
+           add PyTorch + segmentation-models-pytorch requirements.
+           Update training pipeline description to reflect PyTorch loop.
+           Add DeepAxon v5.0.0 version header.
+
+================================================================================
+SECTION 7 — GENERAL
+================================================================================
+
+[GEN-01] 100X Pixel Size Calibration
+  File:    config.json  →  pixel_size_um  →  "100X"
+  Action:  Calibrate using stage micrometer at 100X. Set to {"1440": X.XXX}.
+           Physical unit columns in morphometrics output will then populate.
+
+[GEN-04] Multi-GPU Strategy
+  File:    utils/gpu.py
+  Action:  Document as future enhancement: current PyTorch training uses
+           single device. For multi-GPU add torch.nn.DataParallel or
+           torch.distributed as options.
+
+[GEN-05] Model Naming Convention
+  File:    deepaxon/models/
+  Action:  Apply {cohort}_{mag}_v{version}_{patch_size}_{YYYYMMDD}.pt
+           convention to any newly trained models (now .pt not .keras).
+
+[GEN-06] Commit all session 3 changes
+  Action:  Stage and commit all changes from this session:
+           - utils/version.py (new)
+           - utils/logger.py
+           - utils/helpers.py
+           - train/train.py
+           - train/__main__.py
+           - train/dataset/augment.py
+           - train/dataset/preprocess.py
+           - segment/segment.py
+           - config.json
+  Suggested message: "feat: v5 pytorch — logger overhaul, augmentation
+           refactor, batch size menu, early stopping redesign, overlap handling"
+
+================================================================================
+SECTION 8 — MIGRATION
+================================================================================
+
+[MIG-01] Python 3.14/3.15 Migration Checklist
+  Status:  TF dependency removed from training (now PyTorch). segment.py
+           already uses PyTorch for inference. Main remaining risk is
+           batch_axon and morphometrics dependencies.
+  When migration begins, verify/replace:
+  - All currently unpinned packages — re-test against new environment
+  - roifile, scikit-image, scipy — verify compatibility
+  - OpenCV — verify TIFF handling unchanged
+  - Consider pinning all packages before migration (DOC-10)
+
+================================================================================
+END OF TO-DO LIST
+Session 3 resolved: ~25 items
+Remaining: 26 items
+  Critical (verify):  2  (CRIT-02, CRIT-08)
+  High:               3  (HIGH-01, HIGH-03, HIGH-04)
+  Structural:         5  (STR-02, STR-05, STR-06, STR-09, STR-10, STR-11)
+  Features:           9  (FEAT-14 through FEAT-18, FEAT-21, FEAT-22, FEAT-23,
+                          FEAT-07 low priority)
+  Documentation:      5  (DOC-07, DOC-10, DOC-15, DOC-16, DOC-17)
+  General:            5  (GEN-01, GEN-04, GEN-05, GEN-06, MIG-01)
+================================================================================
