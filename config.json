@@ -1,7 +1,6 @@
 {
     "_readme": {
         "description": "DeepAxon configuration file. Edit values here to change pipeline behaviour.",
-        "microscope": "Olympus BX63 (Lab default) — for reference only, does not affect processing.",
         "docs": "See README.md for full documentation of each setting."
     },
 
@@ -66,14 +65,25 @@
         "reduce_lr_factor": 0.5,
         "reduce_lr_min_lr": 1e-6,
         "early_stop_patience": 40,
-        "early_stop_min_delta": 0.001
+        "early_stop_min_delta": 0.001,
+        "dice_weight": 0.5,
+        "ce_weight": 0.5,
+        "ce_smooth": 0.1,
+        "gpu_batch_candidates": [128, 64, 32, 16],
+        "cpu_batch_candidates": [32, 16, 8, 4]
     },
     "augmentation": {
-        "rotation_deg": 15,
-        "brightness_range": [0.8, 1.2],
-        "brightness_offset": [-0.1, 0.1],
-        "gamma_range": [0.7, 1.4],
-        "noise_sigma": 0.02
+        "probabilities": {
+            "geometric_prob":   0.5,
+            "photometric_prob": 0.25
+        },
+        "parameters": {
+            "rotation_deg":       15,
+            "brightness_range":   [0.8, 1.2],
+            "brightness_offset":  [-0.1, 0.1],
+            "gamma_range":        [0.7, 1.4],
+            "noise_sigma":        0.02
+        }
     },
 
     "_section_pipeline": "── Pipeline behaviour ──────────────────────────────────────────────────",

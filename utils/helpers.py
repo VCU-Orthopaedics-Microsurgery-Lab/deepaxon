@@ -10,7 +10,6 @@ and are safely ignored by all .get() calls in this file.
 from __future__ import annotations
 
 import json
-import warnings
 from pathlib import Path
 import numpy as np
 
@@ -56,7 +55,6 @@ def get_fiji_path() -> str:
     if not fiji_path:
         fiji_path = input("Enter the path to your Fiji executable: ").strip()
         config["fiji_executable"] = fiji_path
-        # Update cache before writing so mid-session calls reflect the new path
         if _config_cache is not None:
             _config_cache["fiji_executable"] = fiji_path
         with open(_CONFIG_PATH, 'w') as f:
@@ -79,10 +77,10 @@ def _has_images(d: Path, source_dir: Path = None) -> bool:
     if not imgs:
         return False
     if source_dir is not None and source_dir.exists():
-        config         = load_config()
-        seg_suffix     = config.get("segmented_suffix", "_segmented")
-        source_stems   = {f.stem for f in source_dir.iterdir()
-                          if f.is_file() and f.suffix.lower() in ('.tif', '.tiff')}
+        config          = load_config()
+        seg_suffix      = config.get("segmented_suffix", "_segmented")
+        source_stems    = {f.stem for f in source_dir.iterdir()
+                           if f.is_file() and f.suffix.lower() in ('.tif', '.tiff')}
         segmented_stems = {f.stem.replace(seg_suffix, '') for f in imgs}
         return source_stems.issubset(segmented_stems)
     return True
@@ -106,9 +104,9 @@ def scan_study(study_dir: str, ignore_4x: bool = True) -> dict:
     """
     config        = load_config()
     tiff_suffixes = [s.upper() for s in config.get("tiff_suffixes", ["_TIFF"])]
-    seg_folder    = config.get("segmented_folder", "Segmented")
-    morph_folder  = config.get("morphometrics_folder", "Morphometrics")
-    csa_folder    = config.get("csa_folder", "CSA")
+    seg_folder    = config.get("segmented_folder",    "Segmented")
+    morph_folder  = config.get("morphometrics_folder","Morphometrics")
+    csa_folder    = config.get("csa_folder",          "CSA")
 
     study_path = Path(study_dir)
     result     = {}
@@ -116,19 +114,20 @@ def scan_study(study_dir: str, ignore_4x: bool = True) -> dict:
     for animal_path in sorted(study_path.iterdir()):
         if not animal_path.is_dir():
             continue
-        animal_name          = animal_path.name
-        result[animal_name]  = {}
+        animal_name         = animal_path.name
+        result[animal_name] = {}
 
         for nerve_path in sorted(animal_path.iterdir()):
             if not nerve_path.is_dir():
                 continue
             nerve_name = nerve_path.name
 
-            # Find magnification TIFF folder
             mag      = None
             tiff_dir = None
             for sub in nerve_path.iterdir():
-                matched_suffix = next((s for s in tiff_suffixes if sub.name.upper().endswith(s)), None)
+                matched_suffix = next(
+                    (s for s in tiff_suffixes if sub.name.upper().endswith(s)), None
+                )
                 if sub.is_dir() and matched_suffix:
                     detected_mag = sub.name.upper().replace(matched_suffix, "")
                     if ignore_4x and detected_mag == "4X":
@@ -145,11 +144,11 @@ def scan_study(study_dir: str, ignore_4x: bool = True) -> dict:
             csa_dir   = nerve_path / csa_folder
 
             result[animal_name][nerve_name] = {
-                'mag':              mag,
-                'tiff_dir':         tiff_dir,
-                'segmented_dir':    seg_dir   if _has_images(seg_dir, tiff_dir) else None,
-                'morphometrics_dir':morph_dir if _has_images(morph_dir)         else None,
-                'csa_dir':          csa_dir   if csa_dir.exists()               else None,
+                'mag':               mag,
+                'tiff_dir':          tiff_dir,
+                'segmented_dir':     seg_dir   if _has_images(seg_dir, tiff_dir) else None,
+                'morphometrics_dir': morph_dir if _has_images(morph_dir)         else None,
+                'csa_dir':           csa_dir   if csa_dir.exists()               else None,
             }
 
     return result
@@ -189,7 +188,6 @@ def resolve_scan(input_dir: str) -> tuple:
     p      = Path(input_dir)
     config = load_config()
 
-    # Guard: reject known output folder names
     reserved = {
         config.get("segmented_folder",    "Segmented").lower(),
         config.get("morphometrics_folder","Morphometrics").lower(),
@@ -211,11 +209,11 @@ def resolve_scan(input_dir: str) -> tuple:
         matched       = next((s for s in tiff_suffixes if p.name.upper().endswith(s)), "_TIFF")
         mag           = p.name.upper().replace(matched, "")
         nerve_data    = {
-            'mag':              mag,
-            'tiff_dir':         p,
-            'segmented_dir':    None,  # always reprocess when TIFF folder passed directly
-            'morphometrics_dir':p.parent / morph_folder if (p.parent / morph_folder).exists() else None,
-            'csa_dir':          p.parent / csa_folder   if (p.parent / csa_folder).exists()   else None,
+            'mag':               mag,
+            'tiff_dir':          p,
+            'segmented_dir':     None,
+            'morphometrics_dir': p.parent / morph_folder if (p.parent / morph_folder).exists() else None,
+            'csa_dir':           p.parent / csa_folder   if (p.parent / csa_folder).exists()   else None,
         }
         return {animal_path.name: {nerve_path.name: nerve_data}}, study_dir
 
@@ -234,7 +232,7 @@ def resolve_scan(input_dir: str) -> tuple:
         full      = scan_study(study_dir)
         return {p.name: full.get(p.name, {})}, study_dir
 
-    else:  # study
+    else:
         return scan_study(input_dir), input_dir
 
 
@@ -252,7 +250,7 @@ def detect_study_mag(study_result: dict) -> str | None:
 
 
 def list_models(models_dir: str = None) -> list[Path]:
-    """Return list of .keras files in the models directory."""
+    """Return list of .pt model files in the models directory."""
     if models_dir is None:
         models_dir = Path(__file__).resolve().parent.parent / "models"
     else:
@@ -269,7 +267,7 @@ def list_files(directory: str, extensions: tuple = ('.tif', '.tiff', '.png')) ->
 
 
 def count_patches(directory: str) -> int:
-    return len(list_files(directory, extensions=('.png', '.tif', '.tiff')))
+    return len(list_files(directory, extensions=('.png', '.tif', '.tiff', '.bmp')))
 
 
 def get_training_dir(images_dir: str) -> Path:
@@ -314,7 +312,12 @@ def get_int_input(prompt: str, default: int = None, min_val: int = 1) -> int:
             print("  Please enter a valid integer.")
 
 
-def get_float_input(prompt: str, default: float = None, min_val: float = 0.0, max_val: float = 1.0) -> float:
+def get_float_input(
+    prompt: str,
+    default: float = None,
+    min_val: float = 0.0,
+    max_val: float = 1.0
+) -> float:
     while True:
         raw = input(prompt).strip()
         if raw == '' and default is not None:
@@ -338,25 +341,160 @@ def get_yes_no(prompt: str, default: bool = False) -> bool:
 
 # ─── Training helpers ─────────────────────────────────────────────────────────
 
-def compute_batch_size(n_patches: int) -> int:
-    """Return largest power-of-2 batch size that divides n_patches evenly, max 32."""
-    for bs in [32, 16, 8, 4, 2]:
-        if n_patches % bs == 0:
-            return bs
-    warnings.warn(
-        f"No power-of-2 batch size divides {n_patches} evenly. "
-        f"Defaulting to 4 — last batch may be smaller."
-    )
-    return 4
+def _get_gpu_batch_candidates() -> list[int] | None:
+    """
+    Return batch size candidates based on available GPU VRAM.
+    VRAM-based detection works for any GPU without name matching.
+    Returns None if no GPU available or detection fails.
+
+    Tiers:
+        ≥ 60GB  : A100 80GB, H100, H200          → [256, 128, 64, 32]
+        ≥ 20GB  : A100 40GB, A40, RTX 3090/4090  → [128, 64, 32]
+        ≥ 10GB  : V100 16GB, RTX 3080, RTX 4070  → [64, 32, 16]
+        ≥ 6GB   : RTX 3060, GTX 1080             → [32, 16, 8]
+        < 6GB   : anything smaller               → [16, 8, 4]
+    """
+    try:
+        import torch
+        if not torch.cuda.is_available():
+            return None
+        vram_gb = torch.cuda.get_device_properties(0).total_memory / 1e9
+        if vram_gb >= 60:
+            return [256, 128, 64, 32]
+        elif vram_gb >= 20:
+            return [128, 64, 32]
+        elif vram_gb >= 10:
+            return [64, 32, 16]
+        elif vram_gb >= 6:
+            return [32, 16, 8]
+        else:
+            return [16, 8, 4]
+    except Exception:
+        return None
 
 
-def compute_aug_prob(n_patches: int) -> float:
-    """Return augmentation probability based on dataset size."""
-    if n_patches < 100:
-        return 0.5
-    elif n_patches < 300:
-        return 0.35
-    return 0.25
+def _get_ideal_batch_sizes(use_gpu: bool) -> list[int]:
+    """
+    Return the top 1-2 ideal batch sizes for the current device.
+    Used for display purposes only — independent of patch count.
+    """
+    if use_gpu:
+        candidates = _get_gpu_batch_candidates()
+        if candidates:
+            return candidates[:2]   # top two for this VRAM tier
+    config    = load_config()
+    train_cfg = config.get("training", {})
+    cpu_cands = train_cfg.get("cpu_batch_candidates", [32, 16, 8, 4])
+    return cpu_cands[:1]            # top one for CPU
+
+
+def _classify_batch(bs: int, n_patches: int, min_ok: float, min_warn: float) -> tuple[str, int]:
+    """
+    Classify a batch size candidate into a zone.
+
+    Returns:
+        (zone, remainder)
+        zone: 'perfect' | 'acceptable' | 'excluded' | 'danger' | 'skip'
+        remainder: patches in last batch (0 = perfect fit)
+
+    Zones:
+        perfect    remainder == 0          — even division, use immediately
+        acceptable remainder/bs >= min_ok  — last batch sufficiently full
+        excluded   min_warn <= r/bs < min_ok — middle ground, skip
+        danger     remainder/bs < min_warn  — drop remainder, treat as perfect fit
+        skip       n_patches < bs * 2      — not enough patches for 2 full batches
+    """
+    if n_patches < bs * 2:
+        return 'skip', 0
+    remainder = n_patches % bs
+    if remainder == 0:
+        return 'perfect', 0
+    fullness = remainder / bs
+    if fullness >= min_ok:
+        return 'acceptable', remainder
+    elif fullness >= min_warn:
+        return 'excluded', remainder
+    else:
+        return 'danger', remainder
+
+
+def compute_batch_options(
+    n_patches: int,
+    use_gpu: bool = False
+) -> dict:
+    """
+    Evaluate all candidate batch sizes against three-zone logic and
+    return a structured result for menu display and selection.
+
+    Three zones:
+        ≥ 75% full   → acceptable  — present as menu option
+        25–75% full  → excluded    — not good enough, not bad enough
+        < 25% full   → danger      — drop remainder, present as trim option
+
+    Args:
+        n_patches: estimated training patches (after val split)
+        use_gpu:   True if training on GPU
+
+    Returns dict with keys:
+        'acceptable'  : list of (bs, remainder) — last batch ≥75% full
+        'trim'        : list of (bs, n_dropped, pct_dropped) — <25%, drop remainder
+        'excluded'    : list of (bs, remainder, fullness_pct) — 25-75%, shown as info
+        'ideal'       : list[int] — top device batch sizes regardless of patches
+        'device_label': str — e.g. 'A100 80GB (80GB VRAM)' or 'CPU'
+    """
+    config    = load_config()
+    train_cfg = config.get("training", {})
+    min_ok    = train_cfg.get("min_last_batch_fullness",    0.75)
+    min_warn  = train_cfg.get("danger_last_batch_fullness", 0.25)
+
+    if use_gpu:
+        candidates = _get_gpu_batch_candidates()
+        if candidates is None:
+            candidates = train_cfg.get("gpu_batch_candidates", [256, 128, 64, 32, 16])
+    else:
+        candidates = train_cfg.get("cpu_batch_candidates", [32, 16, 8, 4])
+
+    acceptable = []
+    trim       = []
+    excluded   = []
+
+    for bs in candidates:
+        zone, remainder = _classify_batch(bs, n_patches, min_ok, min_warn)
+
+        if zone == 'skip':
+            continue
+        elif zone == 'perfect':
+            acceptable.append((bs, 0))
+        elif zone == 'acceptable':
+            acceptable.append((bs, remainder))
+        elif zone == 'excluded':
+            fullness_pct = int(remainder / bs * 100)
+            excluded.append((bs, remainder, fullness_pct))
+        elif zone == 'danger':
+            n_dropped   = remainder
+            pct_dropped = round(n_dropped / n_patches * 100, 1)
+            trim.append((bs, n_dropped, pct_dropped))
+
+    # Device label for display
+    if use_gpu:
+        try:
+            import torch
+            vram_gb      = torch.cuda.get_device_properties(0).total_memory / 1e9
+            gpu_name     = torch.cuda.get_device_name(0)
+            device_label = f"{gpu_name} ({vram_gb:.0f}GB VRAM)"
+        except Exception:
+            device_label = "GPU (VRAM unknown)"
+    else:
+        device_label = "CPU"
+
+    return {
+        'acceptable':   acceptable,
+        'trim':         trim,
+        'excluded':     excluded,
+        'ideal':        _get_ideal_batch_sizes(use_gpu),
+        'device_label': device_label,
+    }
+
 
 def get_git_commit() -> str:
     """Return current git commit hash for model provenance tracking."""

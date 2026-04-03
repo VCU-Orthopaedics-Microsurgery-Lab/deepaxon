@@ -78,7 +78,7 @@ def batch_process(images_dir, masks_dir, patches_img_dir, patches_mask_dir,
     config     = load_config()
     patch_size = config.get("patch_size", {}).get(mag, 256)
 
-    images = list_files(images_dir, extensions=('.tif', '.tiff'))
+    images = list_files(images_dir, extensions=('.tif', '.tiff', '.png'))
     masks  = list_files(masks_dir,  extensions=('.tif', '.tiff', '.png'))
 
     # Validate image/mask pairing before processing
@@ -90,8 +90,8 @@ def batch_process(images_dir, masks_dir, patches_img_dir, patches_mask_dir,
             f"Missing masks for {len(missing)} image(s): {sorted(missing)}"
         )
 
-    log.rule("IMAGE PROCESSING")
-    log.info(f"Patch size: {patch_size}px | Overlap: 50%")
+    log.rule("IMAGE PREPROCESSING")
+    log.info(f"Patch size: {patch_size}px | Overlap: 50% | Interpolation: INTER_LANCZOS4 (image quality)" )
     total_img = 0
     for img_path in images:
         total_img += process_single_image(
@@ -99,12 +99,23 @@ def batch_process(images_dir, masks_dir, patches_img_dir, patches_mask_dir,
             patch_size=patch_size, is_mask=False, log=log
         )
 
-    log.rule("MASK PROCESSING")
+    log.rule("MASK PREPROCESSING")
+    log.info(f"Patch size: {patch_size}px | Overlap: 50% | Interpolation: INTER_NEAREST (preserves label values 0/128/255)" )
     total_mask = 0
     for mask_path in masks:
         total_mask += process_single_image(
             str(mask_path), patches_mask_dir, cropped_mask_dir,
             patch_size=patch_size, is_mask=True, log=log
         )
+
+    # ── Preprocessing summary ─────────────────────────────────────────────────────
+    log.rule("PREPROCESSING SUMMARY")
+    log.info(f"Total images processed : {len(images)}")
+    log.info(f"Total masks processed  : {len(masks)}")
+    log.info(f"Total patches created  : {total_img} image | {total_mask} mask")
+    log.info(f"Patches per image      : {total_img // len(images) if images else 0}")
+    log.info(f"Patch size             : {patch_size}px | Overlap: {overlap} | Step: {patch_size // 2}px")
+    log.info(f"Output (images)        : {patches_img_dir}")
+    log.info(f"Output (masks)         : {patches_mask_dir}")
 
     return total_img, total_mask

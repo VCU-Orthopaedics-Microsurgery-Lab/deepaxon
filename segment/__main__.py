@@ -177,7 +177,6 @@ def main():
         tiff_dir=str(tiff_dir),
         output_dir=str(output_dir),
         model=model,
-        model_path=selected_model_path,
         mag=mag,
         log=log,
         timing_csv=timing_csv

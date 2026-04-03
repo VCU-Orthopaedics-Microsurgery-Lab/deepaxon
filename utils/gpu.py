@@ -7,12 +7,13 @@ Called once at startup by train/__main__.py.
 
 import os
 from rich.panel import Panel
+from rich.console import Console
 from rich.box import DOUBLE
 from rich.text import Text
-from utils.logger import console
 
 import torch
 
+console = Console()
 
 def setup_gpu_console() -> bool:
     """
