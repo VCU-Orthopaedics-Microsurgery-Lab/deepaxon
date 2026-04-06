@@ -9,13 +9,14 @@ User provides only the images folder path — everything else is derived.
 Prompt order:
     1. GPU setup
     2. Images folder
-    3. Magnification
-    4. Model name
-    5. Epoch limit
-    6. Val fraction       ← before batch size so patch estimate is accurate
-    7. Augmentation
-    8. Batch size menu    ← uses val_fraction for correct training patch estimate
-    9. Log setup + run
+    3. Split mode detection + prompt (phenotype or flat)
+    4. Magnification
+    5. Model name
+    6. Epoch limit
+    7. Val fraction       ← flat mode only
+    8. Augmentation
+    9. Batch size menu
+    10. Log setup + run
 """
 
 import sys
@@ -40,16 +41,13 @@ from utils.helpers import (
     compute_batch_options, get_model_dir, get_log_dir,
     count_patches, list_files, load_config
 )
-from train.train import (
-    train_model,
-    REDUCE_LR_PATIENCE, REDUCE_LR_FACTOR, REDUCE_LR_MIN_LR,
-    EARLY_STOP_PATIENCE, EARLY_STOP_MIN_DELTA
-)
+from train.train import (train_model)
+from train.dataset.data_loader import detect_split_mode
 
 console  = Console()
 has_gpu  = torch.cuda.is_available()
 
-MAG_OPTIONS = ['40X', '100X']
+MAG_OPTIONS       = ['40X', '100X']
 PATCHES_PER_IMAGE = 63  # at 50% overlap on 1440px images
 
 
@@ -70,13 +68,12 @@ def select_magnification() -> str:
 
 
 def _format_bs_line(bs: int, remainder: int, n_patches: int, suffix: str = "") -> str:
-    """Format a single batch size line for the menu."""
     if remainder == 0:
         n_batches = n_patches // bs
         return f"bs={bs:<4} — {n_patches} patches | {n_batches} full batches (perfect fit){suffix}"
     else:
-        n_full    = n_patches // bs
-        fullness  = int(remainder / bs * 100)
+        n_full   = n_patches // bs
+        fullness = int(remainder / bs * 100)
         return (
             f"bs={bs:<4} — {n_patches} patches | "
             f"{n_full} full batches + {remainder}/{bs} remainder ({fullness}% full){suffix}"
@@ -84,7 +81,6 @@ def _format_bs_line(bs: int, remainder: int, n_patches: int, suffix: str = "") -
 
 
 def _format_trim_line(bs: int, n_dropped: int, pct_dropped: float, n_patches: int) -> str:
-    """Format a trim option line for the menu."""
     n_kept    = n_patches - n_dropped
     n_batches = n_kept // bs
     return (
@@ -94,19 +90,13 @@ def _format_trim_line(bs: int, n_dropped: int, pct_dropped: float, n_patches: in
 
 
 def _evaluate_custom_bs(bs: int, n_patches: int) -> tuple[str, str]:
-    """
-    Evaluate a custom batch size and return (status, message).
-    status: 'perfect' | 'acceptable' | 'excluded' | 'danger' | 'invalid'
-    """
     if bs < 1:
         return 'invalid', "Batch size must be ≥ 1."
     if n_patches < bs * 2:
         return 'invalid', f"Need at least {bs * 2} patches for 2 full batches — you have {n_patches}."
-
     remainder = n_patches % bs
     if remainder == 0:
         return 'perfect', _format_bs_line(bs, 0, n_patches)
-
     fullness = remainder / bs
     if fullness >= 0.75:
         return 'acceptable', _format_bs_line(bs, remainder, n_patches)
@@ -118,16 +108,8 @@ def _evaluate_custom_bs(bs: int, n_patches: int) -> tuple[str, str]:
 
 
 def select_batch_size(n_train_patches: int, use_gpu: bool) -> tuple[int, int, str]:
-    """
-    Present batch size menu and return (batch_size, actual_remainder, status).
-
-    actual_remainder: patches in last batch after selection
-                      0 if perfect fit or trim option selected
-    status: 'perfect' | 'acceptable' | 'trim' | 'custom_ok' | 'custom_warn'
-    """
     opts = compute_batch_options(n_train_patches, use_gpu=use_gpu)
 
-    # ── Build menu ────────────────────────────────────────────────────────────
     ideal_str = " or ".join(str(b) for b in opts['ideal'])
     console.print("\n" + "─" * 72)
     console.print("  BATCH SIZE SELECTION")
@@ -137,19 +119,17 @@ def select_batch_size(n_train_patches: int, use_gpu: bool) -> tuple[int, int, st
     console.print(f"  Training patches (estimated)     : ~{n_train_patches}")
     console.print()
 
-    menu_items  = []  # list of (label, bs, remainder, status)
+    menu_items = []
 
-    # Acceptable options
     if opts['acceptable']:
         console.print("  [green]✅ Acceptable (≥75% last batch full):[/green]")
         for bs, remainder in opts['acceptable']:
-            idx   = len(menu_items) + 1
-            line  = _format_bs_line(bs, remainder, n_train_patches)
+            idx  = len(menu_items) + 1
+            line = _format_bs_line(bs, remainder, n_train_patches)
             console.print(f"  [{idx}]  {line}")
             menu_items.append((idx, bs, remainder, 'perfect' if remainder == 0 else 'acceptable'))
         console.print()
 
-    # Trim options
     if opts['trim']:
         console.print("  [cyan]✅ Trim to perfect fit (<25% last batch — drops remainder):[/cyan]")
         for bs, n_dropped, pct_dropped in opts['trim']:
@@ -159,18 +139,15 @@ def select_batch_size(n_train_patches: int, use_gpu: bool) -> tuple[int, int, st
             menu_items.append((idx, bs, 0, 'trim'))
         console.print()
 
-    # Excluded — shown as info only, not selectable
     if opts['excluded']:
         excl_str = ", ".join(f"bs={bs} ({pct}%)" for bs, _, pct in opts['excluded'])
         console.print(f"  [yellow]⚠  Excluded (25–75% last batch): {excl_str}[/yellow]")
         console.print()
 
-    # Custom entry always last
     custom_idx = len(menu_items) + 1
     console.print(f"  [{custom_idx}]  Enter custom batch size")
     console.print("─" * 72)
 
-    # ── Selection loop ────────────────────────────────────────────────────────
     while True:
         raw = input(f"Select [1-{custom_idx}]: ").strip()
         try:
@@ -180,16 +157,13 @@ def select_batch_size(n_train_patches: int, use_gpu: bool) -> tuple[int, int, st
             continue
 
         if choice == custom_idx:
-            # Custom entry
             while True:
                 try:
                     custom_bs = int(input("  Enter custom batch size: ").strip())
                 except ValueError:
                     console.print("[red]Please enter a valid integer.[/red]")
                     continue
-
                 status, msg = _evaluate_custom_bs(custom_bs, n_train_patches)
-
                 if status == 'invalid':
                     console.print(f"[red]  ✗ {msg}[/red]")
                     continue
@@ -222,9 +196,49 @@ def select_batch_size(n_train_patches: int, use_gpu: bool) -> tuple[int, int, st
         elif 1 <= choice <= len(menu_items):
             _, bs, remainder, status = menu_items[choice - 1]
             return bs, remainder, status
-
         else:
             console.print(f"[red]Please enter a number between 1 and {custom_idx}.[/red]")
+
+
+def _detect_and_prompt_split_mode(images_sub: Path) -> str:
+    """
+    Auto-detect split mode from folder structure and prompt user to confirm
+    or override.
+
+    Returns: 'phenotype' or 'flat'
+    """
+    train_dir      = images_sub / 'train'
+    detected       = detect_split_mode(train_dir) if train_dir.exists() else 'flat'
+    detected_label = (
+        "Phenotype split (train/regen/ and train/control/ found)"
+        if detected == 'phenotype' else
+        "Flat split (no regen/control subfolders found)"
+    )
+
+    console.print(f"\n[dim]Detected: {detected_label}[/dim]")
+    confirmed = get_yes_no(
+        f"Use {'phenotype' if detected == 'phenotype' else 'flat'} split?",
+        default=True
+    )
+
+    if confirmed:
+        return detected
+
+    # User override
+    override = 'flat' if detected == 'phenotype' else 'phenotype'
+    if override == 'phenotype':
+        # Validate that phenotype folders exist before accepting override
+        regen_ok   = (train_dir / 'regen').exists()
+        control_ok = (train_dir / 'control').exists()
+        if not regen_ok or not control_ok:
+            console.print(
+                "[red]Phenotype split requires train/regen/ and train/control/ folders. "
+                "Please create them and place images before running.[/red]"
+            )
+            console.print("[yellow]Falling back to flat split.[/yellow]")
+            return 'flat'
+
+    return override
 
 
 def main():
@@ -265,6 +279,12 @@ def main():
     geo_prob   = prob_cfg.get("geometric_prob",  0.5)
     photo_prob = prob_cfg.get("photometric_prob", 0.25)
 
+    # ── Split mode ────────────────────────────────────────────────────────────
+    split_mode = _detect_and_prompt_split_mode(images_sub)
+    console.print(
+        f"[dim]Split mode: {'Phenotype (regen/control)' if split_mode == 'phenotype' else 'Flat'}[/dim]"
+    )
+
     # ── Magnification ─────────────────────────────────────────────────────────
     mag = select_magnification()
 
@@ -281,11 +301,15 @@ def main():
         default=default_epochs, min_val=1
     )
 
-    # ── Val fraction — must come before batch size ────────────────────────────
-    val_fraction = get_float_input(
-        "Validation fraction 0–1 (press Enter for default=0.2): ",
-        default=0.2, min_val=0.05, max_val=0.5
-    )
+    # ── Val fraction — flat mode only ─────────────────────────────────────────
+    if split_mode == 'flat':
+        val_fraction = get_float_input(
+            "Validation fraction 0–1 (press Enter for default=0.2): ",
+            default=0.2, min_val=0.05, max_val=0.5
+        )
+    else:
+        val_fraction = None  # defined by folder structure
+        console.print("[dim]Val fraction: N/A — defined by val/regen/ and val/control/ folders[/dim]")
 
     # ── Augmentation ──────────────────────────────────────────────────────────
     use_aug = get_yes_no("Use data augmentation?", default=False)
@@ -305,15 +329,33 @@ def main():
         ))
 
     # ── Batch size menu ───────────────────────────────────────────────────────
-    # Estimate training patches using val_fraction so menu reflects
-    # what will actually be trained on after the split.
-    patches_dir = images_sub / "cropped" / "patches"
-    if patches_dir.exists():
-        total_patches   = count_patches(str(patches_dir))
-        n_train_patches = int(total_patches * (1 - val_fraction))
+    # Estimate training patches for menu display.
+    # Phenotype mode: sum regen + control train patches if preprocessed.
+    # Flat mode: use val_fraction against total patches.
+    if split_mode == 'phenotype':
+        regen_patches_dir   = images_sub / 'train' / 'regen'   / 'cropped' / 'patches'
+        control_patches_dir = images_sub / 'train' / 'control' / 'cropped' / 'patches'
+        if regen_patches_dir.exists() and control_patches_dir.exists():
+            n_train_patches = (
+                count_patches(str(regen_patches_dir)) +
+                count_patches(str(control_patches_dir))
+            )
+        else:
+            # Estimate from image counts
+            n_regen   = len(list_files(str(images_sub / 'train' / 'regen'),
+                                       extensions=('.tif', '.tiff', '.png', '.bmp')))
+            n_control = len(list_files(str(images_sub / 'train' / 'control'),
+                                       extensions=('.tif', '.tiff', '.png', '.bmp')))
+            n_train_patches = (n_regen + n_control) * PATCHES_PER_IMAGE
     else:
-        n_images        = len(list_files(str(images_sub), extensions=('.tif', '.tiff', '.png', '.bmp')))
-        n_train_patches = int(n_images * (1 - val_fraction)) * PATCHES_PER_IMAGE
+        patches_dir = images_sub / 'train' / 'cropped' / 'patches'
+        if patches_dir.exists():
+            total_patches   = count_patches(str(patches_dir))
+            n_train_patches = int(total_patches * (1 - val_fraction))
+        else:
+            n_images        = len(list_files(str(images_sub / 'train'),
+                                             extensions=('.tif', '.tiff', '.png', '.bmp')))
+            n_train_patches = int(n_images * (1 - val_fraction)) * PATCHES_PER_IMAGE
 
     batch_size, remainder, bs_status = select_batch_size(n_train_patches, use_gpu=has_gpu)
 
@@ -321,7 +363,6 @@ def main():
     log_path = str(log_dir / f"{model_name}_training_log.txt")
     log      = DeepAxonLogger(log_path=log_path, program="DeepAxon Train")
 
-    # Batch size description for log — reflects actual math
     if remainder == 0:
         bs_log = f"{batch_size} (perfect fit)"
     else:
@@ -333,16 +374,17 @@ def main():
         bs_log += " [user override — outside recommended zones]"
 
     log.log_dict({
-        'Model name':       model_name,
-        'Magnification':    mag,
-        'Epoch limit':      epochs,
-        'Val fraction':     val_fraction,
-        'Augmentation':     'ON' if use_aug else 'OFF',
-        'Batch size':       bs_log,
+        'Model name':         model_name,
+        'Magnification':      mag,
+        'Split mode':         'Phenotype (regen/control)' if split_mode == 'phenotype' else 'Flat',
+        'Val fraction':       val_fraction if split_mode == 'flat' else 'N/A (folder-defined)',
+        'Epoch limit':        epochs,
+        'Augmentation':       'ON' if use_aug else 'OFF',
+        'Batch size':         bs_log,
         'Est. train patches': f"~{n_train_patches} (actual logged after load)",
-        'Images folder':    str(images_path),
-        'Models folder':    str(model_dir),
-        'Log file':         log_path,
+        'Images folder':      str(images_path),
+        'Models folder':      str(model_dir),
+        'Log file':           log_path,
     })
 
     # ── Run training ──────────────────────────────────────────────────────────
@@ -355,6 +397,7 @@ def main():
         use_aug=use_aug,
         log=log,
         mag=mag,
+        split_mode=split_mode,
     )
 
     console.print(f"\n[dim]Log saved to: {log_path}[/dim]")

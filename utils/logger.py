@@ -9,6 +9,7 @@ Log format:
     ======================================================================
     DEEPAXON SEGMENT LOG
     DeepAxon v5.0.0 (v5_pytorch)
+    Python: 3.11.15 | PyTorch: 2.5.1+cu121 | CUDA: none
     ======================================================================
     Start time : 2026-04-01 14:32:11
     Git commit : 7560233
@@ -35,7 +36,7 @@ from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 
 from utils.helpers import get_git_commit
-from utils.version import __version__, __codename__
+from utils.version import __version__, __codename__, get_env_info
 
 
 class DeepAxonLogger:
@@ -69,10 +70,12 @@ class DeepAxonLogger:
     def _write_log_header(self):
         """Write structured header with run context."""
         git_commit = get_git_commit()
+        env = get_env_info()
         lines = [
             f"{'=' * 72}",
             f"{self.program} LOG",
             f"DeepAxon v{__version__} ({__codename__})",
+            f"Python: {env['python']} | PyTorch: {env['pytorch']} | CUDA: {env['cuda']}",
             f"{'=' * 72}",
             f"Start time : {self._t_start.strftime('%Y-%m-%d %H:%M:%S')}",
             f"Git commit : {git_commit}",

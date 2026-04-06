@@ -181,11 +181,12 @@ def train_model(
     images_dir: str,
     model_name: str,
     epochs: int,
-    val_fraction: float,
+    val_fraction: float | None,
     batch_size: int,
     use_aug: bool,
     log: DeepAxonLogger,
     mag: str,
+    split_mode: str = 'flat',       # ← add this
     model_type: str = 'unet++'
 ):
     """
@@ -237,11 +238,13 @@ def train_model(
     # ── Load patches ──────────────────────────────────────────────────────────
     log.rule("LOADING PATCHES")
     X_train, Y_train, X_val, Y_val = load_all_patches(
-        str(paths['patches_img']),
-        str(paths['patches_mask']),
-        str(paths['val_img']  / 'cropped' / 'patches') if paths['val_img'].exists()  else None,
-        str(paths['val_mask'] / 'cropped' / 'patches') if paths['val_mask'].exists() else None,
-        val_fraction=val_fraction
+        str(paths['images_dir'] / 'train'),
+        str(paths['masks_dir']  / 'train'),
+        str(paths['images_dir'] / 'val') if (paths['images_dir'] / 'val').exists() else None,
+        str(paths['masks_dir']  / 'val') if (paths['masks_dir']  / 'val').exists() else None,
+        val_fraction=val_fraction or 0.2,
+        split_mode=split_mode,
+        log=log,
     )
     log.info(f"Train: {len(X_train)} patches | Val: {len(X_val)} patches | Classes: 3 (background, myelin, axon)")
 
@@ -296,6 +299,8 @@ def train_model(
         'Input size':     f"256×256×1",
         'Classes':        '3 (background, myelin, axon)',
         'Device':         str(device),
+        'Split mode':    'Phenotype (regen/control)' if split_mode == 'phenotype' else 'Flat',
+        'Val fraction':  val_fraction if split_mode == 'flat' else 'N/A (folder-defined)',
         'Train patches':  len(X_train),
         'Val patches':    len(X_val),
         'Augmentation':   (
