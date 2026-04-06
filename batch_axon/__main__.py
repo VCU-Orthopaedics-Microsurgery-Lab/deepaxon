@@ -9,8 +9,9 @@ Excel workbook with one worksheet per animal.
 Output: {study_name}_Data.xlsx saved in the study folder.
 """
 
-import sys
 import os
+os.environ['PYTHONDONTWRITEBYTECODE'] = '1'
+import sys
 from pathlib import Path
 from datetime import datetime
 

@@ -8,10 +8,9 @@ runs morphometric analysis per image, saves per-image .xlsx files.
 Skips nerves that already have a *_Morphometrics folder.
 """
 
-import sys
 import os
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['PYTHONDONTWRITEBYTECODE'] = '1'
+import sys
 from pathlib import Path
 from datetime import datetime
 
