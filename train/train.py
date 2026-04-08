@@ -7,6 +7,8 @@ Imports exclusively from train/dataset/ and train/architectures/ — no inline d
 
 from __future__ import annotations
 
+import sys
+import socket
 import shutil
 import numpy as np
 from pathlib import Path
@@ -16,7 +18,8 @@ from rich.panel import Panel
 from rich.console import Console
 
 from utils.logger import DeepAxonLogger
-from utils.helpers import (get_model_dir, count_patches, list_files, load_config)
+from utils.version import __version__, __codename__
+from utils.helpers import get_model_dir, count_patches, list_files, load_config, get_git_commit
 from train.dataset.preprocess import batch_process
 from train.dataset.data_loader import load_all_patches
 from train.dataset.augment import augment_dataset_np
@@ -65,8 +68,8 @@ class TrainingLogger():
     """
 
     def __init__(self, log: DeepAxonLogger, use_aug: bool):
-        self.log      = log
-        self.use_aug  = use_aug
+        self.log        = log
+        self.use_aug    = use_aug
         self.epoch_rows = []
 
     def log_epoch(self, epoch: int, logs: dict, checkpoint_flag: str = ""):
@@ -139,11 +142,11 @@ def prepare_dataset(images_dir: str, mag: str, log: DeepAxonLogger) -> dict:
         log.warn(f"Masks folder not found: {masks_dir}")
         raise FileNotFoundError(f"Masks directory not found: {masks_dir}")
 
-    imgs  = list_files(str(images_dir), extensions=('.tif', '.tiff', '.png'))
-    masks = list_files(str(masks_dir),  extensions=('.tif', '.tiff', '.png'))
+    imgs  = list(images_dir.rglob('*.tif')) + list(images_dir.rglob('*.tiff')) + list(images_dir.rglob('*.png'))
+    masks = list(masks_dir.rglob('*.tif'))  + list(masks_dir.rglob('*.tiff'))  + list(masks_dir.rglob('*.png'))
 
-    img_stems  = {p.stem for p in imgs}
-    mask_stems = {p.stem for p in masks}
+    img_stems     = {p.stem for p in imgs}
+    mask_stems    = {p.stem for p in masks}
     matched       = img_stems & mask_stems
     missing_masks = img_stems - mask_stems
     missing_imgs  = mask_stems - img_stems
@@ -197,7 +200,7 @@ def train_model(
         prepare_dataset → preprocess (if needed) → verify patch alignment
         → load patches → augment → build model → train loop
         → checkpoint summary → finalize → promote
-    
+
     Checkpointing strategy:
         Primary trigger  : val_dice_axon + val_dice_myelin improves by > EARLY_STOP_MIN_DELTA
         Tiebreaker       : same combined dice but val_loss improves by > EARLY_STOP_MIN_DELTA
@@ -206,9 +209,9 @@ def train_model(
                            without primary improvement
     """
     t_start = datetime.now()
-    paths = prepare_dataset(images_dir, mag, log)
+    paths   = prepare_dataset(images_dir, mag, log)
 
-    # ── Preprocess if patches don't exist ────────────────────────────────────
+    # ── Preprocess if patches don't exist ─────────────────────────────────────
     if not paths['patches_img'].exists() or count_patches(str(paths['patches_img'])) == 0:
         n_img, n_mask = batch_process(
             str(paths['images_dir']),
@@ -225,7 +228,7 @@ def train_model(
         n_img = count_patches(str(paths['patches_img']))
         log.info(f"Using existing patches: {n_img}")
 
-    # ── Verify patch alignment ────────────────────────────────────────────────
+    # ── Verify patch alignment ─────────────────────────────────────────────────
     n_img_p  = count_patches(str(paths['patches_img']))
     n_mask_p = count_patches(str(paths['patches_mask']))
     if n_img_p != n_mask_p:
@@ -236,7 +239,7 @@ def train_model(
         expand=False
     ))
 
-    # ── Load patches ──────────────────────────────────────────────────────────
+    # ── Load patches ───────────────────────────────────────────────────────────
     log.rule("LOADING PATCHES")
     X_train, Y_train, X_val, Y_val = load_all_patches(
         str(paths['images_dir'] / 'train'),
@@ -253,7 +256,7 @@ def train_model(
     Y_train = Y_train.astype(np.int64)
     Y_val   = Y_val.astype(np.int64)
 
-    # ── Augmentation ──────────────────────────────────────────────────────────────
+    # ── Augmentation ───────────────────────────────────────────────────────────
     aug_count  = 0
     aug_counts = {}
     if use_aug:
@@ -263,16 +266,18 @@ def train_model(
             f"Augmented {aug_count}/{len(X_train)} patches "
             f"(geo_prob={GEO_PROB:.2f} photo_prob={PHOTO_PROB:.2f})"
         )
-        log.info(f"  Geometric  — H-flip: {aug_counts['hflip']}  "
-                f"V-flip: {aug_counts['vflip']}  "
-                f"Rotation: {aug_counts['rotation']}"
+        log.info(
+            f"  Geometric  — H-flip: {aug_counts['hflip']}  "
+            f"V-flip: {aug_counts['vflip']}  "
+            f"Rotation: {aug_counts['rotation']}"
         )
-        log.info(f"  Photometric — Brightness: {aug_counts['brightness']}  "
-                f"Gamma: {aug_counts['gamma']}  "
-                f"Noise: {aug_counts['noise']}"
+        log.info(
+            f"  Photometric — Brightness: {aug_counts['brightness']}  "
+            f"Gamma: {aug_counts['gamma']}  "
+            f"Noise: {aug_counts['noise']}"
         )
 
-    # ── Build and compile model ───────────────────────────────────────────────
+    # ── Build model ────────────────────────────────────────────────────────────
     log.rule("BUILDING MODEL")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     log.info(f"Device: {device}")
@@ -282,51 +287,54 @@ def train_model(
         encoder_weights="imagenet",
         in_channels=1,
         classes=3,
-        activation=None,  # raw logits; loss handles softmax internally
+        activation=None,  # raw logits — loss handles softmax internally
     )
-    model = model.to(device)
-    n_params = sum(p.numel() for p in model.parameters())
+    model     = model.to(device)
+    n_params  = sum(p.numel() for p in model.parameters())
     log.success(f"Model built: {n_params:,} parameters")
 
-    optimizer  = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
-    scheduler  = torch.optim.lr_scheduler.ReduceLROnPlateau(
+    optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode='min', factor=REDUCE_LR_FACTOR,
         patience=REDUCE_LR_PATIENCE, min_lr=REDUCE_LR_MIN_LR
     )
 
-    # ── Training setup summary ────────────────────────────────────────────────
+    # ── Training setup summary ─────────────────────────────────────────────────
     log.rule("TRAINING SETUP")
     log.log_dict({
-        'Architecture':   'UNet++ (DeepAxon++) — resnet34 encoder',
-        'Input size':     f"256×256×1",
-        'Classes':        '3 (background, myelin, axon)',
-        'Device':         str(device),
+        'Architecture':  'UNet++ (DeepAxon++) — resnet34 encoder',
+        'Input size':    '256×256×1',
+        'Classes':       '3 (background, myelin, axon)',
+        'Device':        str(device),
         'Split mode':    'Phenotype (regen/control)' if split_mode == 'phenotype' else 'Flat',
-        'Val fraction':  val_fraction if split_mode == 'flat' else 'N/A (folder-defined)',
-        'Train patches':  len(X_train),
-        'Val patches':    len(X_val),
-        'Augmentation':   (
+        'Val fraction':  (
+            val_fraction if (split_mode == 'flat' and not val_tagged_stems)
+            else f'N/A ({len(val_tagged_stems or [])} val_-tagged images)' if val_tagged_stems
+            else 'N/A (folder-defined)'
+        ),
+        'Train patches': len(X_train),
+        'Val patches':   len(X_val),
+        'Augmentation':  (
             f"ON — geo_prob={GEO_PROB:.2f} photo_prob={PHOTO_PROB:.2f}"
             if use_aug else "OFF"
         ),
-        'Loss function':  f"Dice ({DICE_WEIGHT}) + SoftCE smooth={CE_SMOOTH} ({CE_WEIGHT})",
-        'Optimizer':      f"Adam lr={LEARNING_RATE}",
-        'ReduceLR':       f"patience={REDUCE_LR_PATIENCE}, factor={REDUCE_LR_FACTOR}, min_lr={REDUCE_LR_MIN_LR} — monitors val_loss",
-        'EarlyStopping':  f"patience={EARLY_STOP_PATIENCE}, min_delta={EARLY_STOP_MIN_DELTA} — monitors axon+myelin dice",
+        'Loss function': f"Dice ({DICE_WEIGHT}) + SoftCE smooth={CE_SMOOTH} ({CE_WEIGHT})",
+        'Optimizer':     f"Adam lr={LEARNING_RATE}",
+        'ReduceLR':      f"patience={REDUCE_LR_PATIENCE}, factor={REDUCE_LR_FACTOR}, min_lr={REDUCE_LR_MIN_LR} — monitors val_loss",
+        'EarlyStopping': f"patience={EARLY_STOP_PATIENCE}, min_delta={EARLY_STOP_MIN_DELTA} — monitors axon+myelin dice",
     })
-    
-    # ── DataLoaders ───────────────────────────────────────────────────────────────
+
+    # ── DataLoaders ────────────────────────────────────────────────────────────
     # PyTorch expects (N, C, H, W) — transpose from (N, H, W, C)
     X_train_t = torch.from_numpy(X_train.transpose(0, 3, 1, 2)).float()  # (N,1,H,W)
     X_val_t   = torch.from_numpy(X_val.transpose(0, 3, 1, 2)).float()
-    # Remove Channel dimension
-    Y_train_t = torch.from_numpy(Y_train.squeeze(-1)).long()             # (N,H,W)
+    Y_train_t = torch.from_numpy(Y_train.squeeze(-1)).long()              # (N,H,W)
     Y_val_t   = torch.from_numpy(Y_val.squeeze(-1)).long()
 
     train_loader = DataLoader(TensorDataset(X_train_t, Y_train_t), batch_size=batch_size, shuffle=True)
     val_loader   = DataLoader(TensorDataset(X_val_t,   Y_val_t),   batch_size=batch_size, shuffle=False)
 
-    # ── Callbacks setup ───────────────────────────────────────────────────────────
+    # ── Callbacks setup ────────────────────────────────────────────────────────
     model_dir  = get_model_dir(images_dir)
     model_dir.mkdir(parents=True, exist_ok=True)
     model_path = model_dir / f"{model_name}.pt"
@@ -341,14 +349,60 @@ def train_model(
     history             = {
         'loss': [], 'val_loss': [],
         'dice_coef': [], 'val_dice_coef': [],
-        'iou_coef': [], 'val_iou_coef': [],
+        'iou_coef':  [], 'val_iou_coef':  [],
         'lr': []
     }
 
-    # ── Training loop ─────────────────────────────────────────────────────────────
+    # ── Base metadata — built once, updated at each checkpoint ────────────────
+    _base_meta = {
+        # Identity
+        'model_name':          model_name,
+        'version':             __version__,
+        'codename':            __codename__,
+        'trained_date':        datetime.now().strftime('%Y-%m-%d'),
+        'git_commit':          get_git_commit(),
+        # Architecture
+        'architecture':        'UNet++',
+        'encoder':             'resnet34',
+        'encoder_weights':     'imagenet',
+        'in_channels':         1,
+        'classes':             ['background', 'myelin', 'axon'],
+        'input_size':          256,
+        'activation':          'none (raw logits)',
+        # Inference contract
+        'normalization':       'L2 axis=1',
+        'patch_size':          _config.get('patch_size', {}).get(mag, 256),
+        'magnification':       mag,
+        # Dataset
+        'dataset_path':        str(Path(images_dir).resolve()),
+        'split_mode':          split_mode,
+        'val_images':          val_tagged_stems or [],
+        'n_train_patches':     len(X_train),
+        'n_val_patches':       len(X_val),
+        # Training config
+        'augmentation':        use_aug,
+        'geo_prob':            GEO_PROB   if use_aug else None,
+        'photo_prob':          PHOTO_PROB if use_aug else None,
+        'batch_size':          batch_size,
+        'epochs_limit':        epochs,
+        'learning_rate':       LEARNING_RATE,
+        'dice_weight':         DICE_WEIGHT,
+        'ce_weight':           CE_WEIGHT,
+        'ce_smooth':           CE_SMOOTH,
+        'reduce_lr_patience':  REDUCE_LR_PATIENCE,
+        'early_stop_patience': EARLY_STOP_PATIENCE,
+        'early_stop_min_delta':EARLY_STOP_MIN_DELTA,
+        # Environment
+        'gpu':            torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU',
+        'torch_version':  torch.__version__,
+        'python_version': sys.version.split()[0],
+        'hostname':       socket.gethostname(),
+    }
+
+    # ── Training loop ──────────────────────────────────────────────────────────
     log.rule("TRAINING")
     for epoch in range(epochs):
-        
+
         # — Train —
         model.train()
         train_loss = 0.0
@@ -361,14 +415,17 @@ def train_model(
             loss.backward()
             optimizer.step()
             train_loss += loss.item() * len(xb)
-            tp, fp, fn, tn = smp.metrics.get_stats(preds.argmax(dim=1), yb, mode="multiclass", num_classes=3)
-            train_tp.append(tp); train_fp.append(fp); train_fn.append(fn); train_tn.append(tn)
+            tp, fp, fn, tn = smp.metrics.get_stats(
+                preds.argmax(dim=1), yb, mode="multiclass", num_classes=3
+            )
+            train_tp.append(tp); train_fp.append(fp)
+            train_fn.append(fn); train_tn.append(tn)
 
         train_tp = torch.cat(train_tp)
         train_fp = torch.cat(train_fp)
         train_fn = torch.cat(train_fn)
         train_tn = torch.cat(train_tn)
-        
+
         # — Validate —
         model.eval()
         val_loss = 0.0
@@ -378,14 +435,17 @@ def train_model(
                 xb, yb = xb.to(device), yb.to(device)
                 preds  = model(xb)
                 val_loss += loss_fn(preds, yb).item() * len(xb)
-                tp, fp, fn, tn = smp.metrics.get_stats(preds.argmax(dim=1), yb, mode="multiclass", num_classes=3)
-                val_tp.append(tp); val_fp.append(fp); val_fn.append(fn); val_tn.append(tn)
-            
+                tp, fp, fn, tn = smp.metrics.get_stats(
+                    preds.argmax(dim=1), yb, mode="multiclass", num_classes=3
+                )
+                val_tp.append(tp); val_fp.append(fp)
+                val_fn.append(fn); val_tn.append(tn)
+
         val_tp = torch.cat(val_tp)
         val_fp = torch.cat(val_fp)
         val_fn = torch.cat(val_fn)
         val_tn = torch.cat(val_tn)
-        
+
         # — Aggregate metrics —
         train_loss /= len(X_train_t)
         val_loss   /= len(X_val_t)
@@ -395,22 +455,22 @@ def train_model(
         val_iou     = smp.metrics.iou_score(val_tp,   val_fp,   val_fn,   val_tn,   reduction="macro").item()
         current_lr  = optimizer.param_groups[0]['lr']
 
-        # — Per-class dice (axon=1, myelin=2) —
-        train_dice_axon  = smp.metrics.f1_score(train_tp, train_fp, train_fn, train_tn, reduction="none")[:, 1].mean().item()
-        train_dice_myel  = smp.metrics.f1_score(train_tp, train_fp, train_fn, train_tn, reduction="none")[:, 2].mean().item()
-        val_dice_axon    = smp.metrics.f1_score(val_tp,   val_fp,   val_fn,   val_tn,   reduction="none")[:, 1].mean().item()
-        val_dice_myel    = smp.metrics.f1_score(val_tp,   val_fp,   val_fn,   val_tn,   reduction="none")[:, 2].mean().item()
+        # — Per-class dice (axon=class 1, myelin=class 2) —
+        train_dice_axon = smp.metrics.f1_score(train_tp, train_fp, train_fn, train_tn, reduction="none")[:, 1].mean().item()
+        train_dice_myel = smp.metrics.f1_score(train_tp, train_fp, train_fn, train_tn, reduction="none")[:, 2].mean().item()
+        val_dice_axon   = smp.metrics.f1_score(val_tp,   val_fp,   val_fn,   val_tn,   reduction="none")[:, 1].mean().item()
+        val_dice_myel   = smp.metrics.f1_score(val_tp,   val_fp,   val_fn,   val_tn,   reduction="none")[:, 2].mean().item()
 
         # — Log history —
-        history['loss'].append(train_loss);         history['val_loss'].append(val_loss)
-        history['dice_coef'].append(train_dice);    history['val_dice_coef'].append(val_dice)
-        history['iou_coef'].append(train_iou);      history['val_iou_coef'].append(val_iou)
+        history['loss'].append(train_loss);      history['val_loss'].append(val_loss)
+        history['dice_coef'].append(train_dice); history['val_dice_coef'].append(val_dice)
+        history['iou_coef'].append(train_iou);   history['val_iou_coef'].append(val_iou)
         history['lr'].append(current_lr)
 
-        #— Checkpoint and early stopping ──────────────────────────────────────
+        # — Checkpoint and early stopping ──────────────────────────────────────
         # Primary trigger: axon+myelin dice improves meaningfully
-        # Tiebreaker: same combined dice but loss improves meaningfully
-        #             → updates checkpoint but does NOT reset patience counter
+        # Tiebreaker:      same combined dice but val_loss improves
+        #                  → updates checkpoint, does NOT reset patience
         combined = val_dice_axon + val_dice_myel
 
         if combined > best_combined + EARLY_STOP_MIN_DELTA:
@@ -419,21 +479,45 @@ def train_model(
             best_combined_axon  = val_dice_axon
             best_combined_myel  = val_dice_myel
             best_combined_loss  = val_loss
-            torch.save(model.state_dict(), str(model_path))
-            epochs_no_improve   = 0
-            checkpoint_flag     = " ← CHECKPOINT"
+            torch.save({
+                'model_state_dict': model.state_dict(),
+                'meta': {
+                    **_base_meta,
+                    'best_epoch':       epoch + 1,
+                    'best_axon_dice':   val_dice_axon,
+                    'best_myelin_dice': val_dice_myel,
+                    'best_combined':    combined,
+                    'best_val_loss':    val_loss,
+                    'epochs_completed': None,   # updated after loop
+                    'early_stopped':    None,   # updated after loop
+                }
+            }, str(model_path))
+            epochs_no_improve = 0
+            checkpoint_flag   = " ← CHECKPOINT"
 
         elif combined >= best_combined and val_loss < best_combined_loss - EARLY_STOP_MIN_DELTA:
             best_combined_loss  = val_loss
             best_combined_epoch = epoch + 1
-            torch.save(model.state_dict(), str(model_path))
-            checkpoint_flag     = " ← CHECKPOINT (loss tiebreak)"
+            torch.save({
+                'model_state_dict': model.state_dict(),
+                'meta': {
+                    **_base_meta,
+                    'best_epoch':       epoch + 1,
+                    'best_axon_dice':   best_combined_axon,
+                    'best_myelin_dice': best_combined_myel,
+                    'best_combined':    best_combined,
+                    'best_val_loss':    val_loss,
+                    'epochs_completed': None,
+                    'early_stopped':    None,
+                }
+            }, str(model_path))
+            checkpoint_flag = " ← CHECKPOINT (loss tiebreak)"
 
         else:
-            epochs_no_improve  += 1
-            checkpoint_flag     = ""
+            epochs_no_improve += 1
+            checkpoint_flag    = ""
 
-        # — Epoch log — includes checkpoint flag ───────────────────────────────
+        # — Epoch log —
         training_logger.log_epoch(epoch, {
             'loss':                train_loss,
             'val_loss':            val_loss,
@@ -458,9 +542,19 @@ def train_model(
                 f"no improvement in axon+myelin dice for {EARLY_STOP_PATIENCE} epochs"
             )
             break
-        
-    # ── Load best weights and write checkpoint summary ─────────────────────────
-    model.load_state_dict(torch.load(str(model_path), map_location=device))
+
+    # ── Update final fields in checkpoint ─────────────────────────────────────
+    n_epochs      = len(history['loss'])
+    early_stopped = n_epochs < epochs
+    checkpoint    = torch.load(str(model_path), map_location=device)
+    checkpoint['meta']['epochs_completed'] = n_epochs
+    checkpoint['meta']['early_stopped']    = early_stopped
+    torch.save(checkpoint, str(model_path))
+
+    # ── Load best weights ──────────────────────────────────────────────────────
+    model.load_state_dict(checkpoint['model_state_dict'])
+
+    # ── Checkpoint summary ─────────────────────────────────────────────────────
     training_logger.on_train_end({
         'epoch':    best_combined_epoch,
         'combined': best_combined,
@@ -471,10 +565,9 @@ def train_model(
     })
 
     # ── Final summary ──────────────────────────────────────────────────────────
-    t_elapsed   = datetime.now() - t_start
-    elapsed_str = f"{int(t_elapsed.total_seconds() // 60)}m {int(t_elapsed.total_seconds() % 60)}s"
-    final       = history
-    n_epochs    = len(final['loss'])
+    t_elapsed               = datetime.now() - t_start
+    elapsed_str             = f"{int(t_elapsed.total_seconds() // 60)}m {int(t_elapsed.total_seconds() % 60)}s"
+    final                   = history
     total_patches_processed = n_epochs * len(X_train)
 
     Console().print(Panel(
@@ -500,7 +593,7 @@ def train_model(
     log.finalize(summary={
         'Model':              str(model_path),
         'Epochs':             n_epochs,
-        'Early stopped':      str(n_epochs < epochs),
+        'Early stopped':      str(early_stopped),
         'Best checkpoint':    f"epoch {best_combined_epoch}",
         'Best axon dice':     f"{best_combined_axon:.4f}",
         'Best myelin dice':   f"{best_combined_myel:.4f}",
@@ -518,7 +611,7 @@ def train_model(
     # ── Prompt model promotion ─────────────────────────────────────────────────
     repo_root   = Path(__file__).resolve().parent.parent
     prod_models = repo_root / "models"
-    promote = input(f"\nCopy model to {prod_models}? [Y/n]: ").strip().lower()
+    promote     = input(f"\nCopy model to {prod_models}? [Y/n]: ").strip().lower()
     if promote in ('', 'y', 'yes'):
         dest = prod_models / model_path.name
         shutil.copy(str(model_path), str(dest))

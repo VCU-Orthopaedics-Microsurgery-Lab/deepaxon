@@ -6,7 +6,7 @@ Core segmentation logic for DeepAxon.
 - 50% overlap patching
 - Center crop
 - Weak CLAHE for contrast standardisation (configurable)
-- Per-patch normalisation matching original training pipeline (keras.utils.normalize, axis=1)
+- Per-patch normalisation matching original training pipeline (L2 axis=1)
 - BGW output (Black=background, Grey=myelin, White=axon)
 """
 
@@ -19,6 +19,7 @@ import cv2
 from pathlib import Path
 from patchify import patchify
 import torch
+import segmentation_models_pytorch as smp
 
 from utils.resize import resize_img, get_image_resolution
 from utils.logger import DeepAxonLogger
@@ -56,7 +57,7 @@ def hann_window(pos, patch_size=256):
     c2 = (i > half)  & (j <  half)
     c3 = (i <  half) & (j >  half)
     c4 = ~c1 & ~c2 & ~c3
-    s = np.zeros((patch_size, patch_size), dtype=float)
+    s  = np.zeros((patch_size, patch_size), dtype=float)
     hi = _hann_fn(i.astype(float))
     hj = _hann_fn(j.astype(float))
     if pos == 0:
@@ -103,10 +104,10 @@ def apply_clahe(img: np.ndarray) -> np.ndarray:
     Apply weak CLAHE for contrast standardisation.
     Parameters loaded from config.json.
     """
-    config = load_config()
+    config    = load_config()
     clahe_cfg = config.get("clahe", {})
     clip_limit = clahe_cfg.get("clip_limit", 1.5)
-    tile_size = clahe_cfg.get("tile_grid_size", [8, 8])
+    tile_size  = clahe_cfg.get("tile_grid_size", [8, 8])
     clahe = cv2.createCLAHE(
         clipLimit=clip_limit,
         tileGridSize=tuple(tile_size)
@@ -114,29 +115,89 @@ def apply_clahe(img: np.ndarray) -> np.ndarray:
     return clahe.apply(img)
 
 
+# ─── Model loader ─────────────────────────────────────────────────────────────
+
+def load_model(
+    model_path: str,
+    device: torch.device,
+    log: DeepAxonLogger = None
+) -> tuple:
+    """
+    Load a DeepAxon .pt model file.
+    Supports both legacy (raw state_dict) and v5 (dict with meta) formats.
+
+    Returns:
+        (model, meta) — meta is {} for legacy models
+    """
+    model_path = Path(model_path).resolve()
+    checkpoint = torch.load(str(model_path), map_location=device)
+
+    # Detect format
+    if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+        state_dict = checkpoint['model_state_dict']
+        meta       = checkpoint.get('meta', {})
+    else:
+        # Legacy format — raw state dict
+        state_dict = checkpoint
+        meta       = {}
+
+    # Build model from metadata if available, else use defaults
+    model = smp.UnetPlusPlus(
+        encoder_name    = meta.get('encoder',     'resnet34'),
+        encoder_weights = None,
+        in_channels     = meta.get('in_channels', 1),
+        classes         = len(meta.get('classes', ['background', 'myelin', 'axon'])),
+        activation      = None,
+    )
+    model.load_state_dict(state_dict)
+    model.to(device)
+    model.eval()
+
+    # Log metadata
+    if log and meta:
+        log.rule("LOADING MODEL")
+        log.info(f"Model      : {model_path.name}")
+        log.info(
+            f"Trained    : {meta.get('trained_date', '?')} on "
+            f"{meta.get('gpu', '?')} ({meta.get('hostname', '?')})"
+        )
+        log.info(f"Dataset    : {meta.get('dataset_path', '?')}")
+        log.info(
+            f"Mag        : {meta.get('magnification', '?')} | "
+            f"Patch: {meta.get('patch_size', '?')}px | "
+            f"Norm: {meta.get('normalization', '?')}"
+        )
+        log.info(
+            f"Best epoch : {meta.get('best_epoch', '?')} | "
+            f"Axon dice: {meta.get('best_axon_dice', float('nan')):.4f} | "
+            f"Myelin dice: {meta.get('best_myelin_dice', float('nan')):.4f}"
+        )
+    elif log:
+        log.rule("LOADING MODEL")
+        log.info(f"Model      : {model_path.name}")
+        log.warn("Legacy format — no embedded metadata")
+
+    return model, meta
+
+
 # ─── Segment single image ─────────────────────────────────────────────────────
 
 def segment_image(img_path, model, patch_size=256, cropped_dir=None, log=None, use_clahe=False):
-    t0 = time.time()
-    step = get_hann_compatible_step(patch_size)  # 50% overlap
+    t0   = time.time()
+    step = get_hann_compatible_step(patch_size)  # 50% overlap required by Hann blending
 
     # Resize
     img = resize_img(img_path, is_mask=False)
 
     # Center crop
-    img_crop = center_crop(img, patch_size)
+    img_crop       = center_crop(img, patch_size)
     crop_h, crop_w = img_crop.shape[:2]
-    
-    #SAVE (OVERWRITE ORIGINAL) img_crop saved at img_path
 
     # CLAHE — applied to full cropped image before patchifying if enabled
-    if use_clahe:
-        img_to_patch = apply_clahe(img_crop)
-    else:
-        img_to_patch = img_crop
+    img_to_patch = apply_clahe(img_crop) if use_clahe else img_crop
 
     # Patchify (still uint8 at this point)
-    patches = patchify(img_to_patch, (patch_size, patch_size), step=step)
+    patches        = patchify(img_to_patch, (patch_size, patch_size), step=step)
     n_rows, n_cols = patches.shape[:2]
 
     pred_img = np.zeros((crop_h, crop_w), dtype=float)
@@ -144,44 +205,43 @@ def segment_image(img_path, model, patch_size=256, cropped_dir=None, log=None, u
     for i in range(n_rows):
         for j in range(n_cols):
             patch = patches[i, j, :, :]
-            # L2 normalisation along axis=1 — matches original DeepAxon training pipeline (v1 train.py).
-            # Must stay in sync with train/data/data_loader.py load_patches() normalization.
+            # L2 normalisation along axis=1 — matches original DeepAxon training pipeline.
+            # Must stay in sync with train/dataset/data_loader.py load_patches() normalization.
             # Do NOT change without retraining all models.
             norms = np.linalg.norm(patch, axis=1, keepdims=True)
-            norms = np.where(norms == 0, 1, norms)  # avoid division by zero
+            norms = np.where(norms == 0, 1, norms)
             patch = patch / norms
-            patch = torch.from_numpy(patch).float().unsqueeze(0).unsqueeze(0)  # (1, 1, H, W)
+            patch = torch.from_numpy(patch).float().unsqueeze(0).unsqueeze(0)  # (1,1,H,W)
             patch = patch.to(next(model.parameters()).device)
             model.eval()
             with torch.no_grad():
-                pred = model(patch)                     # (1, 3, H, W) logits
-            pred = pred.argmax(dim=1).squeeze(0)        # (H, W)
+                pred = model(patch)              # (1, 3, H, W) logits
+            pred = pred.argmax(dim=1).squeeze(0) # (H, W)
             pred = pred.cpu().numpy()
 
-            pos = get_pos((n_rows, n_cols), i, j)
+            pos  = get_pos((n_rows, n_cols), i, j)
             hann = hann_window(pos, patch_size)
-            adj = pred * hann
+            adj  = pred * hann
 
             i_start = i * step
             j_start = j * step
             pred_img[i_start:i_start + patch_size, j_start:j_start + patch_size] += adj
 
     pred_img = np.round(pred_img).astype(int)
-    result = recolor(pred_img)
-
-    elapsed = time.time() - t0
+    result   = recolor(pred_img)
+    elapsed  = time.time() - t0
     return result, elapsed, crop_w
 
 
 # ─── Segment directory ────────────────────────────────────────────────────────
 
 def segment_dir(tiff_dir, output_dir, model, mag, log, timing_csv=None):
-    config = load_config()
+    config         = load_config()
     patch_size     = config.get("patch_size", {}).get(mag, 256)
     cropped_folder = config.get("cropped_folder", "Cropped")
     seg_suffix     = config.get("segmented_suffix", "_segmented")
-    step        = get_hann_compatible_step(patch_size)
-    overlap_pct = 100 - int(step / patch_size * 100)
+    step           = get_hann_compatible_step(patch_size)
+    overlap_pct    = 100 - int(step / patch_size * 100)
 
     tiff_dir   = Path(tiff_dir)
     output_dir = Path(output_dir)
@@ -229,8 +289,8 @@ def segment_dir(tiff_dir, output_dir, model, mag, log, timing_csv=None):
         log.info(f"Center crop: {crop_w}x{crop_h} px")
 
     timing_rows = []
-    success = 0
-    failed  = 0
+    success     = 0
+    failed      = 0
 
     for img_path in images:
         stem     = img_path.stem
