@@ -186,7 +186,8 @@ def train_model(
     use_aug: bool,
     log: DeepAxonLogger,
     mag: str,
-    split_mode: str = 'flat',       # ← add this
+    split_mode: str = 'flat',
+    val_tagged_stems: list[str] = None,
     model_type: str = 'unet++'
 ):
     """
@@ -244,6 +245,7 @@ def train_model(
         str(paths['masks_dir']  / 'val') if (paths['masks_dir']  / 'val').exists() else None,
         val_fraction=val_fraction or 0.2,
         split_mode=split_mode,
+        val_tagged_stems=val_tagged_stems,
         log=log,
     )
     log.info(f"Train: {len(X_train)} patches | Val: {len(X_val)} patches | Classes: 3 (background, myelin, axon)")
