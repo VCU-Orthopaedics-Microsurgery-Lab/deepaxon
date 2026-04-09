@@ -126,6 +126,7 @@ class DeepAxonLogger:
 
     def rule(self, title: str = ""):
         """Console rule + log section divider."""
+        self.console.print()
         self.console.rule(f"[bold]{title}[/bold]")
         divider = f"\n── {title} {'─' * max(0, 68 - len(title))}"
         self._append_raw(divider)

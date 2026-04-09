@@ -4,8 +4,10 @@ train/data/preprocess.py
 Image preprocessing pipeline for DeepAxon training.
 resize -> center crop -> save cropped image -> patchify (50% overlap) -> save patches
 """
-
 from __future__ import annotations
+
+import os
+os.environ["OPENCV_LOG_LEVEL"] = "ERROR"
 
 import cv2
 from pathlib import Path

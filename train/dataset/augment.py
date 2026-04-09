@@ -72,11 +72,11 @@ def augment_pair(
         h, w  = image.shape[:2]
         M     = cv2.getRotationMatrix2D((w / 2, h / 2), angle, 1.0)
         image = cv2.warpAffine(image, M, (w, h),
-                               flags=cv2.INTER_LINEAR,
-                               borderMode=cv2.BORDER_REFLECT_101)
+                       flags=cv2.INTER_LINEAR,
+                       borderMode=cv2.BORDER_REFLECT_101)[..., np.newaxis]
         mask  = cv2.warpAffine(mask, M, (w, h),
-                               flags=cv2.INTER_NEAREST,
-                               borderMode=cv2.BORDER_REFLECT_101)
+                            flags=cv2.INTER_NEAREST,
+                            borderMode=cv2.BORDER_REFLECT_101)[..., np.newaxis]
         applied.append(f'rot{angle:.1f}')
 
     # ── Photometric — applied to IMAGE ONLY ───────────────────────────────────

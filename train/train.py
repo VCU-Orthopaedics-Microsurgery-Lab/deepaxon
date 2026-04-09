@@ -19,7 +19,7 @@ from rich.console import Console
 
 from utils.logger import DeepAxonLogger
 from utils.version import __version__, __codename__
-from utils.helpers import get_model_dir, count_patches, list_files, load_config, get_git_commit
+from utils.helpers import get_model_dir, count_patches, load_config, get_git_commit
 from train.dataset.preprocess import batch_process
 from train.dataset.data_loader import load_all_patches
 from train.dataset.augment import augment_dataset_np
@@ -75,6 +75,7 @@ class TrainingLogger():
     def log_epoch(self, epoch: int, logs: dict, checkpoint_flag: str = ""):
         row = {
             'epoch':         epoch + 1,
+            'epoch_time':    logs.get('epoch_time', ''),
             'loss':          logs.get('loss',                float('nan')),
             'dice':          logs.get('dice_coef',           float('nan')),
             'dice_axon':     logs.get('dice_coef_axon',      float('nan')),
@@ -90,10 +91,10 @@ class TrainingLogger():
         }
         self.epoch_rows.append(row)
         self.log.print(
-            f"  Ep {row['epoch']:>4} | "
-            f"loss {row['loss']:.4f} | "
-            f"dice {row['dice']:.4f} axon {row['dice_axon']:.4f} myel {row['dice_myelin']:.4f} | "
-            f"val_dice {row['val_dice']:.4f} val_axon {row['val_dice_axon']:.4f}"
+            f"  Ep {row['epoch']:>4} ({row['epoch_time']}) | "
+            f"loss {row['loss']:.3f} | "
+            f"dice {row['dice']:.3f} axon {row['dice_axon']:.3f} myel {row['dice_myelin']:.3f} | "
+            f"val_dice {row['val_dice']:.3f} val_axon {row['val_dice_axon']:.3f}"
             f"{checkpoint_flag} | lr {row['lr']:.2e}"
         )
 
@@ -126,15 +127,13 @@ def prepare_dataset(images_dir: str, mag: str, log: DeepAxonLogger) -> dict:
     Verify and prepare the dataset structure.
     Returns paths dict used by train_model().
     """
-    images_dir = Path(images_dir).resolve() / "images"
-    masks_dir  = images_dir.parent / "masks"
+    images_dir   = Path(images_dir).resolve() / "images"
+    masks_dir    = images_dir.parent / "masks"
 
     cropped_img  = images_dir / "cropped"
     cropped_mask = masks_dir  / "cropped"
     patches_img  = cropped_img  / "patches"
     patches_mask = cropped_mask / "patches"
-    val_img      = images_dir / "val"
-    val_mask     = masks_dir  / "val"
 
     log.rule("VERIFYING DATASET")
 
@@ -171,8 +170,6 @@ def prepare_dataset(images_dir: str, mag: str, log: DeepAxonLogger) -> dict:
         'cropped_mask': cropped_mask,
         'patches_img':  patches_img,
         'patches_mask': patches_mask,
-        'val_img':      val_img,
-        'val_mask':     val_mask,
         'n_pairs':      len(matched),
         'mag':          mag,
     }
@@ -184,13 +181,10 @@ def train_model(
     images_dir: str,
     model_name: str,
     epochs: int,
-    val_fraction: float | None,
     batch_size: int,
     use_aug: bool,
     log: DeepAxonLogger,
     mag: str,
-    split_mode: str = 'flat',
-    val_tagged_stems: list[str] = None,
     model_type: str = 'unet++'
 ):
     """
@@ -239,16 +233,11 @@ def train_model(
         expand=False
     ))
 
-    # ── Load trainin directories ─────────────────────────────────────────────────
+    # ── Load training directories ─────────────────────────────────────────────────
     log.rule("LOADING TRAINING DIRECTORIES")
-    X_train, Y_train, X_val, Y_val = load_all_patches(
+    X_train, Y_train, X_val, Y_val, split_mode = load_all_patches(
         str(paths['images_dir']),
         str(paths['masks_dir']),
-        str(paths['val_img']) if paths['val_img'].exists() else None,
-        str(paths['val_mask']) if paths['val_mask'].exists() else None,
-        val_fraction=val_fraction or 0.2,
-        split_mode=split_mode,
-        val_tagged_stems=val_tagged_stems,
         log=log,
     )
     log.info(f"Train: {len(X_train)} patches | Val: {len(X_val)} patches | Classes: 3 (background, myelin, axon)")
@@ -276,6 +265,8 @@ def train_model(
             f"Gamma: {aug_counts['gamma']}  "
             f"Noise: {aug_counts['noise']}"
         )
+        aug_pct = round(aug_count / len(X_train) * 100, 1)
+        log.info(f"  Effective: {aug_count}/{len(X_train)} patches modified ({aug_pct}%)")
 
     # ── Build model ────────────────────────────────────────────────────────────
     log.rule("BUILDING MODEL")
@@ -302,18 +293,13 @@ def train_model(
     # ── Training setup summary ─────────────────────────────────────────────────
     log.rule("TRAINING SETUP")
     log.log_dict({
-        'Architecture':  'UNet++ (DeepAxon++) — resnet34 encoder',
-        'Input size':    '256×256×1',
-        'Classes':       '3 (background, myelin, axon)',
-        'Device':        str(device),
-        'Split mode':    'Phenotype (regen/control)' if split_mode == 'phenotype' else 'Flat',
-        'Val fraction':  (
-            val_fraction if (split_mode == 'flat' and not val_tagged_stems)
-            else f'N/A ({len(val_tagged_stems or [])} val_-tagged images)' if val_tagged_stems
-            else 'N/A (folder-defined)'
-        ),
-        'Train patches': len(X_train),
-        'Val patches':   len(X_val),
+        'Architecture':     'UNet++ (DeepAxon++) — resnet34 encoder',
+        'Input size':       '256×256×1',
+        'Classes':          '3 (background, myelin, axon)',
+        'Device':           str(device),
+        'Train patches':    len(X_train),
+        'Val patches':      len(X_val),
+        'Test/Train split': split_mode,
         'Augmentation':  (
             f"ON — geo_prob={GEO_PROB:.2f} photo_prob={PHOTO_PROB:.2f}"
             if use_aug else "OFF"
@@ -375,8 +361,7 @@ def train_model(
         'magnification':       mag,
         # Dataset
         'dataset_path':        str(Path(images_dir).resolve()),
-        'split_mode':          split_mode,
-        'val_images':          val_tagged_stems or [],
+        'test/train split':    split_mode,
         'n_train_patches':     len(X_train),
         'n_val_patches':       len(X_val),
         # Training config
@@ -402,7 +387,8 @@ def train_model(
     # ── Training loop ──────────────────────────────────────────────────────────
     log.rule("TRAINING")
     for epoch in range(epochs):
-
+        epoch_start = datetime.now()
+        
         # — Train —
         model.train()
         train_loss = 0.0
@@ -517,8 +503,16 @@ def train_model(
             epochs_no_improve += 1
             checkpoint_flag    = ""
 
+        # — ReduceLROnPlateau —
+        scheduler.step(val_loss)
+
+    
+        epoch_time     = datetime.now() - epoch_start
+        epoch_time_str = f"{int(epoch_time.total_seconds())}s"
+        
         # — Epoch log —
         training_logger.log_epoch(epoch, {
+            'epoch_time':          epoch_time_str,
             'loss':                train_loss,
             'val_loss':            val_loss,
             'dice_coef':           train_dice,
@@ -530,11 +524,9 @@ def train_model(
             'iou_coef':            train_iou,
             'val_iou_coef':        val_iou,
             'lr':                  current_lr,
+
         }, checkpoint_flag=checkpoint_flag)
-
-        # — ReduceLROnPlateau —
-        scheduler.step(val_loss)
-
+        
         # — Early stopping —
         if epochs_no_improve >= EARLY_STOP_PATIENCE:
             log.info(

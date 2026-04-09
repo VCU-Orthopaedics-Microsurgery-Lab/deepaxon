@@ -9,15 +9,13 @@ User provides only the images folder path — everything else is derived.
 Prompt order:
     1. GPU setup
     2. Images folder
-    3. Split mode detection + prompt (phenotype or flat)
-    4. val_ tag scan (flat mode only)
-    5. Magnification
-    6. Model name
-    7. Epoch limit
-    8. Val fraction (flat mode, no tags only)  ← now conditional on tags
-    9. Augmentation
-    10. Batch size menu
-    11. Log setup + run
+    3. val_ detection automatic
+    4. Magnification
+    5. Model name
+    6. Epoch limit
+    7. Augmentation
+    8. Batch size menu
+    9. Log setup + run
 """
 
 import os
@@ -37,12 +35,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from utils.logger import DeepAxonLogger
 from utils.gpu import setup_gpu_console
 from utils.helpers import (
-    get_int_input, get_float_input, get_yes_no,
+    get_int_input, get_yes_no,
     compute_batch_options, get_model_dir, get_log_dir,
-    count_patches, list_files, load_config
+    list_files, load_config
 )
 from train.train import (train_model)
-from train.dataset.data_loader import detect_split_mode
 
 console  = Console()
 has_gpu  = torch.cuda.is_available()
@@ -200,60 +197,6 @@ def select_batch_size(n_train_patches: int, use_gpu: bool) -> tuple[int, int, st
             console.print(f"[red]Please enter a number between 1 and {custom_idx}.[/red]")
 
 
-def _detect_and_prompt_split_mode(images_sub: Path) -> str:
-    """
-    Auto-detect split mode from folder structure and prompt user to confirm
-    or override.
-
-    Returns: 'phenotype' or 'flat'
-    """
-    train_dir      = images_sub / 'train'
-    detected       = detect_split_mode(train_dir) if train_dir.exists() else 'flat'
-    detected_label = (
-        "Phenotype split (train/regen/ and train/control/ found)"
-        if detected == 'phenotype' else
-        "Flat split (no regen/control subfolders found)"
-    )
-
-    console.print(f"\n[dim]Detected: {detected_label}[/dim]")
-    confirmed = get_yes_no(
-        f"Use {'phenotype' if detected == 'phenotype' else 'flat'} split?",
-        default=True
-    )
-
-    if confirmed:
-        return detected
-
-    # User override
-    override = 'flat' if detected == 'phenotype' else 'phenotype'
-    if override == 'phenotype':
-        # Validate that phenotype folders exist before accepting override
-        regen_ok   = (train_dir / 'regen').exists()
-        control_ok = (train_dir / 'control').exists()
-        if not regen_ok or not control_ok:
-            console.print(
-                "[red]Phenotype split requires train/regen/ and train/control/ folders. "
-                "Please create them and place images before running.[/red]"
-            )
-            console.print("[yellow]Falling back to flat split.[/yellow]")
-            return 'flat'
-
-    return override
-
-# ── NEW — scan for val_ tagged images in flat mode ────────────────────────────
-def _scan_val_tags(images_train_dir: Path) -> list[str]:
-    """
-    Scan images/train/ for files prefixed with val_.
-    Returns list of matching stems (without extension).
-    Supports multiple val_ tagged files.
-    """
-    all_files = list_files(
-        str(images_train_dir),
-        extensions=('.tif', '.tiff', '.png', '.bmp')
-    )
-    return [f.stem for f in all_files if f.stem.lower().startswith('val_')]
-# ─────────────────────────────────────────────────────────────────────────────
-
 def main():
     console.print(Panel(
         Align.center("[bold white]UNet++ Nerve Segmentation Model Training[/bold white]"),
@@ -268,10 +211,11 @@ def main():
     setup_gpu_console()
 
     # ── Images folder ─────────────────────────────────────────────────────────
-    images_dir = input("\nInput the path to the training images folder: ").strip().strip('"')
-    if not os.path.isdir(images_dir):
-        console.print(f"[red]Folder not found: {images_dir}[/red]")
-        sys.exit(1)
+    while True:
+        images_dir = input("\nInput the path to the training images folder: ").strip().strip('"')
+        if os.path.isdir(images_dir):
+            break
+        console.print(f"[red]Folder not found: {images_dir} — please try again.[/red]")
 
     images_path = Path(images_dir).resolve()
     images_sub  = images_path / "images"
@@ -284,7 +228,6 @@ def main():
     # ── Load config ───────────────────────────────────────────────────────────
     config    = load_config()
     train_cfg = config.get("training", {})
-    patch_cfg = config.get("patch_size", {})
     aug_cfg   = config.get("augmentation", {})
     prob_cfg  = aug_cfg.get("probabilities", {})
     param_cfg = aug_cfg.get("parameters", {})
@@ -292,22 +235,7 @@ def main():
     geo_prob   = prob_cfg.get("geometric_prob",  0.5)
     photo_prob = prob_cfg.get("photometric_prob", 0.25)
 
-    # ── Split mode ────────────────────────────────────────────────────────────
-    split_mode = _detect_and_prompt_split_mode(images_sub)
-    console.print(
-        f"[dim]Split mode: {'Phenotype (regen/control)' if split_mode == 'phenotype' else 'Flat'}[/dim]"
-    )
-    # ── val_ tag scan — flat mode only ────────────────────────────────────────
-    # NEW: scan for val_ prefixed images before prompting for val_fraction
-    # so the prompt can be skipped if tags are found.
-    val_tagged_stems = []                                        
-    if split_mode == 'flat':                                     
-        val_tagged_stems = _scan_val_tags(images_sub / 'train')
-        if val_tagged_stems:                                     
-            console.print(                                       
-                f"[dim]Found {len(val_tagged_stems)} val_-tagged image(s) — " 
-                f"val_fraction prompt skipped[/dim]"            
-            )                                                    
+    console.print("[yellow]Val set: auto-detected from val_ prefixed images (or 20% random split if none found)[/dim]")                                             
             
     # ── Magnification ─────────────────────────────────────────────────────────
     mag = select_magnification()
@@ -325,97 +253,38 @@ def main():
         default=default_epochs, min_val=1
     )
 
-    # ── Val fraction — flat mode, no tags only ────────────────────────────────
-    # CHANGED: now also skipped if val_ tags found
-    if split_mode == 'flat' and not val_tagged_stems:           
-        val_fraction = get_float_input(
-            "Validation fraction 0–1 (press Enter for default=0.2): ",
-            default=0.2, min_val=0.05, max_val=0.5
-        )
-    elif split_mode == 'flat' and val_tagged_stems:             
-        val_fraction = None                                      
-        console.print(                                           
-            f"[dim]Val fraction: N/A — defined by {len(val_tagged_stems)} "  
-            f"val_-tagged image(s)[/dim]"                       
-        )                                                       
-    else:
-        val_fraction = None  # phenotype mode — defined by folder structure
-        console.print("[dim]Val fraction: N/A — defined by val/regen/ and val/control/ folders[/dim]")
-
     # ── Augmentation ──────────────────────────────────────────────────────────
+    expected_pct = round((1 - (1 - geo_prob)**3 * (1 - photo_prob)**3) * 100, 1)
+    console.print(Panel(
+        Align.center(
+            f"Geometric prob: {geo_prob:.2f} | Photometric prob: {photo_prob:.2f}\n"
+            f"Flips, rotation ±{param_cfg.get('rotation_deg', 15)}°, "
+            f"brightness {param_cfg.get('brightness_range', [0.8, 1.2])}, "
+            f"gamma {param_cfg.get('gamma_range', [0.7, 1.4])}, "
+            f"noise σ={param_cfg.get('noise_sigma', 0.02)}\n"
+            f"Expected augmentation rate: ~{expected_pct}% of patches"
+        ),
+        title="Data Augmentation Settings",
+        border_style="green",
+        box=DOUBLE,
+        expand=True
+    ))
     use_aug = get_yes_no("Use data augmentation?", default=False)
-    if use_aug:
-        console.print(Panel(
-            Align.center(
-                f"[green]Data augmentation ENABLED[/green]\n"
-                f"Geometric prob: {geo_prob:.2f} | Photometric prob: {photo_prob:.2f}\n"
-                f"Flips, rotation ±{param_cfg.get('rotation_deg', 15)}°, "
-                f"brightness {param_cfg.get('brightness_range', [0.8, 1.2])}, "
-                f"gamma {param_cfg.get('gamma_range', [0.7, 1.4])}, "
-                f"noise σ={param_cfg.get('noise_sigma', 0.02)}"
-            ),
-            border_style="green",
-            box=DOUBLE,
-            expand=True
-        ))
 
     # ── Batch size menu ───────────────────────────────────────────────────────
-    # Estimate training patches for menu display.
-    # Phenotype mode: sum regen + control train patches if preprocessed.
-    # Flat mode: use val_fraction against total patches.
-    if split_mode == 'phenotype':
-        regen_patches_dir   = images_sub / 'train' / 'regen'   / 'cropped' / 'patches'
-        control_patches_dir = images_sub / 'train' / 'control' / 'cropped' / 'patches'
-        if regen_patches_dir.exists() and control_patches_dir.exists():
-            n_train_patches = (
-                count_patches(str(regen_patches_dir)) +
-                count_patches(str(control_patches_dir))
-            )
-        else:
-            # Estimate from image counts
-            n_regen   = len(list_files(str(images_sub / 'train' / 'regen'),
-                                       extensions=('.tif', '.tiff', '.png', '.bmp')))
-            n_control = len(list_files(str(images_sub / 'train' / 'control'),
-                                       extensions=('.tif', '.tiff', '.png', '.bmp')))
-            n_train_patches = (n_regen + n_control) * PATCHES_PER_IMAGE
-            
-    elif split_mode == 'flat' and val_tagged_stems:             
-        # Patch estimate based on non-tagged images only         
-        all_train_images = list_files(                          
-            str(images_sub / 'train'),                          
-            extensions=('.tif', '.tiff', '.png', '.bmp')        
-        )                                                        
-        n_train_images  = len([                                  
-            f for f in all_train_images                         
-            if not f.stem.lower().startswith('val_')            
-        ])                                                       
-        patches_dir = images_sub / 'train' / 'cropped' / 'patches'  
-        if patches_dir.exists():                                 
-            # Count only non-val_ patches from preprocessed dir 
-            all_patch_files = list_files(                       
-                str(patches_dir),                               
-                extensions=('.png', '.tif', '.tiff')            
-            )                                                    
-            n_train_patches = len([                             
-                f for f in all_patch_files                      
-                if not any(                                      
-                    f.stem.startswith(s.replace('val_', ''))    
-                    for s in val_tagged_stems                    
-                )                                               
-            ])                                                   
-        else:                                                    
-            n_train_patches = n_train_images * PATCHES_PER_IMAGE 
-
+    patches_dir = images_sub / 'cropped' / 'patches'
+    if patches_dir.exists():
+        all_patch_files = list_files(str(patches_dir), extensions=('.png', '.tif', '.tiff'))
+        n_train_patches = len([
+            f for f in all_patch_files
+            if not f.stem.startswith('val_')
+        ])
     else:
-        # Flat mode, no tags — use val_fraction
-        patches_dir = images_sub / 'train' / 'cropped' / 'patches'
-        if patches_dir.exists():
-            total_patches   = count_patches(str(patches_dir))
-            n_train_patches = int(total_patches * (1 - val_fraction))
-        else:
-            n_images        = len(list_files(str(images_sub / 'train'),
-                                             extensions=('.tif', '.tiff', '.png', '.bmp')))
-            n_train_patches = int(n_images * (1 - val_fraction)) * PATCHES_PER_IMAGE
+        n_train_images  = len([
+            f for f in list_files(str(images_sub), extensions=('.tif', '.tiff', '.png', '.bmp'))
+            if not Path(f).stem.lower().startswith('val_')
+        ])
+        n_train_patches = n_train_images * PATCHES_PER_IMAGE
 
     batch_size, remainder, bs_status = select_batch_size(n_train_patches, use_gpu=has_gpu)
 
@@ -432,20 +301,11 @@ def main():
         )
     if bs_status == 'custom_warn':
         bs_log += " [user override — outside recommended zones]"
-
-    # CHANGED: Val fraction log entry reflects all three cases   # ← CHANGED
-    if split_mode == 'phenotype':                                # ← CHANGED
-        val_fraction_log = 'N/A (folder-defined)'               # ← CHANGED
-    elif val_tagged_stems:                                       # ← CHANGED
-        val_fraction_log = f'N/A ({len(val_tagged_stems)} val_-tagged images)'  # ← CHANGED
-    else:                                                        # ← CHANGED
-        val_fraction_log = val_fraction                          # ← CHANGED
         
+    log.rule("TRAINING RUN SUMMARY")
     log.log_dict({
         'Model name':         model_name,
         'Magnification':      mag,
-        'Split mode':         'Phenotype (regen/control)' if split_mode == 'phenotype' else 'Flat',
-        'Val fraction':       val_fraction_log,
         'Epoch limit':        epochs,
         'Augmentation':       'ON' if use_aug else 'OFF',
         'Batch size':         bs_log,
@@ -460,13 +320,10 @@ def main():
         images_dir=str(images_path),
         model_name=model_name,
         epochs=epochs,
-        val_fraction=val_fraction,
         batch_size=batch_size,
         use_aug=use_aug,
         log=log,
         mag=mag,
-        split_mode=split_mode,
-        val_tagged_stems=val_tagged_stems,
     )
 
     console.print(f"\n[dim]Log saved to: {log_path}[/dim]")

@@ -276,11 +276,11 @@ def get_training_dir(images_dir: str) -> Path:
 
 
 def get_model_dir(images_dir: str) -> Path:
-    return get_training_dir(images_dir) / "models"
+    return Path(__file__).resolve().parent.parent / "models"
 
 
 def get_log_dir(images_dir: str) -> Path:
-    return get_training_dir(images_dir) / "logs"
+    return Path(__file__).resolve().parent.parent / "logs"
 
 
 def center_crop(img: np.ndarray, patch_size: int) -> np.ndarray:
