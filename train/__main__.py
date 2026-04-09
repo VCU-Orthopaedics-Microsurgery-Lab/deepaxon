@@ -235,7 +235,7 @@ def main():
     geo_prob   = prob_cfg.get("geometric_prob",  0.5)
     photo_prob = prob_cfg.get("photometric_prob", 0.25)
 
-    console.print("[yellow]Val set: auto-detected from val_ prefixed images (or 20% random split if none found)[/dim]")                                             
+    console.print("[yellow]Val set: auto-detected from val_ prefixed images (or 20% random split if none found)[/yellow]")                                             
             
     # ── Magnification ─────────────────────────────────────────────────────────
     mag = select_magnification()
