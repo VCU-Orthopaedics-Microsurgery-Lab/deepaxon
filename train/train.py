@@ -239,13 +239,13 @@ def train_model(
         expand=False
     ))
 
-    # ── Load patches ───────────────────────────────────────────────────────────
-    log.rule("LOADING PATCHES")
+    # ── Load trainin directories ─────────────────────────────────────────────────
+    log.rule("LOADING TRAINING DIRECTORIES")
     X_train, Y_train, X_val, Y_val = load_all_patches(
-        str(paths['images_dir'] / 'train'),
-        str(paths['masks_dir']  / 'train'),
-        str(paths['images_dir'] / 'val') if (paths['images_dir'] / 'val').exists() else None,
-        str(paths['masks_dir']  / 'val') if (paths['masks_dir']  / 'val').exists() else None,
+        str(paths['images_dir']),
+        str(paths['masks_dir']),
+        str(paths['val_img']) if paths['val_img'].exists() else None,
+        str(paths['val_mask']) if paths['val_mask'].exists() else None,
         val_fraction=val_fraction or 0.2,
         split_mode=split_mode,
         val_tagged_stems=val_tagged_stems,
