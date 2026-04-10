@@ -538,7 +538,7 @@ def train_model(
     # ── Update final fields in checkpoint ─────────────────────────────────────
     n_epochs      = len(history['loss'])
     early_stopped = n_epochs < epochs
-    checkpoint    = torch.load(str(model_path), map_location=device)
+    checkpoint = torch.load(str(model_path), map_location=device, weights_only=False)
     checkpoint['meta']['epochs_completed'] = n_epochs
     checkpoint['meta']['early_stopped']    = early_stopped
     torch.save(checkpoint, str(model_path))
