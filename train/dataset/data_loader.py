@@ -157,7 +157,7 @@ def load_all_patches(
             for stem in val_stems:
                 log.info(f"  {stem}")
 
-        return X_train, Y_train, X_val, Y_val, 'val_prefix'
+        return X_train, Y_train, X_val, Y_val, 'val_prefix', val_stems
 
     # ── Random split mode ─────────────────────────────────────────────────────
     X = load_patches(str(patches_img),  is_mask=False)
@@ -192,4 +192,4 @@ def load_all_patches(
         for stem in val_stems:
             log.info(f"  {stem}")
 
-    return X_train, Y_train, X_val, Y_val, f'random_{int(val_fraction*100)}pct'
+    return X_train, Y_train, X_val, Y_val, f'random_{int(val_fraction*100)}pct', val_stems
