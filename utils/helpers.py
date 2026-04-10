@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import numpy as np
+from safetensors import torch
 
 # ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -348,30 +349,28 @@ def _get_gpu_batch_candidates() -> list[int] | None:
     Returns None if no GPU available or detection fails.
 
     Tiers:
-        ≥ 60GB  : A100 80GB, H100, H200          → [256, 128, 64, 32]
-        ≥ 20GB  : A100 40GB, A40, RTX 3090/4090  → [128, 64, 32]
-        ≥ 10GB  : V100 16GB, RTX 3080, RTX 4070  → [64, 32, 16]
-        ≥ 6GB   : RTX 3060, GTX 1080             → [32, 16, 8]
-        < 6GB   : anything smaller               → [16, 8, 4]
+    ≥ 60GB  : A100 80GB, H100, H200          → [512, 256, 128, 64, 32]
+    ≥ 20GB  : A100 40GB, A40, RTX 3090/4090  → [256, 128, 64, 32, 16]
+    ≥ 10GB  : V100 16GB, RTX 3080, RTX 4070  → [128, 64, 32, 16, 8]
+    ≥ 6GB   : RTX 3060, GTX 1080             → [64, 32, 16, 8, 4]
+    < 6GB   : anything smaller               → [16, 8, 4, 2]
     """
     try:
-        import torch
         if not torch.cuda.is_available():
             return None
         vram_gb = torch.cuda.get_device_properties(0).total_memory / 1e9
-        if vram_gb >= 60:
-            return [256, 128, 64, 32]
+        if  vram_gb >= 60:
+            return [512, 256, 128, 64, 32]
         elif vram_gb >= 20:
-            return [128, 64, 32]
+            return [256, 128, 64, 32, 16]
         elif vram_gb >= 10:
-            return [64, 32, 16]
+            return [128, 64, 32, 16, 8]
         elif vram_gb >= 6:
-            return [32, 16, 8]
+            return [64, 32, 16, 8, 4]
         else:
-            return [16, 8, 4]
+            return [16, 8, 4, 2]
     except Exception:
         return None
-
 
 def _get_ideal_batch_sizes(use_gpu: bool) -> list[int]:
     """
@@ -427,30 +426,30 @@ def compute_batch_options(
     return a structured result for menu display and selection.
 
     Three zones:
-        ≥ 75% full   → acceptable  — present as menu option
-        25–75% full  → excluded    — not good enough, not bad enough
-        < 25% full   → danger      — drop remainder, present as trim option
+        ≥ 80% full   → acceptable  — present as menu option
+        15–80% full  → excluded    — not recommended
+        < 15% full   → danger      — drop remainder, present as trim option
 
     Args:
         n_patches: estimated training patches (after val split)
         use_gpu:   True if training on GPU
 
     Returns dict with keys:
-        'acceptable'  : list of (bs, remainder) — last batch ≥75% full
-        'trim'        : list of (bs, n_dropped, pct_dropped) — <25%, drop remainder
-        'excluded'    : list of (bs, remainder, fullness_pct) — 25-75%, shown as info
+        'acceptable'  : list of (bs, remainder) — last batch ≥80% full
+        'trim'        : list of (bs, n_dropped, pct_dropped) — <15%, drop remainder
+        'excluded'    : list of (bs, remainder, fullness_pct) — 15-80%, shown as info
         'ideal'       : list[int] — top device batch sizes regardless of patches
         'device_label': str — e.g. 'A100 80GB (80GB VRAM)' or 'CPU'
     """
     config    = load_config()
     train_cfg = config.get("training", {})
-    min_ok    = train_cfg.get("min_last_batch_fullness",    0.75)
-    min_warn  = train_cfg.get("danger_last_batch_fullness", 0.25)
+    min_ok    = train_cfg.get("min_last_batch_fullness",    0.80)
+    min_warn  = train_cfg.get("danger_last_batch_fullness", 0.15)
 
     if use_gpu:
         candidates = _get_gpu_batch_candidates()
         if candidates is None:
-            candidates = train_cfg.get("gpu_batch_candidates", [256, 128, 64, 32, 16])
+            candidates = train_cfg.get("gpu_batch_candidates", [512, 256, 128, 64, 32])
     else:
         candidates = train_cfg.get("cpu_batch_candidates", [32, 16, 8, 4])
 
@@ -475,7 +474,6 @@ def compute_batch_options(
             pct_dropped = round(n_dropped / n_patches * 100, 1)
             trim.append((bs, n_dropped, pct_dropped))
 
-    # Device label for display
     if use_gpu:
         try:
             import torch

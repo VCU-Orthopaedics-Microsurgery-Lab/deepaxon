@@ -29,6 +29,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.box import DOUBLE
 from rich.align import Align
+from rich.text import Text
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -46,22 +47,6 @@ has_gpu  = torch.cuda.is_available()
 
 MAG_OPTIONS       = ['40X', '100X']
 PATCHES_PER_IMAGE = 63  # at 50% overlap on 1440px images
-
-
-def select_magnification() -> str:
-    """Prompt user to select imaging magnification."""
-    console.print("\n[bold]Select imaging magnification:[/bold]")
-    for i, m in enumerate(MAG_OPTIONS, 1):
-        console.print(f"  [{i}] {m}")
-    while True:
-        raw = input(f"Select [1-{len(MAG_OPTIONS)}]: ").strip()
-        try:
-            idx = int(raw) - 1
-            if 0 <= idx < len(MAG_OPTIONS):
-                return MAG_OPTIONS[idx]
-        except ValueError:
-            pass
-        console.print(f"[red]Please enter a number between 1 and {len(MAG_OPTIONS)}[/red]")
 
 
 def _format_bs_line(bs: int, remainder: int, n_patches: int, suffix: str = "") -> str:
@@ -105,45 +90,46 @@ def _evaluate_custom_bs(bs: int, n_patches: int) -> tuple[str, str]:
 
 
 def select_batch_size(n_train_patches: int, use_gpu: bool) -> tuple[int, int, str]:
-    opts = compute_batch_options(n_train_patches, use_gpu=use_gpu)
-
+    opts      = compute_batch_options(n_train_patches, use_gpu=use_gpu)
     ideal_str = " or ".join(str(b) for b in opts['ideal'])
-    console.print("\n" + "─" * 72)
-    console.print("  BATCH SIZE SELECTION")
-    console.print("─" * 72)
-    console.print(f"  Device                           : {opts['device_label']}")
-    console.print(f"  Ideal batch size for this device : {ideal_str}")
-    console.print(f"  Training patches (estimated)     : ~{n_train_patches}")
-    console.print()
-
     menu_items = []
 
+    # ── Device panel ──────────────────────────────────────────────────────────
+    from rich.text import Text
+    t = Text(justify="center")
+    t.append(f"{opts['device_label']}\n", style="orange1")
+    t.append(f"Ideal batch size: {ideal_str}    |    Training patches: ~{n_train_patches}")
+    console.print(Panel(
+        t,
+        title="[bold orange1]Batch Size Selection[/bold orange1]",
+        border_style="orange1",
+        box=DOUBLE,
+        expand=True
+    ))
+
+    # ── Options ───────────────────────────────────────────────────────────────
     if opts['acceptable']:
-        console.print("  [green]✅ Acceptable (≥75% last batch full):[/green]")
+        console.print(f"\n  [green]✅ Acceptable (≥80% last batch full):[/green]")
         for bs, remainder in opts['acceptable']:
             idx  = len(menu_items) + 1
             line = _format_bs_line(bs, remainder, n_train_patches)
             console.print(f"  [{idx}]  {line}")
             menu_items.append((idx, bs, remainder, 'perfect' if remainder == 0 else 'acceptable'))
-        console.print()
 
     if opts['trim']:
-        console.print("  [cyan]✅ Trim to perfect fit (<25% last batch — drops remainder):[/cyan]")
+        console.print(f"\n  [cyan]✅ Trim to perfect fit (<15% last batch — drops remainder):[/cyan]")
         for bs, n_dropped, pct_dropped in opts['trim']:
             idx  = len(menu_items) + 1
             line = _format_trim_line(bs, n_dropped, pct_dropped, n_train_patches)
             console.print(f"  [{idx}]  {line}")
             menu_items.append((idx, bs, 0, 'trim'))
-        console.print()
 
     if opts['excluded']:
         excl_str = ", ".join(f"bs={bs} ({pct}%)" for bs, _, pct in opts['excluded'])
-        console.print(f"  [yellow]⚠  Excluded (25–75% last batch): {excl_str}[/yellow]")
-        console.print()
+        console.print(f"\n  [yellow]⚠  Excluded (15–80% last batch): {excl_str}[/yellow]")
 
     custom_idx = len(menu_items) + 1
-    console.print(f"  [{custom_idx}]  Enter custom batch size")
-    console.print("─" * 72)
+    console.print(f"\n  [{custom_idx}]  Enter custom batch size\n")
 
     while True:
         raw = input(f"Select [1-{custom_idx}]: ").strip()
@@ -175,7 +161,7 @@ def select_batch_size(n_train_patches: int, use_gpu: bool) -> tuple[int, int, st
                     remainder = n_train_patches % custom_bs
                     fullness  = int(remainder / custom_bs * 100)
                     console.print(
-                        f"[yellow]  ⚠ Last batch {fullness}% full (25–75% excluded zone). "
+                        f"[yellow]  ⚠ Last batch {fullness}% full (15–80% excluded zone). "
                         f"Strongly recommend choosing a different size.[/yellow]"
                     )
                     if get_yes_no("  Proceed anyway?", default=False):
@@ -184,7 +170,7 @@ def select_batch_size(n_train_patches: int, use_gpu: bool) -> tuple[int, int, st
                     n_dropped = n_train_patches % custom_bs
                     pct       = round(n_dropped / n_train_patches * 100, 1)
                     console.print(
-                        f"[red]  ⚠ Last batch <25% full. "
+                        f"[red]  ⚠ Last batch <15% full. "
                         f"{n_dropped} patches ({pct}%) will be dropped.[/red]"
                     )
                     if get_yes_no("  Proceed with trim?", default=False):
@@ -238,10 +224,13 @@ def main():
     photo_prob = prob_cfg.get("photometric_prob", 0.25)                                           
             
     # ── Magnification ─────────────────────────────────────────────────────────
-    mag = select_magnification()
+    raw = input("\nSelect imaging magnification — [1] 40X  [2] 100X: ").strip()
+    while raw not in ('1', '2'):
+        raw = input("Invalid — [1] 40X  [2] 100X: ").strip()
+    mag = MAG_OPTIONS[int(raw) - 1]
 
     # ── Model name ────────────────────────────────────────────────────────────
-    auto_name  = f"deepaxon_{mag.lower()}_{timestamp}"
+    auto_name  = f"{mag.lower()}_{timestamp}"
     console.print(f"\n[dim]Auto-generated name: {auto_name}[/dim]")
     custom     = input("Enter model name (press Enter to use auto-generated): ").strip()
     model_name = custom if custom else auto_name
@@ -255,17 +244,14 @@ def main():
 
     # ── Augmentation ──────────────────────────────────────────────────────────
     expected_pct = round((1 - (1 - geo_prob)**3 * (1 - photo_prob)**3) * 100, 1)
+    t = Text(justify="center")
+    t.append(f"Geometric prob: {geo_prob:.2f}    |    Photometric prob: {photo_prob:.2f}\n", style="orange1")
+    t.append(f"Flips, rotation ±{param_cfg.get('rotation_deg', 15)}°, brightness {param_cfg.get('brightness_range', [0.8, 1.2])}, gamma {param_cfg.get('gamma_range', [0.7, 1.4])}, noise σ={param_cfg.get('noise_sigma', 0.02)}\n")
+    t.append(f"Expected augmentation rate: ~{expected_pct}% of patches", style="orange1")
     console.print(Panel(
-        Align.center(
-            f"Geometric prob: {geo_prob:.2f} | Photometric prob: {photo_prob:.2f}\n"
-            f"Flips, rotation ±{param_cfg.get('rotation_deg', 15)}°, "
-            f"brightness {param_cfg.get('brightness_range', [0.8, 1.2])}, "
-            f"gamma {param_cfg.get('gamma_range', [0.7, 1.4])}, "
-            f"noise σ={param_cfg.get('noise_sigma', 0.02)}\n"
-            f"Expected augmentation rate: ~{expected_pct}% of patches"
-        ),
-        title="Data Augmentation Settings",
-        border_style="green",
+        t,
+        title="[bold orange1]Data Augmentation Settings[/bold orange1]",
+        border_style="orange1",
         box=DOUBLE,
         expand=True
     ))

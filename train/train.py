@@ -59,7 +59,6 @@ def weighted_dice_loss(pred: torch.Tensor, target: torch.Tensor, weights: torch.
     target:  (N, H, W)   class indices
     weights: (C,)         per-class weights
     """
-    num_classes = pred.shape[1]
     pred_soft   = torch.softmax(pred, dim=1)
     target_one_hot = torch.zeros_like(pred_soft).scatter_(
         1, target.unsqueeze(1), 1.0
@@ -88,47 +87,49 @@ class TrainingLogger():
 
     def log_epoch(self, epoch: int, logs: dict, checkpoint_flag: str = ""):
         row = {
+            # Epoch info
             'epoch':         epoch + 1,
             'epoch_time':    logs.get('epoch_time', ''),
+            'lr':            logs.get('lr',                  float('nan')),
+            # Training metrics
             'loss':          logs.get('loss',                float('nan')),
             'dice':          logs.get('dice_coef',           float('nan')),
+            'dice_bg':       logs.get('dice_coef_bg',        float('nan')),
             'dice_axon':     logs.get('dice_coef_axon',      float('nan')),
             'dice_myelin':   logs.get('dice_coef_myelin',    float('nan')),
-            'iou':           logs.get('iou_coef',            float('nan')),
+            # Validation metrics
             'val_loss':      logs.get('val_loss',            float('nan')),
             'val_dice':      logs.get('val_dice_coef',       float('nan')),
+            'val_dice_bg':   logs.get('val_dice_coef_bg',    float('nan')),
             'val_dice_axon': logs.get('val_dice_coef_axon',  float('nan')),
             'val_dice_myel': logs.get('val_dice_coef_myelin',float('nan')),
-            'val_iou':       logs.get('val_iou_coef',        float('nan')),
-            'lr':            logs.get('lr',                  float('nan')),
+            # Checkpoint
             'checkpoint':    checkpoint_flag,
         }
         self.epoch_rows.append(row)
         self.log.print(
-            f"  Ep {row['epoch']:>4} ({row['epoch_time']}) | "
-            f"loss {row['loss']:.3f} | "
-            f"dice {row['dice']:.3f} axon {row['dice_axon']:.3f} myel {row['dice_myelin']:.3f} | "
-            f"val_dice {row['val_dice']:.3f} vax {row['val_dice_axon']:.3f} vmy {row['val_dice_myel']:.3f}"
-            f"{checkpoint_flag} | lr {row['lr']:.2e}"
+            f"  Epoch{row['epoch']:>4} ({row['epoch_time']}) | learning_rate {row['lr']:.2e}\n"
+            f"  TRAIN  loss {row['loss']:.3f} | dice {row['dice']:.3f} | bg {row['dice_bg']:.3f} | ax {row['dice_axon']:.3f} | my {row['dice_myelin']:.3f}\n"
+            f"  VAL    loss {row['val_loss']:.3f} | dice {row['val_dice']:.3f} | bg {row['val_dice_bg']:.3f} | ax {row['val_dice_axon']:.3f} | my {row['val_dice_myel']:.3f}  {checkpoint_flag}"
         )
 
     def on_train_end(self, checkpoint_info: dict):
         """
         Write checkpoint summary to log file only.
-        Replaces the redundant epoch metrics table — per-epoch detail
-        is already in the live training log lines above.
+        Per-epoch detail is already in the live training log lines above.
 
-        checkpoint_info keys: epoch, combined, axon, myelin, loss, path
+        checkpoint_info keys: epoch, loss, bg, axon, myelin, iou, path
         """
         if not self.epoch_rows:
             return
 
         summary = (
-            f"Best combined (axon + myelin dice) : {checkpoint_info['combined']:.4f} "
-            f"@ epoch {checkpoint_info['epoch']}\n"
-            f"  Val axon dice   : {checkpoint_info['axon']:.4f}\n"
-            f"  Val myelin dice : {checkpoint_info['myelin']:.4f}\n"
-            f"  Val loss        : {checkpoint_info['loss']:.4f}\n"
+            f"Best checkpoint @ epoch {checkpoint_info['epoch']}\n"
+            f"  Val loss        : {checkpoint_info['loss']:.3f}\n"
+            f"  Val bg dice     : {checkpoint_info['bg']:.3f}\n"
+            f"  Val axon dice   : {checkpoint_info['axon']:.3f}\n"
+            f"  Val myelin dice : {checkpoint_info['myelin']:.3f}\n"
+            f"  Val IoU         : {checkpoint_info['iou']:.3f}\n"
             f"  Saved to        : {checkpoint_info['path']}"
         )
         self.log.write_section("CHECKPOINT SUMMARY", summary)
@@ -149,7 +150,23 @@ def prepare_dataset(images_dir: str, mag: str, log: DeepAxonLogger) -> dict:
     patches_img  = cropped_img  / "patches"
     patches_mask = cropped_mask / "patches"
 
-    log.rule("VERIFYING DATASET")
+    # ── Mask quality check ────────────────────────────────────────────────────────
+    log.rule("SOURCE MASK QUALITY")
+    mask_paths   = sorted(masks_dir.glob('*.png')) + sorted(masks_dir.glob('*.tif'))
+    dirty_masks  = []
+    for mask_path in mask_paths:
+        mask       = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE)
+        unexpected = ~np.isin(mask, [0, 127, 128, 255])
+        if unexpected.sum() > 0:
+            pct = round(unexpected.sum() / mask.size * 100, 2)
+            dirty_masks.append(mask_path.name)
+            log.warn(f"  {mask_path.name}: {unexpected.sum()} unexpected pixels ({pct}%) — will be thresholded to nearest class")
+
+    if not dirty_masks:
+        log.success(f"No unexpected pixels found in {len(mask_paths)}/{len(mask_paths)} masks")
+        
+    # ── Dataset verification ────────────────────────────────────────────────────────
+    log.rule("DATASET VERIFICATION")
 
     if not masks_dir.exists():
         log.warn(f"Masks folder not found: {masks_dir}")
@@ -177,17 +194,6 @@ def prepare_dataset(images_dir: str, mag: str, log: DeepAxonLogger) -> dict:
         log.warn(f"Images without masks: {sorted(missing_masks)}")
     if missing_imgs:
         log.warn(f"Masks without images: {sorted(missing_imgs)}")
-
-    # ── Mask quality check ────────────────────────────────────────────────────────
-    log.rule("MASK QUALITY CHECK")
-    for mask_path in sorted(masks_dir.glob('*.png')) + sorted(masks_dir.glob('*.tif')):
-        mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE)
-        unexpected = ~np.isin(mask, [0, 127, 128, 255])
-        if unexpected.sum() > 0:
-            pct = round(unexpected.sum() / mask.size * 100, 2)
-            log.warn(f"  {mask_path.name}: {unexpected.sum()} unexpected pixels ({pct}%) — will be thresholded to nearest class")
-        else:
-            log.info(f"  {mask_path.name}: pixels clean")
         
     return {
         'images_dir':   images_dir,
@@ -217,22 +223,21 @@ def train_model(
     Full training pipeline.
 
     Pipeline:
-        prepare_dataset → preprocess (if needed) → verify patch alignment
+        prepare_dataset → preprocess (if needed) → patch verification
         → load patches → augment → build model → train loop
-        → checkpoint summary → finalize → promote
+        → checkpoint summary → finalize
 
     Checkpointing strategy:
-        Primary trigger  : val_dice_axon + val_dice_myelin improves by > EARLY_STOP_MIN_DELTA
-        Tiebreaker       : same combined dice but val_loss improves by > EARLY_STOP_MIN_DELTA
-                           (updates checkpoint but does NOT reset patience counter)
-        Early stopping   : patience counter reaches EARLY_STOP_PATIENCE epochs
-                           without primary improvement
+        Trigger       : val_loss improves by > EARLY_STOP_MIN_DELTA
+        Early stopping: patience counter reaches EARLY_STOP_PATIENCE epochs
+                        without val_loss improvement
     """
     t_start = datetime.now()
     paths   = prepare_dataset(images_dir, mag, log)
 
     # ── Preprocess if patches don't exist ─────────────────────────────────────
     if not paths['patches_img'].exists() or count_patches(str(paths['patches_img'])) == 0:
+        log.rule("PREPROCESSING")
         n_img, n_mask = batch_process(
             str(paths['images_dir']),
             str(paths['masks_dir']),
@@ -245,28 +250,24 @@ def train_model(
         )
         log.success(f"Patches created: {n_img} image, {n_mask} mask")
     else:
+        log.rule("PATCH VERIFICATION")
         n_img = count_patches(str(paths['patches_img']))
-        log.info(f"Using existing patches: {n_img}")
+        log.info(f"Existing patches found — skipping preprocessing ({n_img} patches)")
 
     # ── Verify patch alignment ─────────────────────────────────────────────────
     n_img_p  = count_patches(str(paths['patches_img']))
     n_mask_p = count_patches(str(paths['patches_mask']))
     if n_img_p != n_mask_p:
         raise ValueError(f"Patch count mismatch: {n_img_p} images vs {n_mask_p} masks")
+    log.success(f"Patch alignment verified — images: {n_img_p} | masks: {n_mask_p}")
 
-    Console().print(Panel(
-        f"✅ Patch alignment verified\nImages: {n_img_p} | Masks: {n_mask_p}",
-        expand=False
-    ))
-
-    # ── Load training directories ─────────────────────────────────────────────────
-    log.rule("LOADING TRAINING DIRECTORIES")
+    # ── Load patches ─────────────────────────────────────────────────
+    log.rule("LOADING PATCHES")
     X_train, Y_train, X_val, Y_val, split_mode, val_stems= load_all_patches(
         str(paths['images_dir']),
         str(paths['masks_dir']),
         log=log,
     )
-    log.info(f"Train: {len(X_train)} patches | Val: {len(X_val)} patches | Classes: 3 (background, myelin, axon)")
 
     Y_train = Y_train.astype(np.int64)
     Y_val   = Y_val.astype(np.int64)
@@ -277,28 +278,21 @@ def train_model(
     if use_aug:
         log.rule("AUGMENTATION")
         X_train, Y_train, aug_count, aug_counts = augment_dataset_np(X_train, Y_train)
-        log.success(
-            f"Augmented {aug_count}/{len(X_train)} patches "
-            f"(geo_prob={GEO_PROB:.2f} photo_prob={PHOTO_PROB:.2f})"
-        )
+        aug_pct = round(aug_count / len(X_train) * 100, 1)
+        log.success(f"{aug_count}/{len(X_train)} patches modified ({aug_pct}%)")
         log.info(
-            f"  Geometric  — H-flip: {aug_counts['hflip']}  "
-            f"V-flip: {aug_counts['vflip']}  "
+            f"  Geometric   — H-flip: {aug_counts['hflip']}  |  "
+            f"V-flip: {aug_counts['vflip']}  |  "
             f"Rotation: {aug_counts['rotation']}"
         )
         log.info(
-            f"  Photometric — Brightness: {aug_counts['brightness']}  "
-            f"Gamma: {aug_counts['gamma']}  "
+            f"  Photometric — Brightness: {aug_counts['brightness']}  |  "
+            f"Gamma: {aug_counts['gamma']}  |  "
             f"Noise: {aug_counts['noise']}"
         )
-        aug_pct = round(aug_count / len(X_train) * 100, 1)
-        log.info(f"  Effective: {aug_count}/{len(X_train)} patches modified ({aug_pct}%)")
 
     # ── Build model ────────────────────────────────────────────────────────────
-    log.rule("BUILDING MODEL")
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    log.info(f"Device: {device}")
-    
+    device        = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     CLASS_WEIGHTS = torch.tensor(_class_weights_cfg, dtype=torch.float32).to(device)
     _ce_loss      = torch.nn.CrossEntropyLoss(weight=CLASS_WEIGHTS)
 
@@ -316,7 +310,6 @@ def train_model(
     )
     model     = model.to(device)
     n_params  = sum(p.numel() for p in model.parameters())
-    log.success(f"Model built: {n_params:,} parameters")
 
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
@@ -324,26 +317,27 @@ def train_model(
         patience=REDUCE_LR_PATIENCE, min_lr=REDUCE_LR_MIN_LR
     )
     
-
     # ── Training setup summary ─────────────────────────────────────────────────
     log.rule("TRAINING SETUP")
     log.log_dict({
-        'Architecture':     'UNet++ (DeepAxon++) — resnet34 encoder',
-        'Input size':       '256×256×1',
-        'Classes':          '3 (background, myelin, axon)',
+        # Architecture
+        'Architecture':     'UNet++ (DeepAxon++) — resnet34 encoder, imagenet weights',
+        'Parameters':       f"{n_params:,}",
         'Class weights':    f"bg={_class_weights_cfg[0]} myelin={_class_weights_cfg[1]} axon={_class_weights_cfg[2]}",
-        'Device':           str(device),
+        # Dataset
         'Train patches':    len(X_train),
         'Val patches':      len(X_val),
-        'Test/Train split':  split_mode,
-        'Augmentation':  (
-            f"ON — geo_prob={GEO_PROB:.2f} photo_prob={PHOTO_PROB:.2f}"
-            if use_aug else "OFF"
-        ),
-        'Loss function': f"Weighted Dice ({DICE_WEIGHT}) + CrossEntropy ({CE_WEIGHT})",
-        'Optimizer':     f"Adam lr={LEARNING_RATE}",
-        'ReduceLR':      f"patience={REDUCE_LR_PATIENCE}, factor={REDUCE_LR_FACTOR}, min_lr={REDUCE_LR_MIN_LR} — monitors val_loss",
-        'EarlyStopping': f"patience={EARLY_STOP_PATIENCE}, min_delta={EARLY_STOP_MIN_DELTA} — monitors axon+myelin dice",
+        'Test/Train split': split_mode,
+        # Training
+        'Device':           str(device),
+        'Batch size':       batch_size,
+        'Epoch limit':      epochs,
+        'Augmentation':     f"ON — geo_prob={GEO_PROB:.2f} photo_prob={PHOTO_PROB:.2f}" if use_aug else "OFF",
+        'Loss function':    f"Weighted Dice ({DICE_WEIGHT}) + CrossEntropy ({CE_WEIGHT})",
+        'Optimizer':        f"Adam lr={LEARNING_RATE}",
+        'ReduceLR':         f"patience={REDUCE_LR_PATIENCE}, factor={REDUCE_LR_FACTOR}, min_lr={REDUCE_LR_MIN_LR} — monitors val_loss",
+        'EarlyStopping':    f"patience={EARLY_STOP_PATIENCE}, min_delta={EARLY_STOP_MIN_DELTA} — monitors val_loss",
+        'Checkpoint':       "best val_loss",
     })
 
     # ── DataLoaders ────────────────────────────────────────────────────────────
@@ -361,18 +355,25 @@ def train_model(
     model_dir.mkdir(parents=True, exist_ok=True)
     model_path = model_dir / f"{model_name}.pt"
 
-    best_combined       = 0.0
-    best_combined_epoch = 0
-    best_combined_axon  = 0.0
-    best_combined_myel  = 0.0
-    best_combined_loss  = float('inf')
-    epochs_no_improve   = 0
-    training_logger     = TrainingLogger(log, use_aug)
-    history             = {
-        'loss': [], 'val_loss': [],
-        'dice_coef': [], 'val_dice_coef': [],
-        'iou_coef':  [], 'val_iou_coef':  [],
-        'lr': []
+    # Best checkpoint trackers — all from the same epoch (best val_loss)
+    best_val_loss         = float('inf')
+    best_val_bg           = 0.0
+    best_val_axon         = 0.0
+    best_val_myel         = 0.0
+    best_val_iou          = 0.0
+    best_checkpoint_epoch = 0
+    epochs_no_improve     = 0
+
+    training_logger = TrainingLogger(log, use_aug)
+
+    history = {
+        'loss':          [],
+        'val_loss':      [],
+        'dice_coef':     [],
+        'val_dice_coef': [],
+        'iou_coef':      [],
+        'val_iou_coef':  [],
+        'lr':            [],
     }
 
     # ── Base metadata — built once, updated at each checkpoint ────────────────
@@ -406,10 +407,12 @@ def train_model(
         'geo_prob':            GEO_PROB   if use_aug else None,
         'photo_prob':          PHOTO_PROB if use_aug else None,
         'batch_size':          batch_size,
+        'last_batch_fullness': f"{int((len(X_train) % batch_size) / batch_size * 100) if (len(X_train) % batch_size) > 0 else 100}%",
         'epochs_limit':        epochs,
         'learning_rate':       LEARNING_RATE,
         'dice_weight':         DICE_WEIGHT,
         'ce_weight':           CE_WEIGHT,
+        'checkpoint_metric':   'val_loss',
         'reduce_lr_patience':  REDUCE_LR_PATIENCE,
         'early_stop_patience': EARLY_STOP_PATIENCE,
         'early_stop_min_delta':EARLY_STOP_MIN_DELTA,
@@ -477,11 +480,14 @@ def train_model(
         val_iou     = smp.metrics.iou_score(val_tp,   val_fp,   val_fn,   val_tn,   reduction="macro").item()
         current_lr  = optimizer.param_groups[0]['lr']
 
-        # — Per-class dice (myelin=class 1, axon=class 2) —
+        # — Per-class dice (background=class 0, myelin=class 1, axon=class 2) —
+        train_dice_bg   = smp.metrics.f1_score(train_tp, train_fp, train_fn, train_tn, reduction="none")[:, 0].mean().item()
         train_dice_myel = smp.metrics.f1_score(train_tp, train_fp, train_fn, train_tn, reduction="none")[:, 1].mean().item()
         train_dice_axon = smp.metrics.f1_score(train_tp, train_fp, train_fn, train_tn, reduction="none")[:, 2].mean().item()
+        val_dice_bg     = smp.metrics.f1_score(val_tp,   val_fp,   val_fn,   val_tn,   reduction="none")[:, 0].mean().item()
         val_dice_myel   = smp.metrics.f1_score(val_tp,   val_fp,   val_fn,   val_tn,   reduction="none")[:, 1].mean().item()
         val_dice_axon   = smp.metrics.f1_score(val_tp,   val_fp,   val_fn,   val_tn,   reduction="none")[:, 2].mean().item()
+     
         
         # — Log history —
         history['loss'].append(train_loss);      history['val_loss'].append(val_loss)
@@ -489,49 +495,30 @@ def train_model(
         history['iou_coef'].append(train_iou);   history['val_iou_coef'].append(val_iou)
         history['lr'].append(current_lr)
 
-        # — Checkpoint and early stopping ──────────────────────────────────────
-        # Primary trigger: axon+myelin dice improves meaningfully
-        # Tiebreaker:      same combined dice but val_loss improves
-        #                  → updates checkpoint, does NOT reset patience
-        combined = val_dice_axon + val_dice_myel
-
-        if combined > best_combined + EARLY_STOP_MIN_DELTA:
-            best_combined       = combined
-            best_combined_epoch = epoch + 1
-            best_combined_axon  = val_dice_axon
-            best_combined_myel  = val_dice_myel
-            best_combined_loss  = val_loss
+        # — Checkpoint: save on best val_loss —
+        if val_loss < best_val_loss - EARLY_STOP_MIN_DELTA:
+            best_val_loss         = val_loss
+            best_val_bg           = val_dice_bg
+            best_val_axon         = val_dice_axon
+            best_val_myel         = val_dice_myel
+            best_val_iou          = val_iou
+            best_checkpoint_epoch = epoch + 1
             torch.save({
                 'model_state_dict': model.state_dict(),
                 'meta': {
                     **_base_meta,
                     'best_epoch':       epoch + 1,
+                    'best_val_loss':    val_loss,
+                    'best_bg_dice':     val_dice_bg,
                     'best_axon_dice':   val_dice_axon,
                     'best_myelin_dice': val_dice_myel,
-                    'best_val_loss':    val_loss,
-                    'epochs_completed': None,   # updated after loop
-                    'early_stopped':    None,   # updated after loop
-                }
-            }, str(model_path))
-            epochs_no_improve = 0
-            checkpoint_flag   = " ← CHECKPOINT"
-
-        elif combined >= best_combined and val_loss < best_combined_loss - EARLY_STOP_MIN_DELTA:
-            best_combined_loss  = val_loss
-            best_combined_epoch = epoch + 1
-            torch.save({
-                'model_state_dict': model.state_dict(),
-                'meta': {
-                    **_base_meta,
-                    'best_epoch':       epoch + 1,
-                    'best_axon_dice':   best_combined_axon,
-                    'best_myelin_dice': best_combined_myel,
-                    'best_val_loss':    val_loss,
+                    'best_val_iou':     val_iou,
                     'epochs_completed': None,
                     'early_stopped':    None,
                 }
             }, str(model_path))
-            checkpoint_flag = " ← CHECKPOINT (loss tiebreak)"
+            epochs_no_improve = 0
+            checkpoint_flag   = " ← CHECKPOINT"
 
         else:
             epochs_no_improve += 1
@@ -548,26 +535,28 @@ def train_model(
         
         # — Epoch log —
         training_logger.log_epoch(epoch, {
-            'epoch_time':          epoch_time_str,
-            'loss':                train_loss,
-            'val_loss':            val_loss,
-            'dice_coef':           train_dice,
-            'val_dice_coef':       val_dice,
-            'dice_coef_axon':      train_dice_axon,
-            'dice_coef_myelin':    train_dice_myel,
-            'val_dice_coef_axon':  val_dice_axon,
-            'val_dice_coef_myelin':val_dice_myel,
-            'iou_coef':            train_iou,
-            'val_iou_coef':        val_iou,
-            'lr':                  current_lr,
-
+            # Epoch info
+            'epoch_time':           epoch_time_str,
+            'lr':                   current_lr,
+            # Training metrics
+            'loss':                 train_loss,
+            'dice_coef':            train_dice,
+            'dice_coef_bg':         train_dice_bg,
+            'dice_coef_axon':       train_dice_axon,
+            'dice_coef_myelin':     train_dice_myel,
+            # Validation metrics
+            'val_loss':             val_loss,
+            'val_dice_coef':        val_dice,
+            'val_dice_coef_bg':     val_dice_bg,
+            'val_dice_coef_axon':   val_dice_axon,
+            'val_dice_coef_myelin': val_dice_myel,
         }, checkpoint_flag=checkpoint_flag)
         
         # — Early stopping —
         if epochs_no_improve >= EARLY_STOP_PATIENCE:
             log.info(
                 f"Early stopping at epoch {epoch + 1} — "
-                f"no improvement in axon+myelin dice for {EARLY_STOP_PATIENCE} epochs"
+                f"no improvement in val_loss for {EARLY_STOP_PATIENCE} epochs"
             )
             break
 
@@ -584,48 +573,33 @@ def train_model(
 
     # ── Checkpoint summary ─────────────────────────────────────────────────────
     training_logger.on_train_end({
-        'epoch':    best_combined_epoch,
-        'combined': best_combined,
-        'axon':     best_combined_axon,
-        'myelin':   best_combined_myel,
-        'loss':     best_combined_loss,
-        'path':     model_path.name,
+        'epoch':  best_checkpoint_epoch,
+        'loss':   best_val_loss,
+        'bg':     best_val_bg,
+        'axon':   best_val_axon,
+        'myelin': best_val_myel,
+        'iou':    best_val_iou,
+        'path':   model_path.name,
     })
 
-    # ── Final summary ──────────────────────────────────────────────────────────
+   # ── Final summary ──────────────────────────────────────────────────────────
     t_elapsed               = datetime.now() - t_start
     elapsed_str             = f"{int(t_elapsed.total_seconds() // 60)}m {int(t_elapsed.total_seconds() % 60)}s"
-    final                   = history
     total_patches_processed = n_epochs * len(X_train)
 
-    Console().print(Panel(
-        f"Model saved at: {model_path}\n\n"
-        f"Best checkpoint epoch:    {best_combined_epoch}\n"
-        f"Best val axon dice:       {best_combined_axon:.4f}\n"
-        f"Best val myelin dice:     {best_combined_myel:.4f}\n"
-        f"Best val loss:            {best_combined_loss:.4f}\n\n"
-        f"Final Validation Dice:    {final['val_dice_coef'][-1]:.4f}\n"
-        f"Final Validation IoU:     {final['val_iou_coef'][-1]:.4f}\n\n"
-        f"Total Training Time:      {elapsed_str}\n"
-        f"Epochs completed:         {n_epochs}\n"
-        f"Total patches processed:  {total_patches_processed:,}\n",
-        title="[bold green]DeepAxon++ Training Complete[/bold green]",
-        border_style="green",
-        expand=False
-    ))
-
     log.finalize(summary={
-        'Model':              str(model_path),
-        'GPU':                torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU',
-        'Epochs':             n_epochs,
-        'Early stopped':      str(early_stopped),
-        'Best checkpoint':    f"epoch {best_combined_epoch}",
-        'Best axon dice':     f"{best_combined_axon:.4f}",
-        'Best myelin dice':   f"{best_combined_myel:.4f}",
-        'Best val loss':      f"{best_combined_loss:.4f}",
-        'Final val dice':     f"{final['val_dice_coef'][-1]:.4f}",
-        'Final val IoU':      f"{final['val_iou_coef'][-1]:.4f}",
-        'Training time':      elapsed_str,
-        'Patches processed':  total_patches_processed,
-        'Patches augmented':  aug_count,
+        # Run info
+        'Model':         str(model_path),
+        'GPU':           torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU',
+        'Training time': elapsed_str,
+        'Epochs':        f"{n_epochs} (early stopped)" if early_stopped else str(n_epochs),
+        'Patches':       total_patches_processed,
+        'Augmented':     aug_count,
+        # Best checkpoint
+        'Best epoch':    best_checkpoint_epoch,
+        'Best val_loss': f"{best_val_loss:.3f}",
+        'Best val_bg':   f"{best_val_bg:.3f}",
+        'Best val_ax':   f"{best_val_axon:.3f}",
+        'Best val_my':   f"{best_val_myel:.3f}",
+        'Best val_IoU':  f"{best_val_iou:.3f}",
     })

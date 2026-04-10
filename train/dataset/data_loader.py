@@ -148,14 +148,10 @@ def load_all_patches(
             n_total     = len(train_stems) + len(val_stems)
             eff_pct     = round(len(val_stems) / n_total * 100, 1)
             log.info(
-                f"Train images: {len(train_stems)}  |  "
-                f"Val images: {len(val_stems)}  |  "
-                f"Total: {n_total}  |  "
-                f"Effective split: {eff_pct}% val"
+                f"Train: {len(train_stems)} images → {len(X_train)} patches  |  "
+                f"Val: {len(val_stems)} images → {len(X_val)} patches ({eff_pct}%)"
             )
-            log.info(f"Val set — {len(val_stems)} image(s):")
-            for stem in val_stems:
-                log.info(f"  {stem}")
+            log.info(f"Val images: {', '.join(val_stems)}")
 
         return X_train, Y_train, X_val, Y_val, 'val_prefix', val_stems
 
@@ -182,14 +178,9 @@ def load_all_patches(
         n_total     = len(val_stems) + len(train_stems)
         eff_pct     = round(len(val_stems) / n_total * 100, 1)
         log.info(
-            f"Train images: {len(train_stems)}  |  "
-            f"Val images: {len(val_stems)}  |  "
-            f"Total: {n_total}  |  "
-            f"Effective split: {eff_pct}% val  |  "
-            f"Requested: {val_fraction*100:.0f}%"
+            f"Train: {len(train_stems)} images → {len(X_train)} patches  |  "
+            f"Val: {len(val_stems)} images → {len(X_val)} patches ({eff_pct}%)"
         )
-        log.info(f"Val set — {len(val_stems)} image(s):")
-        for stem in val_stems:
-            log.info(f"  {stem}")
+        log.info(f"Val images: {', '.join(val_stems)}")
 
     return X_train, Y_train, X_val, Y_val, f'random_{int(val_fraction*100)}pct', val_stems

@@ -68,8 +68,11 @@
         "early_stop_min_delta": 0.001,
         "dice_weight": 0.5,
         "ce_weight": 0.5,
-        "class_weights": [1.5, 1.0, 1.2],
-        "gpu_batch_candidates": [128, 64, 32, 16],
+        "class_weights": [3.0, 1.0, 1.0],
+        "checkpoint_metric": "val_loss",
+        "min_last_batch_fullness": 0.80,
+        "danger_last_batch_fullness": 0.15,
+        "gpu_batch_candidates": [512, 256, 128, 64, 32],
         "cpu_batch_candidates": [32, 16, 8, 4]
     },
     "augmentation": {
