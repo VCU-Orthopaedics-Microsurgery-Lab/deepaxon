@@ -1,0 +1,153 @@
+========================================================================
+DeepAxon Train LOG
+DeepAxon v5.0.0 (v5_pytorch)
+Python: 3.11.6 | PyTorch: 2.6.0+cu124 | CUDA: 12.4
+========================================================================
+Start time : 2026-04-09 19:15:07
+Git commit : 
+Log file   : /lustre/home/mazurm/deepaxon/logs/rb40x_v2_hprc_training_log.txt
+========================================================================
+
+
+── TRAINING RUN SUMMARY ────────────────────────────────────────────────
+  Model name         : rb40x_v2_hprc
+  Magnification      : 40X
+  Epoch limit        : 400
+  Augmentation       : ON
+  Batch size         : 128 (last batch 118/128 = 92% full)
+  Est. train patches : ~630 (actual logged after load)
+  Images folder      : /lustre/home/mazurm/rb40x_v2_hprc
+  Models folder      : /lustre/home/mazurm/deepaxon/models
+  Log file           : /lustre/home/mazurm/deepaxon/logs/rb40x_v2_hprc_training_log.txt
+
+── VERIFYING DATASET ───────────────────────────────────────────────────
+
+── IMAGE PREPROCESSING ─────────────────────────────────────────────────
+[19:15:11] [INFO]  Patch size: 256px | Interpolation: INTER_LANCZOS4 (image quality)
+[19:15:22] [INFO]    [IMG]  img_1 | Resized: (1024x1440) -> Cropped: (1024x1280) -> 63 patches
+[19:15:32] [INFO]    [IMG]  img_10 | Resized: (1024x1440) -> Cropped: (1024x1280) -> 63 patches
+[19:15:38] [INFO]    [IMG]  img_2 | Resized: (1024x1440) -> Cropped: (1024x1280) -> 63 patches
+[19:15:44] [INFO]    [IMG]  img_3 | Resized: (1024x1440) -> Cropped: (1024x1280) -> 63 patches
+[19:15:50] [INFO]    [IMG]  img_4 | Resized: (1024x1440) -> Cropped: (1024x1280) -> 63 patches
+[19:15:55] [INFO]    [IMG]  img_5 | Resized: (1024x1440) -> Cropped: (1024x1280) -> 63 patches
+[19:16:01] [INFO]    [IMG]  img_6 | Resized: (1024x1440) -> Cropped: (1024x1280) -> 63 patches
+[19:16:07] [INFO]    [IMG]  img_7 | Resized: (1024x1440) -> Cropped: (1024x1280) -> 63 patches
+[19:16:11] [INFO]    [IMG]  img_8 | Resized: (1024x1440) -> Cropped: (1024x1280) -> 63 patches
+[19:16:17] [INFO]    [IMG]  img_9 | Resized: (1024x1440) -> Cropped: (1024x1280) -> 63 patches
+[19:16:21] [INFO]    [IMG]  val_img_11 | Resized: (1024x1440) -> Cropped: (1024x1280) -> 63 patches
+[19:16:25] [INFO]    [IMG]  val_img_12 | Resized: (1024x1440) -> Cropped: (1024x1280) -> 63 patches
+
+── MASK PREPROCESSING ──────────────────────────────────────────────────
+[19:16:25] [INFO]  Patch size: 256px | Interpolation: INTER_NEAREST (preserves label values 0/128/255)
+[19:16:29] [INFO]    [MASK] img_1 | Resized: (1024x1440) -> Cropped: (1024x1280) -> 63 patches
+[19:16:37] [INFO]    [MASK] img_10 | Resized: (1024x1440) -> Cropped: (1024x1280) -> 63 patches
+[19:16:40] [INFO]    [MASK] img_2 | Resized: (1024x1440) -> Cropped: (1024x1280) -> 63 patches
+[19:16:43] [INFO]    [MASK] img_3 | Resized: (1024x1440) -> Cropped: (1024x1280) -> 63 patches
+[19:16:46] [INFO]    [MASK] img_4 | Resized: (1024x1440) -> Cropped: (1024x1280) -> 63 patches
+[19:16:50] [INFO]    [MASK] img_5 | Resized: (1024x1440) -> Cropped: (1024x1280) -> 63 patches
+[19:16:52] [INFO]    [MASK] img_6 | Resized: (1024x1440) -> Cropped: (1024x1280) -> 63 patches
+[19:16:55] [INFO]    [MASK] img_7 | Resized: (1024x1440) -> Cropped: (1024x1280) -> 63 patches
+[19:16:58] [INFO]    [MASK] img_8 | Resized: (1024x1440) -> Cropped: (1024x1280) -> 63 patches
+[19:17:01] [INFO]    [MASK] img_9 | Resized: (1024x1440) -> Cropped: (1024x1280) -> 63 patches
+[19:17:04] [INFO]    [MASK] val_img_11 | Resized: (1024x1440) -> Cropped: (1024x1280) -> 63 patches
+[19:17:06] [INFO]    [MASK] val_img_12 | Resized: (1024x1440) -> Cropped: (1024x1280) -> 63 patches
+
+── PREPROCESSING SUMMARY ───────────────────────────────────────────────
+[19:17:06] [INFO]  Total images processed : 12
+[19:17:06] [INFO]  Total masks processed  : 12
+[19:17:06] [INFO]  Total patches created  : 756 image | 756 mask
+[19:17:06] [INFO]  Patches per image      : 63
+[19:17:06] [INFO]  Patch size             : 256px | Overlap: 50% | Step: 128px
+[19:17:06] [INFO]  Output (images)        : /lustre/home/mazurm/rb40x_v2_hprc/images/cropped/patches
+[19:17:06] [INFO]  Output (masks)         : /lustre/home/mazurm/rb40x_v2_hprc/masks/cropped/patches
+[19:17:06] [OK]    Patches created: 756 image, 756 mask
+
+── LOADING TRAINING DIRECTORIES ────────────────────────────────────────
+[19:18:13] [INFO]  Train images: 10  |  Val images: 2  |  Total: 12  |  Effective split: 16.7% val
+[19:18:13] [INFO]  Val set — 2 image(s):
+[19:18:13] [INFO]    val_img_11
+[19:18:13] [INFO]    val_img_12
+[19:18:13] [INFO]  Train: 630 patches | Val: 126 patches | Classes: 3 (background, myelin, axon)
+
+── AUGMENTATION ────────────────────────────────────────────────────────
+[19:18:15] [OK]    Augmented 592/630 patches (geo_prob=0.50 photo_prob=0.25)
+[19:18:15] [INFO]    Geometric  — H-flip: 318  V-flip: 309  Rotation: 313
+[19:18:15] [INFO]    Photometric — Brightness: 151  Gamma: 156  Noise: 162
+[19:18:15] [INFO]    Effective: 592/630 patches modified (94.0%)
+
+── BUILDING MODEL ──────────────────────────────────────────────────────
+[19:18:15] [INFO]  Device: cuda
+[19:18:30] [OK]    Model built: 26,072,627 parameters
+
+── TRAINING SETUP ──────────────────────────────────────────────────────
+  Architecture     : UNet++ (DeepAxon++) — resnet34 encoder
+  Input size       : 256×256×1
+  Classes          : 3 (background, myelin, axon)
+  Device           : cuda
+  Train patches    : 630
+  Val patches      : 126
+  Test/Train split : val_prefix
+  Augmentation     : ON — geo_prob=0.50 photo_prob=0.25
+  Loss function    : Dice (0.5) + SoftCE smooth=0.1 (0.5)
+  Optimizer        : Adam lr=0.001
+  ReduceLR         : patience=15, factor=0.5, min_lr=1e-06 — monitors val_loss
+  EarlyStopping    : patience=40, min_delta=0.001 — monitors axon+myelin dice
+
+── TRAINING ────────────────────────────────────────────────────────────
+[19:19:49]   Ep    1 (79s) | loss 0.740 | dice 0.589 axon 0.491 myel 0.548 | val_dice 0.316 val_axon 0.361 ← CHECKPOINT | lr 1.00e-03
+[19:19:52]   Ep    2 (3s) | loss 0.515 | dice 0.776 axon 0.703 myel 0.786 | val_dice 0.217 val_axon 0.270 | lr 1.00e-03
+[19:19:56]   Ep    3 (3s) | loss 0.448 | dice 0.816 axon 0.738 myel 0.826 | val_dice 0.355 val_axon 0.047 | lr 1.00e-03
+[19:19:59]   Ep    4 (2s) | loss 0.419 | dice 0.831 axon 0.754 myel 0.837 | val_dice 0.408 val_axon 0.030 | lr 1.00e-03
+[19:20:01]   Ep    5 (2s) | loss 0.401 | dice 0.843 axon 0.772 myel 0.854 | val_dice 0.510 val_axon 0.129 | lr 1.00e-03
+[19:20:03]   Ep    6 (2s) | loss 0.390 | dice 0.849 axon 0.776 myel 0.860 | val_dice 0.815 val_axon 0.622 ← CHECKPOINT | lr 1.00e-03
+[19:20:06]   Ep    7 (2s) | loss 0.385 | dice 0.852 axon 0.778 myel 0.859 | val_dice 0.504 val_axon 0.353 | lr 1.00e-03
+[19:20:09]   Ep    8 (2s) | loss 0.375 | dice 0.859 axon 0.785 myel 0.868 | val_dice 0.772 val_axon 0.696 ← CHECKPOINT | lr 1.00e-03
+[19:20:12]   Ep    9 (2s) | loss 0.370 | dice 0.863 axon 0.793 myel 0.870 | val_dice 0.831 val_axon 0.689 ← CHECKPOINT | lr 1.00e-03
+[19:20:14]   Ep   10 (2s) | loss 0.366 | dice 0.865 axon 0.798 myel 0.873 | val_dice 0.900 val_axon 0.788 ← CHECKPOINT | lr 1.00e-03
+[19:20:17]   Ep   11 (3s) | loss 0.361 | dice 0.868 axon 0.805 myel 0.878 | val_dice 0.887 val_axon 0.761 | lr 1.00e-03
+[19:20:20]   Ep   12 (2s) | loss 0.355 | dice 0.872 axon 0.807 myel 0.882 | val_dice 0.900 val_axon 0.819 ← CHECKPOINT | lr 1.00e-03
+[19:20:22]   Ep   13 (2s) | loss 0.351 | dice 0.876 axon 0.810 myel 0.885 | val_dice 0.905 val_axon 0.793 | lr 1.00e-03
+[19:20:25]   Ep   14 (2s) | loss 0.346 | dice 0.879 axon 0.814 myel 0.886 | val_dice 0.916 val_axon 0.817 ← CHECKPOINT (loss tiebreak) | lr 1.00e-03
+[19:20:28]   Ep   15 (3s) | loss 0.340 | dice 0.882 axon 0.816 myel 0.890 | val_dice 0.921 val_axon 0.815 ← CHECKPOINT | lr 1.00e-03
+[19:20:30]   Ep   16 (2s) | loss 0.335 | dice 0.886 axon 0.825 myel 0.894 | val_dice 0.929 val_axon 0.849 ← CHECKPOINT | lr 1.00e-03
+[19:20:33]   Ep   17 (2s) | loss 0.331 | dice 0.888 axon 0.826 myel 0.895 | val_dice 0.923 val_axon 0.833 | lr 1.00e-03
+[19:20:35]   Ep   18 (2s) | loss 0.328 | dice 0.890 axon 0.828 myel 0.896 | val_dice 0.920 val_axon 0.773 | lr 1.00e-03
+[19:20:37]   Ep   19 (2s) | loss 0.324 | dice 0.893 axon 0.832 myel 0.899 | val_dice 0.925 val_axon 0.810 | lr 1.00e-03
+[19:20:39]   Ep   20 (2s) | loss 0.323 | dice 0.894 axon 0.833 myel 0.902 | val_dice 0.917 val_axon 0.791 | lr 1.00e-03
+[19:20:41]   Ep   21 (2s) | loss 0.317 | dice 0.897 axon 0.841 myel 0.903 | val_dice 0.924 val_axon 0.810 | lr 1.00e-03
+[19:20:43]   Ep   22 (2s) | loss 0.312 | dice 0.901 axon 0.844 myel 0.907 | val_dice 0.920 val_axon 0.818 | lr 1.00e-03
+[19:20:46]   Ep   23 (2s) | loss 0.310 | dice 0.903 axon 0.847 myel 0.909 | val_dice 0.923 val_axon 0.810 | lr 1.00e-03
+[19:20:48]   Ep   24 (2s) | loss 0.306 | dice 0.906 axon 0.851 myel 0.911 | val_dice 0.922 val_axon 0.805 | lr 1.00e-03
+[19:20:50]   Ep   25 (2s) | loss 0.307 | dice 0.905 axon 0.847 myel 0.912 | val_dice 0.918 val_axon 0.801 | lr 1.00e-03
+[19:20:52]   Ep   26 (2s) | loss 0.304 | dice 0.907 axon 0.852 myel 0.913 | val_dice 0.918 val_axon 0.812 | lr 1.00e-03
+[19:20:55]   Ep   27 (3s) | loss 0.300 | dice 0.910 axon 0.858 myel 0.914 | val_dice 0.913 val_axon 0.784 | lr 1.00e-03
+[19:20:57]   Ep   28 (2s) | loss 0.301 | dice 0.910 axon 0.854 myel 0.915 | val_dice 0.924 val_axon 0.804 | lr 1.00e-03
+[19:20:59]   Ep   29 (2s) | loss 0.298 | dice 0.911 axon 0.859 myel 0.917 | val_dice 0.922 val_axon 0.831 | lr 1.00e-03
+[19:21:01]   Ep   30 (2s) | loss 0.297 | dice 0.911 axon 0.855 myel 0.916 | val_dice 0.920 val_axon 0.811 | lr 1.00e-03
+[19:21:03]   Ep   31 (2s) | loss 0.294 | dice 0.915 axon 0.862 myel 0.919 | val_dice 0.915 val_axon 0.770 | lr 1.00e-03
+[19:21:05]   Ep   32 (2s) | loss 0.292 | dice 0.916 axon 0.864 myel 0.921 | val_dice 0.917 val_axon 0.804 | lr 1.00e-03
+[19:21:07]   Ep   33 (2s) | loss 0.286 | dice 0.920 axon 0.869 myel 0.924 | val_dice 0.919 val_axon 0.789 | lr 5.00e-04
+[19:21:09]   Ep   34 (2s) | loss 0.280 | dice 0.925 axon 0.875 myel 0.929 | val_dice 0.922 val_axon 0.801 | lr 5.00e-04
+[19:21:11]   Ep   35 (2s) | loss 0.276 | dice 0.928 axon 0.879 myel 0.931 | val_dice 0.922 val_axon 0.817 | lr 5.00e-04
+[19:21:13]   Ep   36 (2s) | loss 0.273 | dice 0.930 axon 0.882 myel 0.933 | val_dice 0.920 val_axon 0.785 | lr 5.00e-04
+[19:21:15]   Ep   37 (2s) | loss 0.268 | dice 0.933 axon 0.886 myel 0.935 | val_dice 0.921 val_axon 0.797 | lr 5.00e-04
+[19:21:17]   Ep   38 (1s) | loss 0.267 | dice 0.934 axon 0.888 myel 0.937 | val_dice 0.918 val_axon 0.797 | lr 5.00e-04
+[19:21:19]   Ep   39 (2s) | loss 0.266 | dice 0.935 axon 0.889 myel 0.937 | val_dice 0.920 val_axon 0.806 | lr 5.00e-04
+[19:21:22]   Ep   40 (2s) | loss 0.265 | dice 0.935 axon 0.889 myel 0.937 | val_dice 0.918 val_axon 0.795 | lr 5.00e-04
+[19:21:24]   Ep   41 (2s) | loss 0.262 | dice 0.937 axon 0.893 myel 0.939 | val_dice 0.919 val_axon 0.792 | lr 5.00e-04
+[19:21:26]   Ep   42 (2s) | loss 0.260 | dice 0.939 axon 0.895 myel 0.940 | val_dice 0.916 val_axon 0.766 | lr 5.00e-04
+[19:21:28]   Ep   43 (2s) | loss 0.260 | dice 0.939 axon 0.896 myel 0.941 | val_dice 0.916 val_axon 0.790 | lr 5.00e-04
+[19:21:30]   Ep   44 (2s) | loss 0.259 | dice 0.940 axon 0.896 myel 0.941 | val_dice 0.920 val_axon 0.801 | lr 5.00e-04
+[19:21:32]   Ep   45 (2s) | loss 0.256 | dice 0.941 axon 0.901 myel 0.944 | val_dice 0.917 val_axon 0.783 | lr 5.00e-04
+[19:21:34]   Ep   46 (2s) | loss 0.254 | dice 0.943 axon 0.901 myel 0.944 | val_dice 0.918 val_axon 0.797 | lr 5.00e-04
+[19:21:36]   Ep   47 (2s) | loss 0.253 | dice 0.944 axon 0.903 myel 0.945 | val_dice 0.918 val_axon 0.795 | lr 5.00e-04
+[19:21:38]   Ep   48 (2s) | loss 0.251 | dice 0.945 axon 0.903 myel 0.946 | val_dice 0.918 val_axon 0.789 | lr 5.00e-04
+[19:21:40]   Ep   49 (2s) | loss 0.250 | dice 0.946 axon 0.905 myel 0.947 | val_dice 0.918 val_axon 0.793 | lr 2.50e-04
+[19:21:42]   Ep   50 (2s) | loss 0.251 | dice 0.946 axon 0.906 myel 0.947 | val_dice 0.918 val_axon 0.793 | lr 2.50e-04
+[19:21:44]   Ep   51 (2s) | loss 0.247 | dice 0.948 axon 0.909 myel 0.949 | val_dice 0.918 val_axon 0.799 | lr 2.50e-04
+[19:21:46]   Ep   52 (2s) | loss 0.246 | dice 0.949 axon 0.910 myel 0.949 | val_dice 0.916 val_axon 0.784 | lr 2.50e-04
+[19:21:48]   Ep   53 (1s) | loss 0.246 | dice 0.949 axon 0.909 myel 0.950 | val_dice 0.915 val_axon 0.788 | lr 2.50e-04
+[19:21:50]   Ep   54 (2s) | loss 0.245 | dice 0.950 axon 0.911 myel 0.950 | val_dice 0.917 val_axon 0.781 | lr 2.50e-04
+[19:21:53]   Ep   55 (2s) | loss 0.246 | dice 0.949 axon 0.910 myel 0.950 | val_dice 0.918 val_axon 0.799 | lr 2.50e-04
+[19:21:56]   Ep   56 (2s) | loss 0.243 | dice 0.951 axon 0.913 myel 0.952 | val_dice 0.914 val_axon 0.785 | lr 2.50e-04
+[19:21:56] [INFO]  Early stopping at epoch 56 — no improvement in axon+myelin dice for 40 epochs

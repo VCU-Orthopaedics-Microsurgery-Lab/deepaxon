@@ -12,7 +12,6 @@ Log format:
     Python: 3.11.15 | PyTorch: 2.5.1+cu121 | CUDA: none
     ======================================================================
     Start time : 2026-04-01 14:32:11
-    Git commit : 7560233
     ======================================================================
 
     ── SCANNING STUDY ────────────────────────────────────────────────────
@@ -23,7 +22,6 @@ Log format:
 
     ── RUN COMPLETE ──────────────────────────────────────────────────────
     End time : 2026-04-01 14:47:33
-    Elapsed  : 15m 22s
     ======================================================================
 """
 
@@ -35,7 +33,6 @@ from datetime import datetime
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 
-from utils.helpers import get_git_commit
 from utils.version import __version__, __codename__, get_env_info
 
 
@@ -69,19 +66,23 @@ class DeepAxonLogger:
 
     def _write_log_header(self):
         """Write structured header with run context."""
-        git_commit = get_git_commit()
+        try:
+            import torch
+            gpu = torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU'
+        except Exception:
+            gpu = 'unknown'
+
         env = get_env_info()
         lines = [
             f"{'=' * 72}",
             f"{self.program} LOG",
             f"DeepAxon v{__version__} ({__codename__})",
             f"Python: {env['python']} | PyTorch: {env['pytorch']} | CUDA: {env['cuda']}",
+            f"GPU        : {gpu}",
             f"{'=' * 72}",
             f"Start time : {self._t_start.strftime('%Y-%m-%d %H:%M:%S')}",
-            f"Git commit : {git_commit}",
             f"Log file   : {self.log_path}",
         ]
-        # Write any additional context passed at init
         if self.context:
             for k, v in self.context.items():
                 lines.append(f"{k:<11}: {v}")
@@ -90,7 +91,7 @@ class DeepAxonLogger:
 
         with open(self.log_path, 'w', encoding='utf-8') as f:
             f.write('\n'.join(lines) + '\n')
-
+            
     def _append(self, text: str, tag: str = ""):
         """
         Append timestamped plain text to log file.
@@ -178,7 +179,6 @@ class DeepAxonLogger:
 
         footer_lines = [
             f"End time : {t_end.strftime('%Y-%m-%d %H:%M:%S')}",
-            f"Elapsed  : {elapsed_str}",
         ]
         if summary:
             footer_lines.append("")

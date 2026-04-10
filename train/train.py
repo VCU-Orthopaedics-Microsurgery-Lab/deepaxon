@@ -9,17 +9,17 @@ from __future__ import annotations
 
 import sys
 import socket
-import shutil
 import numpy as np
 from pathlib import Path
 from datetime import datetime
+import cv2
 
 from rich.panel import Panel
 from rich.console import Console
 
 from utils.logger import DeepAxonLogger
 from utils.version import __version__, __codename__
-from utils.helpers import get_model_dir, count_patches, load_config, get_git_commit
+from utils.helpers import get_model_dir, count_patches, load_config
 from train.dataset.preprocess import batch_process
 from train.dataset.data_loader import load_all_patches
 from train.dataset.augment import augment_dataset_np
@@ -43,19 +43,33 @@ EARLY_STOP_PATIENCE  = _train_cfg.get("early_stop_patience",  40)
 EARLY_STOP_MIN_DELTA = _train_cfg.get("early_stop_min_delta", 0.001)
 DICE_WEIGHT          = _train_cfg.get("dice_weight",          0.5)
 CE_WEIGHT            = _train_cfg.get("ce_weight",            0.5)
-CE_SMOOTH            = _train_cfg.get("ce_smooth",            0.1)
 
 # ─── Augmentation constants ───────────────────────────────────────────────────
 GEO_PROB   = _prob_cfg.get("geometric_prob",   0.5)
 PHOTO_PROB = _prob_cfg.get("photometric_prob", 0.25)
 
-# ─── Loss functions ───────────────────────────────────────────────────────────
-_dice_loss = smp.losses.DiceLoss(mode="multiclass")
-_ce_loss   = smp.losses.SoftCrossEntropyLoss(smooth_factor=CE_SMOOTH)
+# ─── Class weights ────────────────────────────────────────────────────────────
+_class_weights_cfg = _train_cfg.get("class_weights", [1.5, 1.0, 1.2])
 
-def loss_fn(pred, target):
-    return DICE_WEIGHT * _dice_loss(pred, target) + CE_WEIGHT * _ce_loss(pred, target)
 
+def weighted_dice_loss(pred: torch.Tensor, target: torch.Tensor, weights: torch.Tensor) -> torch.Tensor:
+    """
+    Weighted multiclass Dice loss.
+    pred:    (N, C, H, W) raw logits
+    target:  (N, H, W)   class indices
+    weights: (C,)         per-class weights
+    """
+    num_classes = pred.shape[1]
+    pred_soft   = torch.softmax(pred, dim=1)
+    target_one_hot = torch.zeros_like(pred_soft).scatter_(
+        1, target.unsqueeze(1), 1.0
+    )
+    dims   = (0, 2, 3)
+    inter  = (pred_soft * target_one_hot).sum(dims)
+    union  = (pred_soft + target_one_hot).sum(dims)
+    dice   = (2.0 * inter + 1e-6) / (union + 1e-6)
+    loss   = 1.0 - dice
+    return (weights * loss).sum() / weights.sum()
 
 # ─── Training logger ──────────────────────────────────────────────────────────
 
@@ -94,7 +108,7 @@ class TrainingLogger():
             f"  Ep {row['epoch']:>4} ({row['epoch_time']}) | "
             f"loss {row['loss']:.3f} | "
             f"dice {row['dice']:.3f} axon {row['dice_axon']:.3f} myel {row['dice_myelin']:.3f} | "
-            f"val_dice {row['val_dice']:.3f} val_axon {row['val_dice_axon']:.3f}"
+            f"val_dice {row['val_dice']:.3f} vax {row['val_dice_axon']:.3f} vmy {row['val_dice_myel']:.3f}"
             f"{checkpoint_flag} | lr {row['lr']:.2e}"
         )
 
@@ -157,12 +171,24 @@ def prepare_dataset(images_dir: str, mag: str, log: DeepAxonLogger) -> dict:
         title="Dataset Verification",
         expand=False
     ))
+    log.info(f"Found pairs: {len(matched)} | Missing masks: {len(missing_masks)} | Missing images: {len(missing_imgs)}")
 
     if missing_masks:
         log.warn(f"Images without masks: {sorted(missing_masks)}")
     if missing_imgs:
         log.warn(f"Masks without images: {sorted(missing_imgs)}")
 
+    # ── Mask quality check ────────────────────────────────────────────────────────
+    log.rule("MASK QUALITY CHECK")
+    for mask_path in sorted(masks_dir.glob('*.png')) + sorted(masks_dir.glob('*.tif')):
+        mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE)
+        unexpected = ~np.isin(mask, [0, 127, 128, 255])
+        if unexpected.sum() > 0:
+            pct = round(unexpected.sum() / mask.size * 100, 2)
+            log.warn(f"  {mask_path.name}: {unexpected.sum()} unexpected pixels ({pct}%) — will be thresholded to nearest class")
+        else:
+            log.info(f"  {mask_path.name}: pixels clean")
+        
     return {
         'images_dir':   images_dir,
         'masks_dir':    masks_dir,
@@ -173,7 +199,7 @@ def prepare_dataset(images_dir: str, mag: str, log: DeepAxonLogger) -> dict:
         'n_pairs':      len(matched),
         'mag':          mag,
     }
-
+  
 
 # ─── Main training function ───────────────────────────────────────────────────
 
@@ -235,7 +261,7 @@ def train_model(
 
     # ── Load training directories ─────────────────────────────────────────────────
     log.rule("LOADING TRAINING DIRECTORIES")
-    X_train, Y_train, X_val, Y_val, split_mode = load_all_patches(
+    X_train, Y_train, X_val, Y_val, split_mode, val_stems= load_all_patches(
         str(paths['images_dir']),
         str(paths['masks_dir']),
         log=log,
@@ -272,6 +298,14 @@ def train_model(
     log.rule("BUILDING MODEL")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     log.info(f"Device: {device}")
+    
+    CLASS_WEIGHTS = torch.tensor(_class_weights_cfg, dtype=torch.float32).to(device)
+    _ce_loss      = torch.nn.CrossEntropyLoss(weight=CLASS_WEIGHTS)
+
+    def loss_fn(pred, target):
+        dice = weighted_dice_loss(pred, target, CLASS_WEIGHTS)
+        ce   = _ce_loss(pred, target)
+        return DICE_WEIGHT * dice + CE_WEIGHT * ce
 
     model = smp.UnetPlusPlus(
         encoder_name="resnet34",
@@ -289,6 +323,7 @@ def train_model(
         optimizer, mode='min', factor=REDUCE_LR_FACTOR,
         patience=REDUCE_LR_PATIENCE, min_lr=REDUCE_LR_MIN_LR
     )
+    
 
     # ── Training setup summary ─────────────────────────────────────────────────
     log.rule("TRAINING SETUP")
@@ -296,15 +331,16 @@ def train_model(
         'Architecture':     'UNet++ (DeepAxon++) — resnet34 encoder',
         'Input size':       '256×256×1',
         'Classes':          '3 (background, myelin, axon)',
+        'Class weights':    f"bg={_class_weights_cfg[0]} myelin={_class_weights_cfg[1]} axon={_class_weights_cfg[2]}",
         'Device':           str(device),
         'Train patches':    len(X_train),
         'Val patches':      len(X_val),
-        'Test/Train split': split_mode,
+        'Test/Train split':  split_mode,
         'Augmentation':  (
             f"ON — geo_prob={GEO_PROB:.2f} photo_prob={PHOTO_PROB:.2f}"
             if use_aug else "OFF"
         ),
-        'Loss function': f"Dice ({DICE_WEIGHT}) + SoftCE smooth={CE_SMOOTH} ({CE_WEIGHT})",
+        'Loss function': f"Weighted Dice ({DICE_WEIGHT}) + CrossEntropy ({CE_WEIGHT})",
         'Optimizer':     f"Adam lr={LEARNING_RATE}",
         'ReduceLR':      f"patience={REDUCE_LR_PATIENCE}, factor={REDUCE_LR_FACTOR}, min_lr={REDUCE_LR_MIN_LR} — monitors val_loss",
         'EarlyStopping': f"patience={EARLY_STOP_PATIENCE}, min_delta={EARLY_STOP_MIN_DELTA} — monitors axon+myelin dice",
@@ -346,13 +382,13 @@ def train_model(
         'version':             __version__,
         'codename':            __codename__,
         'trained_date':        datetime.now().strftime('%Y-%m-%d'),
-        'git_commit':          get_git_commit(),
         # Architecture
         'architecture':        'UNet++',
         'encoder':             'resnet34',
         'encoder_weights':     'imagenet',
         'in_channels':         1,
         'classes':             ['background', 'myelin', 'axon'],
+        'class_weights':       _class_weights_cfg,
         'input_size':          256,
         'activation':          'none (raw logits)',
         # Inference contract
@@ -361,7 +397,8 @@ def train_model(
         'magnification':       mag,
         # Dataset
         'dataset_path':        str(Path(images_dir).resolve()),
-        'test/train split':    split_mode,
+        'split_mode':          split_mode,
+        'val_images':          val_stems,
         'n_train_patches':     len(X_train),
         'n_val_patches':       len(X_val),
         # Training config
@@ -373,15 +410,14 @@ def train_model(
         'learning_rate':       LEARNING_RATE,
         'dice_weight':         DICE_WEIGHT,
         'ce_weight':           CE_WEIGHT,
-        'ce_smooth':           CE_SMOOTH,
         'reduce_lr_patience':  REDUCE_LR_PATIENCE,
         'early_stop_patience': EARLY_STOP_PATIENCE,
         'early_stop_min_delta':EARLY_STOP_MIN_DELTA,
         # Environment
-        'gpu':            torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU',
-        'torch_version':  torch.__version__,
-        'python_version': sys.version.split()[0],
-        'hostname':       socket.gethostname(),
+        'gpu':                 torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU',
+        'torch_version':       str(torch.__version__),
+        'python_version':      sys.version.split()[0],
+        'hostname':            socket.gethostname(),
     }
 
     # ── Training loop ──────────────────────────────────────────────────────────
@@ -441,12 +477,12 @@ def train_model(
         val_iou     = smp.metrics.iou_score(val_tp,   val_fp,   val_fn,   val_tn,   reduction="macro").item()
         current_lr  = optimizer.param_groups[0]['lr']
 
-        # — Per-class dice (axon=class 1, myelin=class 2) —
-        train_dice_axon = smp.metrics.f1_score(train_tp, train_fp, train_fn, train_tn, reduction="none")[:, 1].mean().item()
-        train_dice_myel = smp.metrics.f1_score(train_tp, train_fp, train_fn, train_tn, reduction="none")[:, 2].mean().item()
-        val_dice_axon   = smp.metrics.f1_score(val_tp,   val_fp,   val_fn,   val_tn,   reduction="none")[:, 1].mean().item()
-        val_dice_myel   = smp.metrics.f1_score(val_tp,   val_fp,   val_fn,   val_tn,   reduction="none")[:, 2].mean().item()
-
+        # — Per-class dice (myelin=class 1, axon=class 2) —
+        train_dice_myel = smp.metrics.f1_score(train_tp, train_fp, train_fn, train_tn, reduction="none")[:, 1].mean().item()
+        train_dice_axon = smp.metrics.f1_score(train_tp, train_fp, train_fn, train_tn, reduction="none")[:, 2].mean().item()
+        val_dice_myel   = smp.metrics.f1_score(val_tp,   val_fp,   val_fn,   val_tn,   reduction="none")[:, 1].mean().item()
+        val_dice_axon   = smp.metrics.f1_score(val_tp,   val_fp,   val_fn,   val_tn,   reduction="none")[:, 2].mean().item()
+        
         # — Log history —
         history['loss'].append(train_loss);      history['val_loss'].append(val_loss)
         history['dice_coef'].append(train_dice); history['val_dice_coef'].append(val_dice)
@@ -472,7 +508,6 @@ def train_model(
                     'best_epoch':       epoch + 1,
                     'best_axon_dice':   val_dice_axon,
                     'best_myelin_dice': val_dice_myel,
-                    'best_combined':    combined,
                     'best_val_loss':    val_loss,
                     'epochs_completed': None,   # updated after loop
                     'early_stopped':    None,   # updated after loop
@@ -491,7 +526,6 @@ def train_model(
                     'best_epoch':       epoch + 1,
                     'best_axon_dice':   best_combined_axon,
                     'best_myelin_dice': best_combined_myel,
-                    'best_combined':    best_combined,
                     'best_val_loss':    val_loss,
                     'epochs_completed': None,
                     'early_stopped':    None,
@@ -505,8 +539,10 @@ def train_model(
 
         # — ReduceLROnPlateau —
         scheduler.step(val_loss)
+        new_lr = optimizer.param_groups[0]['lr']
+        if new_lr < current_lr:
+            log.print(f"  ReduceLR: {current_lr:.2e} → {new_lr:.2e} (val_loss no improvement for {REDUCE_LR_PATIENCE} epochs)")
 
-    
         epoch_time     = datetime.now() - epoch_start
         epoch_time_str = f"{int(epoch_time.total_seconds())}s"
         
@@ -567,16 +603,12 @@ def train_model(
         f"Best checkpoint epoch:    {best_combined_epoch}\n"
         f"Best val axon dice:       {best_combined_axon:.4f}\n"
         f"Best val myelin dice:     {best_combined_myel:.4f}\n"
-        f"Best combined dice:       {best_combined:.4f}\n"
         f"Best val loss:            {best_combined_loss:.4f}\n\n"
-        f"Final Training Dice:      {final['dice_coef'][-1]:.4f}\n"
         f"Final Validation Dice:    {final['val_dice_coef'][-1]:.4f}\n"
-        f"Final Training IoU:       {final['iou_coef'][-1]:.4f}\n"
         f"Final Validation IoU:     {final['val_iou_coef'][-1]:.4f}\n\n"
         f"Total Training Time:      {elapsed_str}\n"
         f"Epochs completed:         {n_epochs}\n"
-        f"Total patches processed:  {total_patches_processed:,}\n"
-        f"Patches augmented:        {aug_count:,}",
+        f"Total patches processed:  {total_patches_processed:,}\n",
         title="[bold green]DeepAxon++ Training Complete[/bold green]",
         border_style="green",
         expand=False
@@ -584,29 +616,16 @@ def train_model(
 
     log.finalize(summary={
         'Model':              str(model_path),
+        'GPU':                torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU',
         'Epochs':             n_epochs,
         'Early stopped':      str(early_stopped),
         'Best checkpoint':    f"epoch {best_combined_epoch}",
         'Best axon dice':     f"{best_combined_axon:.4f}",
         'Best myelin dice':   f"{best_combined_myel:.4f}",
-        'Best combined dice': f"{best_combined:.4f}",
         'Best val loss':      f"{best_combined_loss:.4f}",
-        'Final train dice':   f"{final['dice_coef'][-1]:.4f}",
         'Final val dice':     f"{final['val_dice_coef'][-1]:.4f}",
-        'Final train IoU':    f"{final['iou_coef'][-1]:.4f}",
         'Final val IoU':      f"{final['val_iou_coef'][-1]:.4f}",
         'Training time':      elapsed_str,
         'Patches processed':  total_patches_processed,
         'Patches augmented':  aug_count,
     })
-
-    # ── Prompt model promotion ─────────────────────────────────────────────────
-    repo_root   = Path(__file__).resolve().parent.parent
-    prod_models = repo_root / "models"
-    promote     = input(f"\nCopy model to {prod_models}? [Y/n]: ").strip().lower()
-    if promote in ('', 'y', 'yes'):
-        dest = prod_models / model_path.name
-        shutil.copy(str(model_path), str(dest))
-        log.success(f"Model promoted to: {dest}")
-    else:
-        log.info(f"Model not promoted. Find it at: {model_path}")

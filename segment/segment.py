@@ -24,6 +24,10 @@ import segmentation_models_pytorch as smp
 from utils.resize import resize_img, get_image_resolution
 from utils.logger import DeepAxonLogger
 from utils.helpers import load_config, list_files, center_crop, get_hann_compatible_step
+from torch.serialization import add_safe_globals
+from torch.torch_version import TorchVersion
+
+add_safe_globals([TorchVersion])
 
 
 # ─── Hann window (position-aware) ────────────────────────────────────────────
@@ -130,20 +134,34 @@ def load_model(
         (model, meta) — meta is {} for legacy models
     """
     model_path = Path(model_path).resolve()
-    checkpoint = torch.load(str(model_path), map_location=device)
+    checkpoint = torch.load(
+        str(model_path),
+        map_location=device,
+        weights_only=True
+    )
 
     # Detect format
-    if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
-        state_dict = checkpoint['model_state_dict']
-        meta       = checkpoint.get('meta', {})
+    if isinstance(checkpoint, dict):
+        if 'model_state_dict' in checkpoint:
+            state_dict = checkpoint['model_state_dict']
+            meta = checkpoint.get('meta', {})
+        else:
+            # assume raw state_dict
+            state_dict = checkpoint
+            meta = {}
     else:
-        # Legacy format — raw state dict
         state_dict = checkpoint
-        meta       = {}
+        meta = {}
 
+    encoder_name = meta.get('encoder', 'resnet34')
+
+    if 'encoder' not in meta:
+        if log:
+            log.warn("Missing encoder in meta → defaulting to resnet34")
+    
     # Build model from metadata if available, else use defaults
     model = smp.UnetPlusPlus(
-        encoder_name    = meta.get('encoder',     'resnet34'),
+        encoder_name    = encoder_name,
         encoder_weights = None,
         in_channels     = meta.get('in_channels', 1),
         classes         = len(meta.get('classes', ['background', 'myelin', 'axon'])),
@@ -213,7 +231,6 @@ def segment_image(img_path, model, patch_size=256, cropped_dir=None, log=None, u
             patch = patch / norms
             patch = torch.from_numpy(patch).float().unsqueeze(0).unsqueeze(0)  # (1,1,H,W)
             patch = patch.to(next(model.parameters()).device)
-            model.eval()
             with torch.no_grad():
                 pred = model(patch)              # (1, 3, H, W) logits
             pred = pred.argmax(dim=1).squeeze(0) # (H, W)
@@ -230,7 +247,7 @@ def segment_image(img_path, model, patch_size=256, cropped_dir=None, log=None, u
     pred_img = np.round(pred_img).astype(int)
     result   = recolor(pred_img)
     elapsed  = time.time() - t0
-    return result, elapsed, crop_w
+    return result, elapsed, crop_h, crop_w
 
 
 # ─── Segment directory ────────────────────────────────────────────────────────
@@ -283,14 +300,12 @@ def segment_dir(tiff_dir, output_dir, model, mag, log, timing_csv=None):
         log.warn("Continuing with mismatched resolutions.")
     else:
         res    = list(unique_res)[0] if unique_res else ('?', '?')
-        crop_w = (1440 // patch_size) * patch_size
-        crop_h = (1024 // patch_size) * patch_size
         log.info(f"Original resolution: {res[0]}x{res[1]} px")
-        log.info(f"Center crop: {crop_w}x{crop_h} px")
 
     timing_rows = []
     success     = 0
     failed      = 0
+    first       = True
 
     for img_path in images:
         stem     = img_path.stem
@@ -298,26 +313,30 @@ def segment_dir(tiff_dir, output_dir, model, mag, log, timing_csv=None):
         res_str  = "x".join(str(x) for x in resolutions.get(img_path.name, ('?', '?')))
 
         try:
-            mask, elapsed, crop_w = segment_image(
+            mask, elapsed, crop_h, crop_w = segment_image(
                 str(img_path), model,
                 patch_size=patch_size,
                 cropped_dir=str(cropped_dir),
                 log=log,
                 use_clahe=clahe_on
             )
+            if first:
+                log.info(f"Center crop: {crop_w}x{crop_h} px")
+                first = False
             cv2.imwrite(str(out_path), mask)
             log.success(f"{img_path.name} [{res_str}] -> {elapsed:.1f}s")
             timing_rows.append({
                 'image': img_path.name, 'resolution': res_str,
-                'crop_width': crop_w, 'patch_size': patch_size,
+                'crop_size': f"{crop_w}x{crop_h}", 'patch_size': patch_size,
                 'time_s': f"{elapsed:.2f}", 'status': 'ok'
             })
             success += 1
+            
         except Exception as e:
             log.error(f"{img_path.name} - FAILED: {e}")
             timing_rows.append({
                 'image': img_path.name, 'resolution': res_str,
-                'crop_width': '', 'patch_size': patch_size,
+                'crop_size': '', 'patch_size': patch_size,
                 'time_s': '', 'status': f'FAILED: {e}'
             })
             failed += 1
@@ -325,7 +344,7 @@ def segment_dir(tiff_dir, output_dir, model, mag, log, timing_csv=None):
     if timing_csv:
         with open(timing_csv, 'w', newline='') as f:
             writer = csv.DictWriter(f, fieldnames=[
-                'image', 'resolution', 'crop_width', 'patch_size', 'time_s', 'status'
+                'image', 'resolution', 'crop_size', 'patch_size', 'time_s', 'status'
             ])
             writer.writeheader()
             writer.writerows(timing_rows)

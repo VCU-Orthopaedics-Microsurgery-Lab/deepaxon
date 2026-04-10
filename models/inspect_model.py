@@ -12,7 +12,7 @@ from pathlib import Path
 
 def inspect(model_path: str):
     model_path = Path(model_path).resolve()
-    checkpoint = torch.load(str(model_path), map_location='cpu')
+    checkpoint = torch.load(str(model_path), map_location='cpu', weights_only=False)
 
     if not isinstance(checkpoint, dict) or 'model_state_dict' not in checkpoint:
         print("Legacy model format — no embedded metadata.")
@@ -31,13 +31,13 @@ def inspect(model_path: str):
     print(f"{'=' * 60}")
 
     sections = {
-        'Identity':        ['model_name', 'version', 'codename', 'trained_date', 'git_commit'],
+        'Identity':        ['model_name', 'version', 'codename', 'trained_date'],
         'Architecture':    ['architecture', 'encoder', 'encoder_weights', 'in_channels',
                             'classes', 'input_size', 'activation', 'normalization'],
         'Dataset':         ['magnification', 'patch_size', 'dataset_path', 'split_mode',
                             'val_images', 'n_train_patches', 'n_val_patches'],
         'Results':         ['best_epoch', 'best_axon_dice', 'best_myelin_dice',
-                            'best_combined', 'best_val_loss', 'epochs_completed', 'early_stopped'],
+                            'best_val_loss', 'epochs_completed', 'early_stopped'],
         'Training config': ['augmentation', 'geo_prob', 'photo_prob', 'batch_size',
                             'epochs_limit', 'learning_rate', 'dice_weight', 'ce_weight',
                             'ce_smooth', 'reduce_lr_patience', 'early_stop_patience',

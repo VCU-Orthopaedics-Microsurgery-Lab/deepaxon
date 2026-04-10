@@ -222,6 +222,8 @@ def main():
     model_dir   = get_model_dir(str(images_path))
     log_dir     = get_log_dir(str(images_path))
     log_dir.mkdir(parents=True, exist_ok=True)
+    
+    console.print("[yellow]Val set: auto-detected from val_ prefixed images (or 20% random split if none found)[/yellow]")  
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
@@ -233,9 +235,7 @@ def main():
     param_cfg = aug_cfg.get("parameters", {})
 
     geo_prob   = prob_cfg.get("geometric_prob",  0.5)
-    photo_prob = prob_cfg.get("photometric_prob", 0.25)
-
-    console.print("[yellow]Val set: auto-detected from val_ prefixed images (or 20% random split if none found)[/yellow]")                                             
+    photo_prob = prob_cfg.get("photometric_prob", 0.25)                                           
             
     # ── Magnification ─────────────────────────────────────────────────────────
     mag = select_magnification()

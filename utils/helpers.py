@@ -494,19 +494,6 @@ def compute_batch_options(
         'ideal':        _get_ideal_batch_sizes(use_gpu),
         'device_label': device_label,
     }
-
-
-def get_git_commit() -> str:
-    """Return current git commit hash for model provenance tracking."""
-    try:
-        import subprocess
-        result = subprocess.run(
-            ['git', 'rev-parse', '--short', 'HEAD'],
-            capture_output=True, text=True
-        )
-        return result.stdout.strip()
-    except Exception:
-        return 'unknown'
     
     
 def get_hann_compatible_step(patch_size: int) -> int:
