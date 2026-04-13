@@ -4,6 +4,7 @@
         "docs": "See README.md for full documentation of each setting."
     },
 
+    "_section_environment": "── Environment ─────────────────────────────────────────────────────────",
     "microscope": "Olympus BX63 (Lab default)",
     "fiji_executable": "",
 
@@ -17,77 +18,15 @@
     },
 
     "_section_folder_naming": "── Output folder and file naming ───────────────────────────────────────",
-    "csa_suffix": "_CSA.tif",
-    "csa_folder": "CSA",
-    "segmented_folder": "Segmented",
+    "tiff_suffixes":        ["_TIFF", "_TIFF_r", "_TIFF_edit"],
+    "cropped_folder":       "Cropped",
+    "segmented_folder":     "Segmented",
+    "segmented_suffix":     "_segmented",
     "morphometrics_folder": "Morphometrics",
-    "cropped_folder": "Cropped",
-    "tiff_suffixes": ["_TIFF", "_TIFF_r", "_TIFF_edit"],
-    "segmented_suffix": "_segmented",
     "morphometrics_suffix": "_morphometrics",
+    "csa_folder":           "CSA",
+    "csa_suffix":           "_CSA.tif",
 
-    "_section_segmentation": "── Segmentation ────────────────────────────────────────────────────────",
-    "patch_size": {
-        "40X": 256,
-        "100X": 256
-    },
-    "clahe": {
-        "enabled": false,
-        "clip_limit": 1.0,
-        "tile_grid_size": [8, 8]
-    },
-
-    "_section_morphometrics": "── Morphometrics ───────────────────────────────────────────────────────",
-    "watershed": {
-        "distance_threshold": 0.17,
-        "dilation_disk": 5
-    },
-    "morphometrics_bins": {
-        "axon_diameter_um": [0, 0.5, 5, 10, 15, 20, 25, 30, 999]
-    },
-    "quality_filters": {
-        "min_axon_area_um2": 1.0,
-        "max_axon_area_um2": 500.0,
-        "min_axon_solidity": 0.7,
-        "max_axon_eccentricity": 0.95,
-        "min_myelin_thickness_um": 0.3,
-        "gratio_min": 0.2,
-        "gratio_max": 0.9,
-        "min_fiber_area_um2": 2.0,
-        "max_fiber_area_um2": 800.0
-    },
-
-    "_section_training": "── Training ────────────────────────────────────────────────────────────",
-    "training": {
-        "epochs": 200,
-        "learning_rate": 0.001,
-        "reduce_lr_patience": 15,
-        "reduce_lr_factor": 0.5,
-        "reduce_lr_min_lr": 1e-6,
-        "early_stop_patience": 40,
-        "early_stop_min_delta": 0.001,
-        "dice_weight": 0.5,
-        "ce_weight": 0.5,
-        "class_weights": [3.0, 1.0, 1.0],
-        "checkpoint_metric": "val_loss",
-        "min_last_batch_fullness": 0.80,
-        "danger_last_batch_fullness": 0.15,
-        "gpu_batch_candidates": [512, 256, 128, 64, 32],
-        "cpu_batch_candidates": [32, 16, 8, 4]
-    },
-    "augmentation": {
-        "probabilities": {
-            "geometric_prob":   0.5,
-            "photometric_prob": 0.25
-        },
-        "parameters": {
-            "rotation_deg":       15,
-            "brightness_range":   [0.8, 1.2],
-            "brightness_offset":  [-0.1, 0.1],
-            "gamma_range":        [0.7, 1.4],
-            "noise_sigma":        0.02
-        }
-    },
 
     "_section_pipeline": "── Pipeline behaviour ──────────────────────────────────────────────────",
     "logging": {
@@ -96,5 +35,76 @@
         "batch_axon":    false,
         "train":         true
     },
-    "timing": false
+    "timing": false,
+
+    "_section_segmentation": "── Segmentation ────────────────────────────────────────────────────────",
+    "patch_size": {
+        "40X":  256,
+        "100X": 256
+    },
+    "clahe": {
+        "enabled":        false,
+        "clip_limit":     1.0,
+        "tile_grid_size": [8, 8],
+        "_tile_grid_size_note": "[ rows, cols ]"
+    },
+
+    "_section_morphometrics": "── Morphometrics ───────────────────────────────────────────────────────",
+    "watershed": {
+        "distance_threshold": 0.17,
+        "dilation_disk":      5
+    },
+    "morphometrics_bins": {
+        "axon_diameter_um": [0, 0.5, 5, 10, 15, 20, 25, 30, 999],
+        "_axon_diameter_um_note": "bin edges in µm — 999 = open upper bound"
+    },
+    "quality_filters": {
+        "min_axon_area_um2":      1.0,
+        "max_axon_area_um2":      500.0,
+        "min_axon_solidity":      0.7,
+        "max_axon_eccentricity":  0.95,
+        "min_myelin_thickness_um": 0.3,
+        "gratio_min":             0.2,
+        "gratio_max":             0.9,
+        "min_fiber_area_um2":     2.0,
+        "max_fiber_area_um2":     800.0
+    },
+
+    "_section_training": "── Training ────────────────────────────────────────────────────────────",
+    "training": {
+        "epochs":                200,
+        "learning_rate":         0.001,
+        "dice_weight":           0.5,
+        "ce_weight":             0.5,
+        "class_weights":         [2.0, 1.0, 1.0],
+        "_class_weights_order":  "[ background, myelin, axon ]",
+        "checkpoint_metric":     "val_loss",
+        "early_stop_patience":   40,
+        "early_stop_min_delta":  0.001,
+        "reduce_lr_patience":    15,
+        "reduce_lr_factor":      0.5,
+        "reduce_lr_min_lr":      1e-6,
+        "min_last_batch_fullness":    0.80,
+        "danger_last_batch_fullness": 0.15,
+        "gpu_batch_candidates":  [512, 256, 128, 64, 32],
+        "_gpu_batch_candidates_note": "ordered largest to smallest — ≥60GB VRAM tier",
+        "cpu_batch_candidates":  [32, 16, 8, 4],
+        "_cpu_batch_candidates_note": "ordered largest to smallest"
+    },
+    "augmentation": {
+        "probabilities": {
+            "geometric_prob":   0.5,
+            "photometric_prob": 0.25
+        },
+        "parameters": {
+            "rotation_deg":          15,
+            "brightness_range":      [0.8, 1.2],
+            "_brightness_range_note": "[ min_multiplier, max_multiplier ]",
+            "brightness_offset":     [-0.1, 0.1],
+            "_brightness_offset_note": "[ min_offset, max_offset ]",
+            "gamma_range":           [0.7, 1.4],
+            "_gamma_range_note":     "[ min_gamma, max_gamma ]",
+            "noise_sigma":           0.02
+        }
+    }
 }

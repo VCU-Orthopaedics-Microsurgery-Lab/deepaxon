@@ -26,8 +26,11 @@ def base_label(arr: np.ndarray) -> np.ndarray:
         127, 128  → 1 (myelin / grey)
         255       → 2 (axon / white)
     """
-    pixel_to_class = {0: 0, 127: 1, 128: 1, 255: 2}
-    return np.vectorize(lambda x: pixel_to_class.get(int(x), 0))(arr).astype(np.float32)
+    out = np.zeros_like(arr, dtype=np.float32)
+    out[arr == 127] = 1
+    out[arr == 128] = 1
+    out[arr == 255] = 2
+    return out
 
 
 # ─── Patch loading ────────────────────────────────────────────────────────────

@@ -22,7 +22,7 @@ from rich.align import Align
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from utils.logger import DeepAxonLogger
-from utils.helpers import detect_study_mag, list_models, load_config, resolve_scan
+from utils.helpers import print_panel, detect_study_mag, list_models, load_config, resolve_scan
 from utils.gpu import setup_gpu_console
 from segment.segment import segment_dir, load_model
 
@@ -33,6 +33,7 @@ console = Console()
 
 def select_model(models: list) -> Path:
     """Present an interactive model selection menu."""
+    console.rule("MODEL SELECTION", style="bright_cyan")
     table = Table(
         box=DOUBLE,
         show_header=True,
@@ -159,13 +160,16 @@ def main():
     # ── Process nerves ─────────────────────────────────────────────────────────
     seg_folder = config.get("segmented_folder", "Segmented")
 
+    current_animal = None
     for animal, nerve, info in to_process:
+        if animal != current_animal:
+            log.rule(f"══ {animal} ══")
+            current_animal = animal
         tiff_dir   = info['tiff_dir']
         nerve_path = tiff_dir.parent
         output_dir = nerve_path / seg_folder
         timing_csv = str(output_dir / "timing.csv") if config.get("timing", False) else None
 
-        log.rule(f"{animal} / {nerve}")
         segment_dir(
             tiff_dir=str(tiff_dir),
             output_dir=str(output_dir),
@@ -179,7 +183,6 @@ def main():
         'Study':            study_dir,
         'Model':            selected_model_path.stem,
         'Trained':          meta.get('trained_date',     '?'),
-        'Dataset':          meta.get('dataset_path',     '?'),
         'Magnification':    mag,
         'Best axon dice':   f"{meta.get('best_axon_dice',   float('nan')):.4f}",
         'Best myelin dice': f"{meta.get('best_myelin_dice', float('nan')):.4f}",

@@ -49,7 +49,7 @@ GEO_PROB   = _prob_cfg.get("geometric_prob",   0.5)
 PHOTO_PROB = _prob_cfg.get("photometric_prob", 0.25)
 
 # ─── Class weights ────────────────────────────────────────────────────────────
-_class_weights_cfg = _train_cfg.get("class_weights", [1.5, 1.0, 1.2])
+_class_weights_cfg = _train_cfg.get("class_weights", [2.0, 1.0, 1.0])
 
 
 def weighted_dice_loss(pred: torch.Tensor, target: torch.Tensor, weights: torch.Tensor) -> torch.Tensor:

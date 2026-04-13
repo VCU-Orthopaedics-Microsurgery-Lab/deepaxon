@@ -19,6 +19,11 @@ import re
 _CONFIG_PATH  = Path(__file__).resolve().parent.parent / "config.json"
 _config_cache = None
 
+def print_panel(console, panel):
+    console.print()
+    console.print(panel)
+    console.print()
+    
 def natural_sort_key(path) -> list:
     """
     Natural sort key for filenames containing numbers.

@@ -179,11 +179,9 @@ def load_model(
             f"Trained    : {meta.get('trained_date', '?')} on "
             f"{meta.get('gpu', '?')} ({meta.get('hostname', '?')})"
         )
-        log.info(f"Dataset    : {meta.get('dataset_path', '?')}")
         log.info(
             f"Mag        : {meta.get('magnification', '?')} | "
-            f"Patch: {meta.get('patch_size', '?')}px | "
-            f"Norm: {meta.get('normalization', '?')}"
+            f"Patch: {meta.get('patch_size', '?')}px"
         )
         log.info(
             f"Best epoch : {meta.get('best_epoch', '?')} | "
@@ -270,16 +268,14 @@ def segment_dir(tiff_dir, output_dir, model, mag, log, timing_csv=None):
         log.warn(f"No TIFF images found in {tiff_dir}")
         return
 
-    log.rule(f"SEGMENTING {tiff_dir.name}")
+    log.rule(f"SEGMENTING {tiff_dir.parent.name} / {tiff_dir.name}")
     clahe_cfg  = config.get("clahe", {})
     clahe_on   = clahe_cfg.get("enabled", False)
-    logging_on = config.get("logging", False)
     timing_on  = config.get("timing", False)
     log.info(
         f"Found {len(images)} image(s) | patch_size={patch_size}px | "
         f"Overlap: {overlap_pct}% | Step: {step}px | "
         f"CLAHE={'ON' if clahe_on else 'OFF'} | "
-        f"Logging={'ON' if logging_on else 'OFF'} | "
         f"Timing={'ON' if timing_on else 'OFF'}"
     )
 
@@ -320,11 +316,9 @@ def segment_dir(tiff_dir, output_dir, model, mag, log, timing_csv=None):
                 log=log,
                 use_clahe=clahe_on
             )
-            if first:
-                log.info(f"Center crop: {crop_w}x{crop_h} px")
-                first = False
+            log.success(f"{img_path.name} [{crop_w}x{crop_h}] -> {elapsed:.1f}s")
             cv2.imwrite(str(out_path), mask)
-            log.success(f"{img_path.name} [{res_str}] -> {elapsed:.1f}s")
+            log.success(f"Segmented {img_path.name} -> {elapsed:.1f}s")
             timing_rows.append({
                 'image': img_path.name, 'resolution': res_str,
                 'crop_size': f"{crop_w}x{crop_h}", 'patch_size': patch_size,
@@ -348,6 +342,5 @@ def segment_dir(tiff_dir, output_dir, model, mag, log, timing_csv=None):
             ])
             writer.writeheader()
             writer.writerows(timing_rows)
-
-    log.rule()
+            
     log.success(f"Done - {success} succeeded, {failed} failed")

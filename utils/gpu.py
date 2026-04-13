@@ -29,7 +29,7 @@ def setup_gpu_console() -> bool:
     if not torch.cuda.is_available():
         t = Text(justify="center")
         t.append("No GPU detected — running on CPU only.\n", style="yellow")
-        t.append("Training will be slower. Consider using a machine with a CUDA-capable GPU.")
+        t.append("Training and Segmentation will be slower without GPU acceleration.")
         console.print(Panel(
             t,
             title="[bold yellow]Device[/bold yellow]",
