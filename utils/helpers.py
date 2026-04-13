@@ -12,13 +12,20 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import numpy as np
-from safetensors import torch
+import re
 
 # ─── Config ───────────────────────────────────────────────────────────────────
 
 _CONFIG_PATH  = Path(__file__).resolve().parent.parent / "config.json"
 _config_cache = None
 
+def natural_sort_key(path) -> list:
+    """
+    Natural sort key for filenames containing numbers.
+    Sorts img_1, img_2 ... img_10 correctly instead of img_1, img_10, img_2.
+    """
+    parts = re.split(r'(\d+)', Path(path).stem)
+    return [int(p) if p.isdigit() else p for p in parts]
 
 def load_config() -> dict:
     global _config_cache
@@ -356,6 +363,8 @@ def _get_gpu_batch_candidates() -> list[int] | None:
     < 6GB   : anything smaller               → [16, 8, 4, 2]
     """
     try:
+        import torch    # local import — torch not needed at module level in helpers
+
         if not torch.cuda.is_available():
             return None
         vram_gb = torch.cuda.get_device_properties(0).total_memory / 1e9
@@ -373,18 +382,14 @@ def _get_gpu_batch_candidates() -> list[int] | None:
         return None
 
 def _get_ideal_batch_sizes(use_gpu: bool) -> list[int]:
-    """
-    Return the top 1-2 ideal batch sizes for the current device.
-    Used for display purposes only — independent of patch count.
-    """
     if use_gpu:
         candidates = _get_gpu_batch_candidates()
         if candidates:
-            return candidates[:2]   # top two for this VRAM tier
+            return candidates  # all candidates for this VRAM tier
     config    = load_config()
     train_cfg = config.get("training", {})
     cpu_cands = train_cfg.get("cpu_batch_candidates", [32, 16, 8, 4])
-    return cpu_cands[:1]            # top one for CPU
+    return cpu_cands
 
 
 def _classify_batch(bs: int, n_patches: int, min_ok: float, min_warn: float) -> tuple[str, int]:
@@ -426,20 +431,23 @@ def compute_batch_options(
     return a structured result for menu display and selection.
 
     Three zones:
-        ≥ 80% full   → acceptable  — present as menu option
+        ≥ 80% full   → acceptable  — present as menu option (power-of-2 candidates)
         15–80% full  → excluded    — not recommended
         < 15% full   → danger      — drop remainder, present as trim option
+
+    Perfect fit divisors (non power-of-2) are always shown as a separate section.
 
     Args:
         n_patches: estimated training patches (after val split)
         use_gpu:   True if training on GPU
 
     Returns dict with keys:
-        'acceptable'  : list of (bs, remainder) — last batch ≥80% full
-        'trim'        : list of (bs, n_dropped, pct_dropped) — <15%, drop remainder
-        'excluded'    : list of (bs, remainder, fullness_pct) — 15-80%, shown as info
-        'ideal'       : list[int] — top device batch sizes regardless of patches
-        'device_label': str — e.g. 'A100 80GB (80GB VRAM)' or 'CPU'
+        'acceptable'   : list of (bs, remainder) — last batch ≥80% full
+        'perfect_fits' : list of int — exact divisors of n_patches, non power-of-2
+        'trim'         : list of (bs, n_dropped, pct_dropped) — <15%, drop remainder
+        'excluded'     : list of (bs, remainder, fullness_pct) — 15-80%, shown as info
+        'ideal'        : list[int] — all device batch sizes regardless of patches
+        'device_label' : str — e.g. 'NVIDIA H100 80GB HBM3 (85GB VRAM)' or 'CPU'
     """
     config    = load_config()
     train_cfg = config.get("training", {})
@@ -462,9 +470,7 @@ def compute_batch_options(
 
         if zone == 'skip':
             continue
-        elif zone == 'perfect':
-            acceptable.append((bs, 0))
-        elif zone == 'acceptable':
+        elif zone in ('perfect', 'acceptable'):
             acceptable.append((bs, remainder))
         elif zone == 'excluded':
             fullness_pct = int(remainder / bs * 100)
@@ -473,6 +479,17 @@ def compute_batch_options(
             n_dropped   = remainder
             pct_dropped = round(n_dropped / n_patches * 100, 1)
             trim.append((bs, n_dropped, pct_dropped))
+
+    # ── Perfect fit divisors (non power-of-2) ─────────────────────────────────
+    # Largest 3 non-power-of-2 exact divisors in range [16, n_patches//2]
+    def _is_power_of_2(n: int) -> bool:
+        return n > 0 and (n & (n - 1)) == 0
+
+    perfect_fits = sorted(
+        [bs for bs in range(16, n_patches // 2 + 1)
+         if n_patches % bs == 0 and not _is_power_of_2(bs)],
+        reverse=True
+    )[:3]
 
     if use_gpu:
         try:
@@ -487,6 +504,7 @@ def compute_batch_options(
 
     return {
         'acceptable':   acceptable,
+        'perfect_fits': perfect_fits,
         'trim':         trim,
         'excluded':     excluded,
         'ideal':        _get_ideal_batch_sizes(use_gpu),

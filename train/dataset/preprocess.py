@@ -14,7 +14,7 @@ from pathlib import Path
 from patchify import patchify
 
 from utils.resize import resize_img
-from utils.helpers import load_config, list_files, center_crop, get_hann_compatible_step
+from utils.helpers import natural_sort_key, load_config, list_files, center_crop, get_hann_compatible_step
 
 
 def process_single_image(
@@ -23,7 +23,8 @@ def process_single_image(
     cropped_dir,
     patch_size=256,
     is_mask=False,
-    log=None
+    log=None,
+    max_stem=0
 ):
     """
     Process a single image: resize -> center crop -> save cropped -> patchify (50% overlap) -> save patches.
@@ -63,7 +64,7 @@ def process_single_image(
     if log:
         h_orig, w_orig = img.shape[:2]
         log.info(
-            f"  {'[MASK]' if is_mask else '[IMG] '} {stem} | "
+            f"  {'[MASK]' if is_mask else '[IMG] '} {stem:<{max_stem}} | "
             f"Resized: ({h_orig}x{w_orig}) -> Cropped: ({crop_h}x{crop_w}) -> {count} patches"
         )
 
@@ -79,11 +80,11 @@ def batch_process(images_dir, masks_dir, patches_img_dir, patches_mask_dir,
     """
     config     = load_config()
     patch_size = config.get("patch_size", {}).get(mag, 256)
-    step = get_hann_compatible_step(patch_size)  # 50% overlap
+    step        = get_hann_compatible_step(patch_size)
     overlap_pct = 100 - int(step / patch_size * 100)
 
-    images = list_files(images_dir, extensions=('.tif', '.tiff', '.png'))
-    masks  = list_files(masks_dir,  extensions=('.tif', '.tiff', '.png'))
+    images = sorted(list_files(images_dir, extensions=('.tif', '.tiff', '.png')), key=natural_sort_key)
+    masks  = sorted(list_files(masks_dir,  extensions=('.tif', '.tiff', '.png')), key=natural_sort_key)
 
     # Validate image/mask pairing before processing
     img_stems  = {Path(p).stem for p in images}
@@ -94,32 +95,30 @@ def batch_process(images_dir, masks_dir, patches_img_dir, patches_mask_dir,
             f"Missing masks for {len(missing)} image(s): {sorted(missing)}"
         )
 
+    max_stem = max(len(Path(p).stem) for p in images) if images else 0
+
     log.rule("IMAGE PREPROCESSING")
-    log.info(f"Patch size: {patch_size}px | Interpolation: INTER_LANCZOS4 (image quality)" )
+    log.info(f"Patch size: {patch_size}px | Interpolation: INTER_LANCZOS4 (image quality)")
     total_img = 0
     for img_path in images:
         total_img += process_single_image(
             str(img_path), patches_img_dir, cropped_img_dir,
-            patch_size=patch_size, is_mask=False, log=log
+            patch_size=patch_size, is_mask=False, log=log, max_stem=max_stem
         )
 
     log.rule("MASK PREPROCESSING")
-    log.info(f"Patch size: {patch_size}px | Interpolation: INTER_NEAREST (preserves label values 0/128/255)" )
+    log.info(f"Patch size: {patch_size}px | Interpolation: INTER_NEAREST (preserves label values 0/128/255)")
     total_mask = 0
     for mask_path in masks:
         total_mask += process_single_image(
             str(mask_path), patches_mask_dir, cropped_mask_dir,
-            patch_size=patch_size, is_mask=True, log=log
+            patch_size=patch_size, is_mask=True, log=log, max_stem=max_stem
         )
 
-    # ── Preprocessing summary ─────────────────────────────────────────────────────
+    # ── Preprocessing summary ─────────────────────────────────────────────────
     log.rule("PREPROCESSING SUMMARY")
-    log.info(f"Total images processed : {len(images)}")
-    log.info(f"Total masks processed  : {len(masks)}")
-    log.info(f"Total patches created  : {total_img} image | {total_mask} mask")
-    log.info(f"Patches per image      : {total_img // len(images) if images else 0}")
-    log.info(f"Patch size             : {patch_size}px | Overlap: {overlap_pct}% | Step: {step}px")
-    log.info(f"Output (images)        : {patches_img_dir}")
-    log.info(f"Output (masks)         : {patches_mask_dir}")
+    log.info(f"Images: {len(images)} | Masks: {len(masks)} | Patches per image: {total_img // len(images) if images else 0}")
+    log.info(f"Patch size: {patch_size}px | Overlap: {overlap_pct}% | Step: {step}px")
+    log.info(f"Total patches: {total_img} image | {total_mask} mask")
 
     return total_img, total_mask

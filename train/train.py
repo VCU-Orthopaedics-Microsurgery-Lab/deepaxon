@@ -110,7 +110,7 @@ class TrainingLogger():
         self.log.print(
             f"  Epoch{row['epoch']:>4} ({row['epoch_time']}) | learning_rate {row['lr']:.2e}\n"
             f"  TRAIN  loss {row['loss']:.3f} | dice {row['dice']:.3f} | bg {row['dice_bg']:.3f} | ax {row['dice_axon']:.3f} | my {row['dice_myelin']:.3f}\n"
-            f"  VAL    loss {row['val_loss']:.3f} | dice {row['val_dice']:.3f} | bg {row['val_dice_bg']:.3f} | ax {row['val_dice_axon']:.3f} | my {row['val_dice_myel']:.3f}  {checkpoint_flag}"
+            f"  VAL    loss {row['val_loss']:.3f} | dice {row['val_dice']:.3f} | bg {row['val_dice_bg']:.3f} | ax {row['val_dice_axon']:.3f} | my {row['val_dice_myel']:.3f}  {checkpoint_flag}\n"
         )
 
     def on_train_end(self, checkpoint_info: dict):
@@ -237,7 +237,6 @@ def train_model(
 
     # ── Preprocess if patches don't exist ─────────────────────────────────────
     if not paths['patches_img'].exists() or count_patches(str(paths['patches_img'])) == 0:
-        log.rule("PREPROCESSING")
         n_img, n_mask = batch_process(
             str(paths['images_dir']),
             str(paths['masks_dir']),
@@ -324,12 +323,12 @@ def train_model(
         'Architecture':     'UNet++ (DeepAxon++) — resnet34 encoder, imagenet weights',
         'Parameters':       f"{n_params:,}",
         'Class weights':    f"bg={_class_weights_cfg[0]} myelin={_class_weights_cfg[1]} axon={_class_weights_cfg[2]}",
+        'Device':           str(device),
         # Dataset
         'Train patches':    len(X_train),
         'Val patches':      len(X_val),
         'Test/Train split': split_mode,
         # Training
-        'Device':           str(device),
         'Batch size':       batch_size,
         'Epoch limit':      epochs,
         'Augmentation':     f"ON — geo_prob={GEO_PROB:.2f} photo_prob={PHOTO_PROB:.2f}" if use_aug else "OFF",

@@ -40,7 +40,7 @@ from utils.helpers import (
     compute_batch_options, get_model_dir, get_log_dir,
     list_files, load_config
 )
-from train.train import (train_model)
+from train.train import train_model
 
 console  = Console()
 has_gpu  = torch.cuda.is_available()
@@ -72,6 +72,11 @@ def _format_trim_line(bs: int, n_dropped: int, pct_dropped: float, n_patches: in
 
 
 def _evaluate_custom_bs(bs: int, n_patches: int) -> tuple[str, str]:
+    config    = load_config()
+    train_cfg = config.get("training", {})
+    min_ok    = train_cfg.get("min_last_batch_fullness",    0.80)
+    min_warn  = train_cfg.get("danger_last_batch_fullness", 0.15)
+
     if bs < 1:
         return 'invalid', "Batch size must be ≥ 1."
     if n_patches < bs * 2:
@@ -80,9 +85,9 @@ def _evaluate_custom_bs(bs: int, n_patches: int) -> tuple[str, str]:
     if remainder == 0:
         return 'perfect', _format_bs_line(bs, 0, n_patches)
     fullness = remainder / bs
-    if fullness >= 0.75:
+    if fullness >= min_ok:
         return 'acceptable', _format_bs_line(bs, remainder, n_patches)
-    elif fullness >= 0.25:
+    elif fullness >= min_warn:
         return 'excluded', _format_bs_line(bs, remainder, n_patches)
     else:
         n_kept = n_patches - remainder
@@ -90,12 +95,16 @@ def _evaluate_custom_bs(bs: int, n_patches: int) -> tuple[str, str]:
 
 
 def select_batch_size(n_train_patches: int, use_gpu: bool) -> tuple[int, int, str]:
+    config    = load_config()
+    train_cfg = config.get("training", {})
+    min_ok    = train_cfg.get("min_last_batch_fullness",    0.80)
+    min_warn  = train_cfg.get("danger_last_batch_fullness", 0.15)
+
     opts      = compute_batch_options(n_train_patches, use_gpu=use_gpu)
     ideal_str = " or ".join(str(b) for b in opts['ideal'])
     menu_items = []
 
     # ── Device panel ──────────────────────────────────────────────────────────
-    from rich.text import Text
     t = Text(justify="center")
     t.append(f"{opts['device_label']}\n", style="orange1")
     t.append(f"Ideal batch size: {ideal_str}    |    Training patches: ~{n_train_patches}")
@@ -109,15 +118,23 @@ def select_batch_size(n_train_patches: int, use_gpu: bool) -> tuple[int, int, st
 
     # ── Options ───────────────────────────────────────────────────────────────
     if opts['acceptable']:
-        console.print(f"\n  [green]✅ Acceptable (≥80% last batch full):[/green]")
+        console.print(f"\n  [green]✅ Power-of-2 — Acceptable (≥{int(min_ok*100)}% last batch full):[/green]")
         for bs, remainder in opts['acceptable']:
             idx  = len(menu_items) + 1
             line = _format_bs_line(bs, remainder, n_train_patches)
             console.print(f"  [{idx}]  {line}")
             menu_items.append((idx, bs, remainder, 'perfect' if remainder == 0 else 'acceptable'))
 
+    if opts['perfect_fits']:
+        console.print(f"\n  [green]✅ Perfect fit — no remainder (non power-of-2, marginally slower):[/green]")
+        for bs in opts['perfect_fits']:
+            idx  = len(menu_items) + 1
+            line = _format_bs_line(bs, 0, n_train_patches)
+            console.print(f"  [{idx}]  {line}")
+            menu_items.append((idx, bs, 0, 'perfect'))
+
     if opts['trim']:
-        console.print(f"\n  [cyan]✅ Trim to perfect fit (<15% last batch — drops remainder):[/cyan]")
+        console.print(f"\n  [cyan]✅ Trim to perfect fit (<{int(min_warn*100)}% last batch — drops remainder):[/cyan]")
         for bs, n_dropped, pct_dropped in opts['trim']:
             idx  = len(menu_items) + 1
             line = _format_trim_line(bs, n_dropped, pct_dropped, n_train_patches)
@@ -126,7 +143,7 @@ def select_batch_size(n_train_patches: int, use_gpu: bool) -> tuple[int, int, st
 
     if opts['excluded']:
         excl_str = ", ".join(f"bs={bs} ({pct}%)" for bs, _, pct in opts['excluded'])
-        console.print(f"\n  [yellow]⚠  Excluded (15–80% last batch): {excl_str}[/yellow]")
+        console.print(f"\n  [yellow]⚠  Excluded ({int(min_warn*100)}–{int(min_ok*100)}% last batch): {excl_str}[/yellow]")
 
     custom_idx = len(menu_items) + 1
     console.print(f"\n  [{custom_idx}]  Enter custom batch size\n")
@@ -161,7 +178,8 @@ def select_batch_size(n_train_patches: int, use_gpu: bool) -> tuple[int, int, st
                     remainder = n_train_patches % custom_bs
                     fullness  = int(remainder / custom_bs * 100)
                     console.print(
-                        f"[yellow]  ⚠ Last batch {fullness}% full (15–80% excluded zone). "
+                        f"[yellow]  ⚠ Last batch {fullness}% full "
+                        f"({int(min_warn*100)}–{int(min_ok*100)}% excluded zone). "
                         f"Strongly recommend choosing a different size.[/yellow]"
                     )
                     if get_yes_no("  Proceed anyway?", default=False):
@@ -170,7 +188,7 @@ def select_batch_size(n_train_patches: int, use_gpu: bool) -> tuple[int, int, st
                     n_dropped = n_train_patches % custom_bs
                     pct       = round(n_dropped / n_train_patches * 100, 1)
                     console.print(
-                        f"[red]  ⚠ Last batch <15% full. "
+                        f"[red]  ⚠ Last batch <{int(min_warn*100)}% full. "
                         f"{n_dropped} patches ({pct}%) will be dropped.[/red]"
                     )
                     if get_yes_no("  Proceed with trim?", default=False):
@@ -208,8 +226,8 @@ def main():
     model_dir   = get_model_dir(str(images_path))
     log_dir     = get_log_dir(str(images_path))
     log_dir.mkdir(parents=True, exist_ok=True)
-    
-    console.print("[yellow]Val set: auto-detected from val_ prefixed images (or 20% random split if none found)[/yellow]")  
+
+    console.print("[yellow]Val set: auto-detected from val_ prefixed images (or 20% random split if none found)[/yellow]")
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
@@ -221,8 +239,8 @@ def main():
     param_cfg = aug_cfg.get("parameters", {})
 
     geo_prob   = prob_cfg.get("geometric_prob",  0.5)
-    photo_prob = prob_cfg.get("photometric_prob", 0.25)                                           
-            
+    photo_prob = prob_cfg.get("photometric_prob", 0.25)
+
     # ── Magnification ─────────────────────────────────────────────────────────
     raw = input("\nSelect imaging magnification — [1] 40X  [2] 100X: ").strip()
     while raw not in ('1', '2'):
@@ -246,7 +264,12 @@ def main():
     expected_pct = round((1 - (1 - geo_prob)**3 * (1 - photo_prob)**3) * 100, 1)
     t = Text(justify="center")
     t.append(f"Geometric prob: {geo_prob:.2f}    |    Photometric prob: {photo_prob:.2f}\n", style="orange1")
-    t.append(f"Flips, rotation ±{param_cfg.get('rotation_deg', 15)}°, brightness {param_cfg.get('brightness_range', [0.8, 1.2])}, gamma {param_cfg.get('gamma_range', [0.7, 1.4])}, noise σ={param_cfg.get('noise_sigma', 0.02)}\n")
+    t.append(
+        f"Flips, rotation ±{param_cfg.get('rotation_deg', 15)}°, "
+        f"brightness {param_cfg.get('brightness_range', [0.8, 1.2])}, "
+        f"gamma {param_cfg.get('gamma_range', [0.7, 1.4])}, "
+        f"noise σ={param_cfg.get('noise_sigma', 0.02)}\n"
+    )
     t.append(f"Expected augmentation rate: ~{expected_pct}% of patches", style="orange1")
     console.print(Panel(
         t,
@@ -287,15 +310,15 @@ def main():
         )
     if bs_status == 'custom_warn':
         bs_log += " [user override — outside recommended zones]"
-        
-    log.rule("TRAINING RUN SUMMARY")
+
+    log.rule("RUN CONFIGURATION")
     log.log_dict({
         'Model name':         model_name,
         'Magnification':      mag,
         'Epoch limit':        epochs,
         'Augmentation':       'ON' if use_aug else 'OFF',
         'Batch size':         bs_log,
-        'Est. train patches': f"~{n_train_patches} (actual logged after load)",
+        'Est. train patches': f"~{n_train_patches}",
         'Images folder':      str(images_path),
         'Models folder':      str(model_dir),
         'Log file':           log_path,

@@ -79,7 +79,7 @@ def _patches_to_image_stems(files: list) -> list[str]:
         if stem not in seen:
             seen.add(stem)
             stems.append(stem)
-    return sorted(stems)
+    return (stems)
 # ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -147,10 +147,8 @@ def load_all_patches(
             val_stems   = _patches_to_image_stems(val_img_files)
             n_total     = len(train_stems) + len(val_stems)
             eff_pct     = round(len(val_stems) / n_total * 100, 1)
-            log.info(
-                f"Train: {len(train_stems)} images → {len(X_train)} patches  |  "
-                f"Val: {len(val_stems)} images → {len(X_val)} patches ({eff_pct}%)"
-            )
+            log.info(f"Train: {len(train_stems)} images → {len(X_train)} patches")
+            log.info(f"Val:   {len(val_stems)} images  → {len(X_val)} patches ({eff_pct}%)")
             log.info(f"Val images: {', '.join(val_stems)}")
 
         return X_train, Y_train, X_val, Y_val, 'val_prefix', val_stems
