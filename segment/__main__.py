@@ -8,6 +8,8 @@ segments all nerves. Skips nerves that already have a Segmented folder.
 """
 
 import os
+
+from typer import models
 os.environ['PYTHONDONTWRITEBYTECODE'] = '1'
 import sys
 from pathlib import Path
@@ -135,6 +137,7 @@ def main():
         sys.exit(1)
 
     selected_model_path = select_model(models)
+    model_idx = models.index(selected_model_path) + 1
 
     # ── GPU setup ──────────────────────────────────────────────────────────────
     setup_gpu_console()
@@ -167,7 +170,7 @@ def main():
             current_animal = animal
         tiff_dir   = info['tiff_dir']
         nerve_path = tiff_dir.parent
-        output_dir = nerve_path / seg_folder
+        output_dir = nerve_path / f"{seg_folder}_M{model_idx}"
         timing_csv = str(output_dir / "timing.csv") if config.get("timing", False) else None
 
         segment_dir(

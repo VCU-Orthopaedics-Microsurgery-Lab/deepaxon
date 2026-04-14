@@ -415,7 +415,7 @@ def save_qc_sheet(
 
     plt.tight_layout()
 
-    out_path = qc_dir / f"{nerve_name}_qc_sheet.png"
+    out_path = qc_dir / f"{nerve_name}_qc_sheet_M{model_name}.png"
     fig.savefig(str(out_path), dpi=150, bbox_inches='tight')
     plt.close(fig)
 
@@ -517,7 +517,10 @@ def segment_dir(tiff_dir, output_dir, model, mag, log, timing_csv=None, model_na
             writer.writerows(timing_rows)
             
     log.success(f"Done - {success} succeeded, {failed} failed")
-    
+    if success > 0:
+        avg_time = sum(float(r['time_s']) for r in timing_rows if r['status'] == 'ok') / success
+        log.info(f"Average segmentation time: {avg_time:.1f}s per image")
+        
     save_qc_sheet(
         tiff_dir=tiff_dir,
         output_dir=output_dir,
