@@ -33,6 +33,7 @@ console = Console()
 
 def select_model(models: list) -> Path:
     """Present an interactive model selection menu."""
+    console.print()
     console.rule("MODEL SELECTION", style="bright_cyan")
     table = Table(
         box=DOUBLE,
@@ -48,7 +49,6 @@ def select_model(models: list) -> Path:
     for i, m in enumerate(models, 1):
         table.add_row(str(i), m.stem)
 
-    console.print("\n")
     console.print(table)
 
     while True:
@@ -63,6 +63,7 @@ def select_model(models: list) -> Path:
 
 
 def main():
+    console.print()
     console.print(Panel(
         Align.center("[bold white]Automated Axon-Myelin Brightfield Image Segmentation[/bold white]"),
         title="[bold cyan]DEEPAXON — SEGMENT[/bold cyan]",
@@ -71,6 +72,7 @@ def main():
         expand=True,
         padding=(1, 4)
     ))
+    console.print()
 
     # ── Study folder input ─────────────────────────────────────────────────────
     while True:
@@ -155,7 +157,6 @@ def main():
     # Use magnification from metadata if available, fall back to study detection
     if meta.get('magnification'):
         mag = meta['magnification']
-        log.info(f"Magnification from model metadata: {mag}")
 
     # ── Process nerves ─────────────────────────────────────────────────────────
     seg_folder = config.get("segmented_folder", "Segmented")
@@ -163,7 +164,7 @@ def main():
     current_animal = None
     for animal, nerve, info in to_process:
         if animal != current_animal:
-            log.rule(f"══ {animal} ══")
+            console.rule(animal, characters="═", style="white")
             current_animal = animal
         tiff_dir   = info['tiff_dir']
         nerve_path = tiff_dir.parent

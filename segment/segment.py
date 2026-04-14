@@ -196,42 +196,97 @@ def load_model(
     return model, meta
 
 
-# ─── Segment single image ─────────────────────────────────────────────────────
+# ─── Segment single image (CROPPED VERSION) ─────────────────────────────────────────────────────
 
-def segment_image(img_path, model, patch_size=256, cropped_dir=None, log=None, use_clahe=False):
+# def segment_image(img_path, model, patch_size=256, log=None, use_clahe=False):
+#     t0   = time.time()
+#     step = get_hann_compatible_step(patch_size)  # 50% overlap required by Hann blending
+
+#     # Resize
+#     img = resize_img(img_path, is_mask=False)
+
+#     # Center crop
+#     img_crop       = center_crop(img, patch_size)
+#     crop_h, crop_w = img_crop.shape[:2]
+
+#     # CLAHE — applied to full cropped image before patchifying if enabled
+#     img_to_patch = apply_clahe(img_crop) if use_clahe else img_crop
+
+#     # Patchify (still uint8 at this point)
+#     patches        = patchify(img_to_patch, (patch_size, patch_size), step=step)
+#     n_rows, n_cols = patches.shape[:2]
+
+#     pred_img = np.zeros((crop_h, crop_w), dtype=float)
+
+#     for i in range(n_rows):
+#         for j in range(n_cols):
+#             patch = patches[i, j, :, :]
+#             # L2 normalisation along axis=1 — matches original DeepAxon training pipeline.
+#             # Must stay in sync with train/dataset/data_loader.py load_patches() normalization.
+#             # Do NOT change without retraining all models.
+#             norms = np.linalg.norm(patch, axis=1, keepdims=True)
+#             norms = np.where(norms == 0, 1, norms)
+#             patch = patch / norms
+#             patch = torch.from_numpy(patch).float().unsqueeze(0).unsqueeze(0)  # (1,1,H,W)
+#             patch = patch.to(next(model.parameters()).device)
+#             with torch.no_grad():
+#                 pred = model(patch)              # (1, 3, H, W) logits
+#             pred = pred.argmax(dim=1).squeeze(0) # (H, W)
+#             pred = pred.cpu().numpy()
+
+#             pos  = get_pos((n_rows, n_cols), i, j)
+#             hann = hann_window(pos, patch_size)
+#             adj  = pred * hann
+
+#             i_start = i * step
+#             j_start = j * step
+#             pred_img[i_start:i_start + patch_size, j_start:j_start + patch_size] += adj
+
+#     pred_img = np.round(pred_img).astype(int)
+#     result   = recolor(pred_img)
+#     elapsed  = time.time() - t0
+#     return result, elapsed, crop_h, crop_w
+
+# ─── Segment single image (PADDED VERSION) ─────────────────────────────────────────────────────
+
+def segment_image(img_path, model, patch_size=256, log=None, use_clahe=False):
     t0   = time.time()
-    step = get_hann_compatible_step(patch_size)  # 50% overlap required by Hann blending
+    step = get_hann_compatible_step(patch_size)
 
     # Resize
     img = resize_img(img_path, is_mask=False)
+    orig_h, orig_w = img.shape[:2]
 
-    # Center crop
-    img_crop       = center_crop(img, patch_size)
-    crop_h, crop_w = img_crop.shape[:2]
+    # # ── Center crop (alternative to padding) ──────────────────────────────
+    # img_proc = center_crop(img, patch_size)
 
-    # CLAHE — applied to full cropped image before patchifying if enabled
-    img_to_patch = apply_clahe(img_crop) if use_clahe else img_crop
+    # ── Pad to next multiple of patch_size ────────────────────────────────
+    pad_h    = (patch_size - orig_h % patch_size) % patch_size
+    pad_w    = (patch_size - orig_w % patch_size) % patch_size
+    img_proc = np.pad(img, ((0, pad_h), (0, pad_w)), mode='constant', constant_values=0)
 
-    # Patchify (still uint8 at this point)
+    proc_h, proc_w = img_proc.shape[:2]
+
+    # CLAHE — applied before patchifying if enabled
+    img_to_patch = apply_clahe(img_proc) if use_clahe else img_proc
+
+    # Patchify
     patches        = patchify(img_to_patch, (patch_size, patch_size), step=step)
     n_rows, n_cols = patches.shape[:2]
 
-    pred_img = np.zeros((crop_h, crop_w), dtype=float)
+    pred_img = np.zeros((proc_h, proc_w), dtype=float)
 
     for i in range(n_rows):
         for j in range(n_cols):
             patch = patches[i, j, :, :]
-            # L2 normalisation along axis=1 — matches original DeepAxon training pipeline.
-            # Must stay in sync with train/dataset/data_loader.py load_patches() normalization.
-            # Do NOT change without retraining all models.
             norms = np.linalg.norm(patch, axis=1, keepdims=True)
             norms = np.where(norms == 0, 1, norms)
             patch = patch / norms
-            patch = torch.from_numpy(patch).float().unsqueeze(0).unsqueeze(0)  # (1,1,H,W)
+            patch = torch.from_numpy(patch).float().unsqueeze(0).unsqueeze(0)
             patch = patch.to(next(model.parameters()).device)
             with torch.no_grad():
-                pred = model(patch)              # (1, 3, H, W) logits
-            pred = pred.argmax(dim=1).squeeze(0) # (H, W)
+                pred = model(patch)
+            pred = pred.argmax(dim=1).squeeze(0)
             pred = pred.cpu().numpy()
 
             pos  = get_pos((n_rows, n_cols), i, j)
@@ -243,17 +298,19 @@ def segment_image(img_path, model, patch_size=256, cropped_dir=None, log=None, u
             pred_img[i_start:i_start + patch_size, j_start:j_start + patch_size] += adj
 
     pred_img = np.round(pred_img).astype(int)
-    result   = recolor(pred_img)
-    elapsed  = time.time() - t0
-    return result, elapsed, crop_h, crop_w
 
+    # Crop back to original dimensions before recoloring
+    pred_img = pred_img[:orig_h, :orig_w]
+
+    result  = recolor(pred_img)
+    elapsed = time.time() - t0
+    return result, elapsed, orig_h, orig_w
 
 # ─── Segment directory ────────────────────────────────────────────────────────
 
 def segment_dir(tiff_dir, output_dir, model, mag, log, timing_csv=None):
     config         = load_config()
     patch_size     = config.get("patch_size", {}).get(mag, 256)
-    cropped_folder = config.get("cropped_folder", "Cropped")
     seg_suffix     = config.get("segmented_suffix", "_segmented")
     step           = get_hann_compatible_step(patch_size)
     overlap_pct    = 100 - int(step / patch_size * 100)
@@ -261,7 +318,6 @@ def segment_dir(tiff_dir, output_dir, model, mag, log, timing_csv=None):
     tiff_dir   = Path(tiff_dir)
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    cropped_dir = tiff_dir.parent / cropped_folder
 
     images = list_files(str(tiff_dir), extensions=('.tif', '.tiff'))
     if not images:
@@ -272,10 +328,14 @@ def segment_dir(tiff_dir, output_dir, model, mag, log, timing_csv=None):
     clahe_cfg  = config.get("clahe", {})
     clahe_on   = clahe_cfg.get("enabled", False)
     timing_on  = config.get("timing", False)
+    logging_cfg = config.get("logging", {})
+    logging_on  = logging_cfg.get("segment", False) if isinstance(logging_cfg, dict) else bool(logging_cfg)
+
     log.info(
-        f"Found {len(images)} image(s) | patch_size={patch_size}px | "
-        f"Overlap: {overlap_pct}% | Step: {step}px | "
+        f"Found {len(images)} image(s) | patch={patch_size}px | "
+        f"step={step}px ({overlap_pct}% overlap) | "
         f"CLAHE={'ON' if clahe_on else 'OFF'} | "
+        f"Logging={'ON' if logging_on else 'OFF'} | "
         f"Timing={'ON' if timing_on else 'OFF'}"
     )
 
@@ -301,7 +361,6 @@ def segment_dir(tiff_dir, output_dir, model, mag, log, timing_csv=None):
     timing_rows = []
     success     = 0
     failed      = 0
-    first       = True
 
     for img_path in images:
         stem     = img_path.stem
@@ -312,13 +371,11 @@ def segment_dir(tiff_dir, output_dir, model, mag, log, timing_csv=None):
             mask, elapsed, crop_h, crop_w = segment_image(
                 str(img_path), model,
                 patch_size=patch_size,
-                cropped_dir=str(cropped_dir),
                 log=log,
                 use_clahe=clahe_on
             )
             log.success(f"{img_path.name} [{crop_w}x{crop_h}] -> {elapsed:.1f}s")
             cv2.imwrite(str(out_path), mask)
-            log.success(f"Segmented {img_path.name} -> {elapsed:.1f}s")
             timing_rows.append({
                 'image': img_path.name, 'resolution': res_str,
                 'crop_size': f"{crop_w}x{crop_h}", 'patch_size': patch_size,

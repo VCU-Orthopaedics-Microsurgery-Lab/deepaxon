@@ -108,6 +108,7 @@ def select_batch_size(n_train_patches: int, use_gpu: bool) -> tuple[int, int, st
     t = Text(justify="center")
     t.append(f"{opts['device_label']}\n", style="orange1")
     t.append(f"Ideal batch size: {ideal_str}    |    Training patches: ~{n_train_patches}")
+    console.print()
     console.print(Panel(
         t,
         title="[bold orange1]Batch Size Selection[/bold orange1]",
@@ -115,6 +116,7 @@ def select_batch_size(n_train_patches: int, use_gpu: bool) -> tuple[int, int, st
         box=DOUBLE,
         expand=True
     ))
+    console.print()
 
     # ── Options ───────────────────────────────────────────────────────────────
     if opts['acceptable']:
@@ -202,6 +204,7 @@ def select_batch_size(n_train_patches: int, use_gpu: bool) -> tuple[int, int, st
 
 
 def main():
+    console.print()
     console.print(Panel(
         Align.center("[bold white]UNet++ Nerve Segmentation Model Training[/bold white]"),
         title="[bold cyan]DEEPAXON — TRAIN[/bold cyan]",
@@ -210,6 +213,7 @@ def main():
         expand=True,
         padding=(1, 4)
     ))
+    console.print()
 
     # ── GPU setup ─────────────────────────────────────────────────────────────
     setup_gpu_console()
@@ -271,6 +275,7 @@ def main():
         f"noise σ={param_cfg.get('noise_sigma', 0.02)}\n"
     )
     t.append(f"Expected augmentation rate: ~{expected_pct}% of patches", style="orange1")
+    console.print()
     console.print(Panel(
         t,
         title="[bold orange1]Data Augmentation Settings[/bold orange1]",
@@ -278,6 +283,7 @@ def main():
         box=DOUBLE,
         expand=True
     ))
+    console.print()
     use_aug = get_yes_no("Use data augmentation?", default=False)
 
     # ── Batch size menu ───────────────────────────────────────────────────────

@@ -1,11 +1,10 @@
 """
 utils/gpu.py
 
-GPU detection and setup for DeepAxon training.
-Called once at startup by train/__main__.py.
+Detect GPU availability and print device panel.
+Returns True if GPU is available, False if CPU only.
 """
 
-import os
 from rich.panel import Panel
 from rich.console import Console
 from rich.box import DOUBLE
@@ -30,6 +29,7 @@ def setup_gpu_console() -> bool:
         t = Text(justify="center")
         t.append("No GPU detected — running on CPU only.\n", style="yellow")
         t.append("Training and Segmentation will be slower without GPU acceleration.")
+        console.print()
         console.print(Panel(
             t,
             title="[bold yellow]Device[/bold yellow]",
@@ -37,6 +37,7 @@ def setup_gpu_console() -> bool:
             box=DOUBLE,
             expand=True
         ))
+        console.print()
         return False
 
     num_gpus = torch.cuda.device_count()
@@ -47,6 +48,7 @@ def setup_gpu_console() -> bool:
     t.append("GPU acceleration ENABLED\n", style="green")
     t.append(f"Device(s): {', '.join(gpu_names)}\n")
     t.append(f"CUDA version: {torch.version.cuda}")
+    console.print()
     console.print(Panel(
         t,
         title="[bold green]Device[/bold green]",
@@ -54,4 +56,5 @@ def setup_gpu_console() -> bool:
         box=DOUBLE,
         expand=True
     ))
+    console.print()
     return True

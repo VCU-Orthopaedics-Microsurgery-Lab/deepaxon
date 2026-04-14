@@ -1,10 +1,11 @@
 ================================================================================
 DEEPAXON v5 — TO-DO LIST
-Updated: 2026-04-06
+Updated: 2026-04-13
 Previous sessions: Audit (S1), Bug fixing + refactor (S2), PyTorch migration +
                    logger + augmentation + batch size + early stopping (S3),
-                   Phenotype split + data loader redesign (S4)
-All changes through S4 committed and pushed.
+                   Phenotype split + data loader redesign (S4),
+                   Training overhaul + segment formatting (S5)
+All changes through S5 committed and pushed.
 ================================================================================
 
 Priority legend:
@@ -19,7 +20,7 @@ SECTION 1 — CRITICAL
 ================================================================================
 
 [CRIT-02] BGW Color Mapping — Verification Status
-  File:    morphometrics/morphometrics.py  →  get_morphometrics()
+  File:    morphometrics/morphometrics.py → get_morphometrics()
   Status:  Segmentation run on real images confirmed phenotypically correct
            output — axon/myelin labeling matches anatomy visually. ✅ Practical
            verification complete.
@@ -60,78 +61,15 @@ SECTION 2 — HIGH PRIORITY
   Action:  Add annotation guidance to README.md under a new Training section.
 
 ================================================================================
-SECTION 3 — RESOLVED (all sessions)
-================================================================================
-
-✅ CRIT-01  Normalization mismatch resolved — L2 axis=1 confirmed correct.
-✅ CRIT-02  BGW color mapping — practical verification complete (see above).
-✅ CRIT-03  prepare_dataset() NameError fixed.
-✅ CRIT-04  mag=model_type bug fixed.
-✅ CRIT-05  Duplicate axon assignment fixed.
-✅ CRIT-06  Mask resize interpolation — INTER_NEAREST for masks, INTER_LANCZOS4 for images.
-✅ CRIT-07  Mask encoding — base_label() + class indices added.
-✅ HIGH-01  Python migration — no longer needed. PyTorch + Python 3.11 is the stack.
-✅ HIGH-02  100X CSA workflow — get_image_csa() 100X branch returns None.
-✅ HIGH-03  Phenotype split implemented — train/regen/, train/control/, val/regen/,
-            val/control/ folder structure. Auto-detection with user override prompt.
-            Flat mode preserved as fallback with val_fraction. Balance warning
-            if regen/control counts differ by >20%.
-✅ STR-01   center_crop() extracted to utils/helpers.py.
-✅ STR-02   conv_block() extracted to train/architectures/blocks.py.
-✅ STR-03   build_model() factory moved to train/architectures/__init__.py.
-✅ STR-04   _has_images() extracted to module-level in helpers.py.
-✅ STR-08   TARGET_SIZE imported from resize.py everywhere.
-✅ STR-12   Root cleanup — notebooks/ and sample_images/ created.
-✅ NAME-01  train/models/ → train/architectures/
-✅ NAME-02  train/data/ → train/dataset/
-✅ NAME-03  UNET() → build_unet()
-✅ NAME-04  UNET_PLUS_PLUS() → build_unet_plus_plus()
-✅ NAME-05  fibre → fiber throughout morphometrics.py.
-✅ FEAT-01  GPU non-interactive mode.
-✅ FEAT-02  Retry input loops in all entry points.
-✅ FEAT-03  Auto-promote model after training.
-✅ FEAT-05  aug_prob removed — probabilities in config.
-✅ FEAT-06  Resolution mismatch warn-only in segment.py.
-✅ FEAT-08  Augmentation params in config — probabilities/parameters split.
-✅ FEAT-09  Watershed params configurable via config.json.
-✅ FEAT-10  Patch overlap — intentionally NOT configurable. get_hann_compatible_step()
-            is the single source of truth. Hann window requires exactly 50%.
-✅ FEAT-11  Segmented suffix configurable in config.
-✅ FEAT-12  write_nerve_block() key validation with .get() defaults.
-✅ FEAT-13  xlsx cache — per_file dict in analyze_nerve.py avoids double reads.
-✅ FEAT-20  Callback constants in config.json training block.
-✅ FEAT-23  Phenotype split — see HIGH-03 above.
-✅ PyTorch migration — full TF → PyTorch rewrite. smp.UnetPlusPlus, manual loop.
-✅ Logger overhaul — console.py → logger.py. Timestamps, sections, finalize.
-✅ Version system — utils/version.py, v5.0.0 (v5_pytorch) in every log header.
-✅ Early stopping — combined axon+myelin dice. Tiebreaker on val_loss (no patience reset).
-✅ Checkpoint summary — CHECKPOINT SUMMARY section in log. Inline flags per epoch.
-✅ Loss constants — DICE_WEIGHT, CE_WEIGHT, CE_SMOOTH from config. Log derived from constants.
-✅ Single config load — _config at module level in train.py.
-✅ Batch size menu — VRAM-based GPU detection, three-zone logic, interactive menu,
-                     custom entry with recalculation.
-✅ Overlap — get_hann_compatible_step() in helpers.py. Overlap derived from step in logs.
-✅ Preprocessing summary — after mask loop in batch_process().
-✅ OpenCV warning suppression — cv2.setLogLevel(3) in preprocess.py and segment.py.
-✅ morphometrics_bins floor — 0.5 µm in config.json.
-✅ val_fraction prompt — conditional on split mode (skipped in phenotype mode).
-✅ train_model() — split_mode parameter added. load_all_patches() updated.
-✅ __main__.py — imports cleaned up. Only train_model imported from train.train.
-✅ All bugs resolved: BUG-01 through BUG-10.
-✅ All import cleanup: IMP-01 through IMP-10.
-✅ All documentation: DOC-01 through DOC-15 except DOC-07 (see below).
-✅ DOC-10 Package versions pinned in requirements.txt for PyTorch + Python 3.11.
-
-================================================================================
-SECTION 4 — REMAINING
+SECTION 3 — STRUCTURAL
 ================================================================================
 
 [STR-05] Extract select_model() to utils/helpers.py
-  File:    segment/__main__.py  →  select_model()
+  File:    segment/__main__.py → select_model()
   Action:  Move to utils/helpers.py as select_from_list(items, prompt, display_fn).
 
 [STR-06] Extract Excel helpers to batch_axon/excel_utils.py
-  File:    batch_axon/__main__.py  →  add_formats(), write_nerve_block()
+  File:    batch_axon/__main__.py → add_formats(), write_nerve_block()
   Action:  Create batch_axon/excel_utils.py. Import in __main__.py.
 
 [STR-09] Add evaluate/ module
@@ -147,6 +85,17 @@ SECTION 4 — REMAINING
 
 [STR-11] Archive rb_40x_v1_256.keras
   Action:  Move to deepaxon/models/archive/.
+
+================================================================================
+SECTION 4 — FEATURES
+================================================================================
+
+[FEAT-07] sbatch + train_config.json non-interactive mode
+  Issue:   Interactive srun sessions require 15-30 min Lustre import wait
+           at every prompt. sbatch eliminates this entirely.
+  Action:  Add --config flag to train/__main__.py. Read train_config.json
+           and skip all prompts. Add train.sbatch job script.
+  Priority: High — directly impacts development iteration speed.
 
 [FEAT-14] Pass patch_size to export_roi.ijm
   Files:   batch_axon/overlay/process_overlay.py, export_roi.ijm
@@ -175,11 +124,19 @@ SECTION 4 — REMAINING
            raw image, segmentation overlay, watershed markers, rejected axons.
            Auto-generate after morphometrics run.
 
-[FEAT-22] Metrics improvements
-  Issue:   Background dominates (~70% of pixels).
-  Action:  After first balanced phenotype training run, evaluate per-class dice.
-           If axon/myelin dice lags, explore loss class weighting in loss_fn.
-           Post-processing quality_filters already partially address this.
+[FEAT-22] Per-phenotype val dice tracking
+  Action:  Track regen vs control val dice separately per epoch.
+           Requires phenotype labels propagated through data loader.
+
+[FEAT-23] Boundary loss — late training refinement
+  Issue:   Vessel wall oversegmentation is a boundary precision problem.
+  Action:  Implement boundary loss as optional late-training addition.
+           Switch from Dice+CE to Dice+CE+Boundary after warmup epochs.
+           Only pursue after data annotation route is exhausted.
+
+================================================================================
+SECTION 5 — DOCS
+================================================================================
 
 [DOC-07] G-ratio column names
   File:    morphometrics/morphometrics.py
@@ -195,8 +152,12 @@ SECTION 4 — REMAINING
            PyTorch + segmentation-models-pytorch. Update training pipeline
            description. Add v5.0.0 version header.
 
+================================================================================
+SECTION 6 — GENERAL
+================================================================================
+
 [GEN-01] 100X Pixel Size Calibration
-  File:    config.json  →  pixel_size_um  →  "100X"
+  File:    config.json → pixel_size_um → "100X"
   Action:  Calibrate with stage micrometer. Set {"1440": X.XXX}.
 
 [GEN-04] Multi-GPU support
@@ -208,13 +169,72 @@ SECTION 4 — REMAINING
            to all newly trained models.
 
 ================================================================================
+SECTION 7 — RESOLVED (all sessions)
+================================================================================
+
+✅ S5: val_loss checkpointing — reverted from val_axon+val_myelin
+✅ S5: Per-class train/val dice tracked every epoch (bg, ax, my)
+✅ S5: 3-line epoch log format with blank line separator
+✅ S5: BUILDING MODEL folded into TRAINING SETUP summary
+✅ S5: Final validation panel removed, finalize summary cleaned up
+✅ S5: last_batch_fullness added to model metadata
+✅ S5: best_val_bg, best_val_iou added to checkpoint trackers
+✅ S5: Batch size menu converted to orange Panel/DOUBLE style
+✅ S5: Perfect fit divisors section added to batch size menu
+✅ S5: Fix safetensors torch import shadowing real torch in helpers.py
+✅ S5: All ideal batch candidates returned not just top 2
+✅ S5: Zone thresholds updated to 80%/15%, derived from config throughout
+✅ S5: Section renames — RUN CONFIGURATION, SOURCE MASK QUALITY,
+       PATCH VERIFICATION, LOADING PATCHES
+✅ S5: Natural sort for image ordering in preprocessing
+✅ S5: Column alignment for preprocessing log (max_stem padding)
+✅ S5: resize.py skip condition — no upscaling for images smaller than TARGET_SIZE
+✅ S5: Preprocessing summary cleaned up
+✅ S5: Augmentation log format updated to match section style
+✅ S5: base_label() — np.vectorize replaced with fast numpy boolean indexing
+✅ S5: config.json — array field annotations, logical section reorganization
+✅ S5: segment — logging config read fixed (dict not bool)
+✅ S5: segment — Logging=ON/OFF removed from info line (circular)
+✅ S5: segment — crop resolution shown per image line
+✅ S5: segment — animal-level header in nerve processing loop
+✅ S5: segment — MODEL SELECTION rule added before table
+✅ S5: segment — Dataset and Norm removed from loading model display
+✅ S5: segment — GPU warning updated to neutral language
+✅ CRIT-01  Normalization mismatch resolved — L2 axis=1 confirmed correct.
+✅ CRIT-03  prepare_dataset() NameError fixed.
+✅ CRIT-04  mag=model_type bug fixed.
+✅ CRIT-05  Duplicate axon assignment fixed.
+✅ CRIT-06  Mask resize interpolation — INTER_NEAREST for masks, INTER_LANCZOS4 for images.
+✅ CRIT-07  Mask encoding — base_label() + class indices added.
+✅ HIGH-01  Python migration — no longer needed. PyTorch + Python 3.11 is the stack.
+✅ HIGH-02  100X CSA workflow — get_image_csa() 100X branch returns None.
+✅ HIGH-03  Phenotype split implemented.
+✅ STR-01   center_crop() extracted to utils/helpers.py.
+✅ STR-02   conv_block() extracted to train/architectures/blocks.py.
+✅ STR-03   build_model() factory moved to train/architectures/__init__.py.
+✅ STR-04   _has_images() extracted to module-level in helpers.py.
+✅ STR-08   TARGET_SIZE imported from resize.py everywhere.
+✅ STR-12   Root cleanup — notebooks/ and sample_images/ created.
+✅ NAME-01 through NAME-05 — all renames complete.
+✅ FEAT-01 through FEAT-13 — all features complete.
+✅ FEAT-20  Callback constants in config.json training block.
+✅ FEAT-23  Phenotype split — see HIGH-03.
+✅ PyTorch migration — full TF → PyTorch rewrite.
+✅ Logger overhaul — console.py → logger.py.
+✅ Version system — utils/version.py, v5.0.0.
+✅ Batch size menu — VRAM-based GPU detection, three-zone logic.
+✅ All bugs resolved: BUG-01 through BUG-10.
+✅ All import cleanup: IMP-01 through IMP-10.
+✅ DOC-10 Package versions pinned in requirements.txt.
+
+================================================================================
 END OF TO-DO LIST
-Resolved: ~60 items across 4 sessions
-Remaining: 16 items
+Resolved: ~75 items across 5 sessions
+Remaining: 17 items
   Critical:      2  (CRIT-02 partial, CRIT-08)
-  High:          1  (HIGH-04 annotation protocol)
-  Structural:    4  (STR-05, STR-06, STR-09, STR-10, STR-11)
-  Features:      6  (FEAT-14 through FEAT-17, FEAT-21, FEAT-22)
+  High:          1  (HIGH-04)
+  Structural:    5  (STR-05, STR-06, STR-09, STR-10, STR-11)
+  Features:      7  (FEAT-07, FEAT-14 through FEAT-17, FEAT-21 through FEAT-23)
   Docs:          3  (DOC-07, DOC-16, DOC-17)
   General:       3  (GEN-01, GEN-04, GEN-05)
 ================================================================================

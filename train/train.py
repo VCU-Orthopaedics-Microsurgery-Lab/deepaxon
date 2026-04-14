@@ -172,8 +172,8 @@ def prepare_dataset(images_dir: str, mag: str, log: DeepAxonLogger) -> dict:
         log.warn(f"Masks folder not found: {masks_dir}")
         raise FileNotFoundError(f"Masks directory not found: {masks_dir}")
 
-    imgs  = list(images_dir.rglob('*.tif')) + list(images_dir.rglob('*.tiff')) + list(images_dir.rglob('*.png'))
-    masks = list(masks_dir.rglob('*.tif'))  + list(masks_dir.rglob('*.tiff'))  + list(masks_dir.rglob('*.png'))
+    imgs  = list(images_dir.glob('*.tif')) + list(images_dir.glob('*.tiff')) + list(images_dir.glob('*.png'))
+    masks = list(masks_dir.glob('*.tif'))  + list(masks_dir.glob('*.tiff'))  + list(masks_dir.glob('*.png'))    
 
     img_stems     = {p.stem for p in imgs}
     mask_stems    = {p.stem for p in masks}
@@ -181,15 +181,16 @@ def prepare_dataset(images_dir: str, mag: str, log: DeepAxonLogger) -> dict:
     missing_masks = img_stems - mask_stems
     missing_imgs  = mask_stems - img_stems
 
-    Console().print(Panel(
-        f"Found pairs:    {len(matched)}\n"
-        f"Missing masks:  {len(missing_masks)}\n"
-        f"Missing images: {len(missing_imgs)}",
-        title="Dataset Verification",
-        expand=False
-    ))
-    log.info(f"Found pairs: {len(matched)} | Missing masks: {len(missing_masks)} | Missing images: {len(missing_imgs)}")
+    log.info(f"Source images: {len(matched)} pairs | Missing masks: {len(missing_masks)} | Missing images: {len(missing_imgs)}")
 
+    if patches_img.exists():
+        n_patches = count_patches(str(patches_img))
+        if n_patches > 0:
+            log.success(
+                f"Existing patches found — {n_patches} patches "
+                f"({n_patches // len(matched) if matched else 0} per image) "
+                f"— preprocessing will be skipped"
+            )
     if missing_masks:
         log.warn(f"Images without masks: {sorted(missing_masks)}")
     if missing_imgs:
