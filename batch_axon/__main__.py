@@ -24,7 +24,7 @@ from rich.align import Align
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from utils.logger import DeepAxonLogger
-from utils.helpers import detect_study_mag, resolve_scan, load_config
+from utils.helpers import detect_study_mag, resolve_scan, load_config, print_panel
 from batch_axon.analyze_nerve import get_nerve_data
 from morphometrics.distributions import save_distributions
 
@@ -114,7 +114,7 @@ def write_nerve_block(worksheet, row, nerve_name, animal_name, image_rows, aggre
 
 
 def main():
-    console.print(Panel(
+    print_panel(console, Panel(
         Align.center("[bold white]Study-Level Morphometric\nCompilation[/bold white]"),
         title="[bold cyan]DEEPAXON — BATCH AXON[/bold cyan]",
         border_style="bright_cyan",

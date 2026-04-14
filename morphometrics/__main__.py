@@ -22,7 +22,7 @@ from rich.align import Align
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from utils.logger import DeepAxonLogger
-from utils.helpers import detect_study_mag, load_config, list_files, resolve_scan
+from utils.helpers import detect_study_mag, load_config, list_files, resolve_scan, print_panel
 from utils.resize import get_image_resolution
 from morphometrics.morphometrics import get_morphometrics, save_morphometrics
 from morphometrics.distributions import bin_nerve_diameters, save_distributions
@@ -31,7 +31,7 @@ console = Console()
 
 
 def main():
-    console.print(Panel(
+    print_panel(console, Panel(
         Align.center("[bold white]Automated Axon-Myelin Histomorphometry of Brightfield Images[/bold white]"),
         title="[bold cyan]DEEPAXON — MORPHOMETRICS[/bold cyan]",
         border_style="bright_cyan",
@@ -53,12 +53,12 @@ def main():
             console.print(f"[red]✗  {e}[/red]")
             continue
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    config    = load_config()
+    timestamp   = datetime.now().strftime("%Y%m%d_%H%M%S")
+    config      = load_config()
     logging_cfg = config.get("logging", {})
     logging_on  = logging_cfg.get("morphometrics", False) if isinstance(logging_cfg, dict) else bool(logging_cfg)
     log_path    = str(Path(study_dir) / f"morphometrics_log_{timestamp}.txt") if logging_on else None
-    log       = DeepAxonLogger(log_path=log_path, program="DeepAxon Morphometrics")
+    log         = DeepAxonLogger(log_path=log_path, program="DeepAxon Morphometrics")
 
     log.info(f"Study: {study_dir}")
 

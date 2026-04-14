@@ -63,8 +63,7 @@ def select_model(models: list) -> Path:
 
 
 def main():
-    console.print()
-    console.print(Panel(
+    print_panel(console, Panel(
         Align.center("[bold white]Automated Axon-Myelin Brightfield Image Segmentation[/bold white]"),
         title="[bold cyan]DEEPAXON — SEGMENT[/bold cyan]",
         border_style="bright_cyan",
@@ -72,7 +71,6 @@ def main():
         expand=True,
         padding=(1, 4)
     ))
-    console.print()
 
     # ── Study folder input ─────────────────────────────────────────────────────
     while True:
@@ -143,6 +141,7 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # ── Load model ─────────────────────────────────────────────────────────────
+    meta = {}
     try:
         model, meta = load_model(
             str(selected_model_path),
@@ -177,7 +176,8 @@ def main():
             model=model,
             mag=mag,
             log=log,
-            timing_csv=timing_csv
+            timing_csv=timing_csv,
+            model_name=meta.get('model_name') or selected_model_path.stem
         )
 
     log.finalize(summary={

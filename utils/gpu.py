@@ -9,6 +9,7 @@ from rich.panel import Panel
 from rich.console import Console
 from rich.box import DOUBLE
 from rich.text import Text
+from utils.helpers import print_panel
 
 import torch
 
@@ -29,15 +30,13 @@ def setup_gpu_console() -> bool:
         t = Text(justify="center")
         t.append("No GPU detected — running on CPU only.\n", style="yellow")
         t.append("Training and Segmentation will be slower without GPU acceleration.")
-        console.print()
-        console.print(Panel(
+        print_panel(console, Panel(
             t,
             title="[bold yellow]Device[/bold yellow]",
             border_style="yellow",
             box=DOUBLE,
             expand=True
         ))
-        console.print()
         return False
 
     num_gpus = torch.cuda.device_count()
@@ -48,13 +47,11 @@ def setup_gpu_console() -> bool:
     t.append("GPU acceleration ENABLED\n", style="green")
     t.append(f"Device(s): {', '.join(gpu_names)}\n")
     t.append(f"CUDA version: {torch.version.cuda}")
-    console.print()
-    console.print(Panel(
+    print_panel(console, Panel(
         t,
         title="[bold green]Device[/bold green]",
         border_style="green",
         box=DOUBLE,
         expand=True
     ))
-    console.print()
     return True

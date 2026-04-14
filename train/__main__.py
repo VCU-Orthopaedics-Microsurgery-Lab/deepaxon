@@ -38,7 +38,7 @@ from utils.gpu import setup_gpu_console
 from utils.helpers import (
     get_int_input, get_yes_no,
     compute_batch_options, get_model_dir, get_log_dir,
-    list_files, load_config
+    list_files, load_config, print_panel
 )
 from train.train import train_model
 
@@ -108,15 +108,13 @@ def select_batch_size(n_train_patches: int, use_gpu: bool) -> tuple[int, int, st
     t = Text(justify="center")
     t.append(f"{opts['device_label']}\n", style="orange1")
     t.append(f"Ideal batch size: {ideal_str}    |    Training patches: ~{n_train_patches}")
-    console.print()
-    console.print(Panel(
+    print_panel(console, Panel(
         t,
         title="[bold orange1]Batch Size Selection[/bold orange1]",
         border_style="orange1",
         box=DOUBLE,
         expand=True
     ))
-    console.print()
 
     # ── Options ───────────────────────────────────────────────────────────────
     if opts['acceptable']:
@@ -204,8 +202,7 @@ def select_batch_size(n_train_patches: int, use_gpu: bool) -> tuple[int, int, st
 
 
 def main():
-    console.print()
-    console.print(Panel(
+    print_panel(console, Panel(
         Align.center("[bold white]UNet++ Nerve Segmentation Model Training[/bold white]"),
         title="[bold cyan]DEEPAXON — TRAIN[/bold cyan]",
         border_style="bright_cyan",
@@ -213,7 +210,6 @@ def main():
         expand=True,
         padding=(1, 4)
     ))
-    console.print()
 
     # ── GPU setup ─────────────────────────────────────────────────────────────
     setup_gpu_console()
@@ -275,15 +271,13 @@ def main():
         f"noise σ={param_cfg.get('noise_sigma', 0.02)}\n"
     )
     t.append(f"Expected augmentation rate: ~{expected_pct}% of patches", style="orange1")
-    console.print()
-    console.print(Panel(
+    print_panel(console, Panel(
         t,
         title="[bold orange1]Data Augmentation Settings[/bold orange1]",
         border_style="orange1",
         box=DOUBLE,
         expand=True
     ))
-    console.print()
     use_aug = get_yes_no("Use data augmentation?", default=False)
 
     # ── Batch size menu ───────────────────────────────────────────────────────

@@ -306,9 +306,125 @@ def segment_image(img_path, model, patch_size=256, log=None, use_clahe=False):
     elapsed = time.time() - t0
     return result, elapsed, orig_h, orig_w
 
+# ─── Save Overlays ────────────────────────────────────────────────────────
+def save_qc_sheet(
+    tiff_dir: Path,
+    output_dir: Path,
+    images: list,
+    seg_suffix: str,
+    model_name: str,
+    log: DeepAxonLogger = None
+):
+    """
+    Generate a QC sheet showing original / segmented / overlay for each image.
+    Saved as {nerve_name}_qc_sheet.png in a QC/ subfolder of the nerve directory.
+
+    Layout: one row per image, three columns — original | segmented | overlay
+    Overlay: axon=pink, myelin=orange, background=transparent
+    """
+    try:
+        import matplotlib
+        matplotlib.use('Agg')  # non-interactive backend — no display needed
+        import matplotlib.pyplot as plt
+        import matplotlib.patches as mpatches
+    except ImportError:
+        if log:
+            log.warn("matplotlib not available — skipping QC sheet")
+        return
+
+    config     = load_config()
+    qc_folder  = config.get("qc_folder", "QC")
+    nerve_name = tiff_dir.parent.name
+    qc_dir     = tiff_dir.parent / qc_folder
+    qc_dir.mkdir(parents=True, exist_ok=True)
+
+    n_images = len(images)
+    if n_images == 0:
+        return
+
+    fig, axes = plt.subplots(n_images, 3, figsize=(24, 8 * n_images))
+    if n_images == 1:
+        axes = [axes]  # ensure iterable rows
+
+    fig.suptitle(
+        f"{nerve_name}  |  model: {model_name}",
+        fontsize=14, fontweight='bold', y=1.0
+    )
+
+    col_titles = ["Original", "Segmented", "Overlay"]
+    for col, title in enumerate(col_titles):
+        axes[0][col].set_title(title, fontsize=11, fontweight='bold', pad=8)
+
+    for row, img_path in enumerate(images):
+        seg_path = output_dir / f"{img_path.stem}{seg_suffix}.tif"
+
+        # Load original
+        orig = cv2.imread(str(img_path), cv2.IMREAD_GRAYSCALE)
+        if orig is None:
+            continue
+        orig = resize_img(str(img_path), is_mask=False)
+
+        # Load segmented
+        if not seg_path.exists():
+            continue
+        seg = cv2.imread(str(seg_path), cv2.IMREAD_GRAYSCALE)
+        if seg is None:
+            continue
+
+        # Resize original to match seg dimensions
+        if orig.shape != seg.shape:
+            orig = cv2.resize(orig, (seg.shape[1], seg.shape[0]))
+
+        # Build overlay — RGB
+        overlay = cv2.cvtColor(orig, cv2.COLOR_GRAY2RGB).astype(np.float32)
+        alpha   = 0.45
+
+        # Axon → pink (255, 105, 180)
+        axon_mask = seg == 255
+        overlay[axon_mask] = (
+            overlay[axon_mask] * (1 - alpha) +
+            np.array([255, 105, 180], dtype=np.float32) * alpha
+        )
+
+        # Myelin → orange (255, 160, 100)
+        myelin_mask = seg == 128
+        overlay[myelin_mask] = (
+            overlay[myelin_mask] * (1 - alpha) +
+            np.array([255, 160, 100], dtype=np.float32) * alpha
+        )
+        overlay = overlay.astype(np.uint8)
+
+        # Plot
+        axes[row][0].imshow(orig, cmap='gray', vmin=0, vmax=255)
+        axes[row][0].set_ylabel(img_path.name, fontsize=7, rotation=0,
+                                labelpad=120, va='center')
+        axes[row][0].axis('off')
+
+        axes[row][1].imshow(seg, cmap='gray', vmin=0, vmax=255)
+        axes[row][1].axis('off')
+
+        axes[row][2].imshow(overlay)
+        axes[row][2].axis('off')
+
+    # Legend on last row overlay panel
+    legend = [
+        mpatches.Patch(color=(1.0, 0.41, 0.71), label='Axon'),
+        mpatches.Patch(color=(1.0, 0.63, 0.39), label='Myelin'),
+    ]
+    axes[-1][2].legend(handles=legend, loc='lower right', fontsize=9, framealpha=0.7)
+
+    plt.tight_layout()
+
+    out_path = qc_dir / f"{nerve_name}_qc_sheet.png"
+    fig.savefig(str(out_path), dpi=150, bbox_inches='tight')
+    plt.close(fig)
+
+    if log:
+        log.success(f"QC sheet saved → QC/{nerve_name}_qc_sheet.png")
+
 # ─── Segment directory ────────────────────────────────────────────────────────
 
-def segment_dir(tiff_dir, output_dir, model, mag, log, timing_csv=None):
+def segment_dir(tiff_dir, output_dir, model, mag, log, timing_csv=None, model_name='unknown'):
     config         = load_config()
     patch_size     = config.get("patch_size", {}).get(mag, 256)
     seg_suffix     = config.get("segmented_suffix", "_segmented")
@@ -401,3 +517,12 @@ def segment_dir(tiff_dir, output_dir, model, mag, log, timing_csv=None):
             writer.writerows(timing_rows)
             
     log.success(f"Done - {success} succeeded, {failed} failed")
+    
+    save_qc_sheet(
+        tiff_dir=tiff_dir,
+        output_dir=output_dir,
+        images=images,
+        seg_suffix=seg_suffix,
+        model_name=model_name,
+        log=log
+    )
