@@ -3,10 +3,15 @@ train/__main__.py
 
 Entry point for: python -m train
 
-Handles all user prompts, GPU setup, then calls train.train_model().
-User provides only the images folder path — everything else is derived.
+Interactive mode (default):
+    python -m train
+    Handles all user prompts, GPU setup, then calls train.train_model().
 
-Prompt order:
+Non-interactive mode (sbatch / HPRC):
+    python -m train --config train_config.json
+    Reads all settings from JSON file — no prompts. Used with train.sbatch.
+
+Prompt order (interactive only):
     1. GPU setup
     2. Images folder
     3. val_ detection automatic
@@ -21,6 +26,8 @@ Prompt order:
 import os
 os.environ['PYTHONDONTWRITEBYTECODE'] = '1'
 import sys
+import json
+import argparse
 from pathlib import Path
 from datetime import datetime
 
@@ -94,7 +101,7 @@ def _evaluate_custom_bs(bs: int, n_patches: int) -> tuple[str, str]:
         return 'danger', _format_trim_line(bs, remainder, round(remainder/n_patches*100, 1), n_patches)
 
 
-def select_batch_size(n_train_patches: int, use_gpu: bool) -> tuple[int, int, str]:
+def select_batch_size(n_train_patches: int, n_val_patches: int, use_gpu: bool) -> tuple[int, int, str]:
     config    = load_config()
     train_cfg = config.get("training", {})
     min_ok    = train_cfg.get("min_last_batch_fullness",    0.80)
@@ -106,8 +113,9 @@ def select_batch_size(n_train_patches: int, use_gpu: bool) -> tuple[int, int, st
 
     # ── Device panel ──────────────────────────────────────────────────────────
     t = Text(justify="center")
-    t.append(f"{opts['device_label']}\n", style="orange1")
-    t.append(f"Ideal batch size: {ideal_str}    |    Training patches: ~{n_train_patches}")
+    t.append(f"{opts['device_label']}\n", style="orange1\n")
+    t.append(f"Ideal batch: {ideal_str}\n")
+    t.append(f"\nTraining patches: {n_train_patches}  |  Total patches: {n_train_patches + n_val_patches}")
     print_panel(console, Panel(
         t,
         title="[bold orange1]Batch Size Selection[/bold orange1]",
@@ -118,7 +126,7 @@ def select_batch_size(n_train_patches: int, use_gpu: bool) -> tuple[int, int, st
 
     # ── Options ───────────────────────────────────────────────────────────────
     if opts['acceptable']:
-        console.print(f"\n  [green]✅ Power-of-2 — Acceptable (≥{int(min_ok*100)}% last batch full):[/green]")
+        console.print(f"[green]✅ Power-of-2 — Acceptable (≥{int(min_ok*100)}% last batch full):[/green]")
         for bs, remainder in opts['acceptable']:
             idx  = len(menu_items) + 1
             line = _format_bs_line(bs, remainder, n_train_patches)
@@ -201,7 +209,46 @@ def select_batch_size(n_train_patches: int, use_gpu: bool) -> tuple[int, int, st
             console.print(f"[red]Please enter a number between 1 and {custom_idx}.[/red]")
 
 
+# ── Non-interactive config loader ─────────────────────────────────────────────
+
+def _load_run_config(config_path: str) -> dict:
+    """
+    Load and validate a train_config.json for non-interactive (sbatch) mode.
+    Raises ValueError on missing or invalid fields.
+    """
+    path = Path(config_path)
+    if not path.exists():
+        raise FileNotFoundError(f"Config file not found: {config_path}")
+
+    with open(path) as f:
+        cfg = json.load(f)
+
+    required = ['images_dir', 'mag', 'epochs', 'augmentation', 'batch_size']
+    missing  = [k for k in required if k not in cfg]
+    if missing:
+        raise ValueError(f"train_config.json missing required fields: {missing}")
+
+    if cfg['mag'] not in MAG_OPTIONS:
+        raise ValueError(f"Invalid mag '{cfg['mag']}' — must be one of {MAG_OPTIONS}")
+    if not isinstance(cfg['epochs'], int) or cfg['epochs'] < 1:
+        raise ValueError(f"'epochs' must be a positive integer, got: {cfg['epochs']}")
+    if not isinstance(cfg['batch_size'], int) or cfg['batch_size'] < 1:
+        raise ValueError(f"'batch_size' must be a positive integer, got: {cfg['batch_size']}")
+    if not os.path.isdir(cfg['images_dir']):
+        raise FileNotFoundError(f"images_dir not found: {cfg['images_dir']}")
+
+    return cfg
+
+
 def main():
+    # ── Argument parsing ──────────────────────────────────────────────────────
+    parser = argparse.ArgumentParser(description="DeepAxon training entry point")
+    parser.add_argument(
+        '--config', metavar='FILE',
+        help='Path to train_config.json for non-interactive (sbatch) mode'
+    )
+    args = parser.parse_args()
+
     print_panel(console, Panel(
         Align.center("[bold white]UNet++ Nerve Segmentation Model Training[/bold white]"),
         title="[bold cyan]DEEPAXON — TRAIN[/bold cyan]",
@@ -211,12 +258,61 @@ def main():
         padding=(1, 4)
     ))
 
-    # ── GPU setup ─────────────────────────────────────────────────────────────
+    # ── Non-interactive (sbatch) mode ─────────────────────────────────────────
+    if args.config:
+        console.print(f"[dim]Non-interactive mode — loading config from: {args.config}[/dim]\n")
+
+        run_cfg    = _load_run_config(args.config)
+        images_dir = run_cfg['images_dir']
+        mag        = run_cfg['mag']
+        use_aug    = bool(run_cfg['augmentation'])
+        epochs     = int(run_cfg['epochs'])
+        batch_size = int(run_cfg['batch_size'])
+
+        images_path = Path(images_dir).resolve()
+        model_dir   = get_model_dir(str(images_path))
+        log_dir     = get_log_dir(str(images_path))
+        log_dir.mkdir(parents=True, exist_ok=True)
+
+        timestamp  = datetime.now().strftime("%Y%m%d_%H%M%S")
+        model_name = run_cfg.get('model_name', '').strip() or f"{mag.lower()}_{timestamp}"
+
+        log_path = str(log_dir / f"{model_name}_training_log.txt")
+        log      = DeepAxonLogger(log_path=log_path, program="DeepAxon Train")
+
+        log.rule("RUN CONFIGURATION")
+        log.log_dict({
+            'Mode':               'non-interactive (--config)',
+            'Config file':        args.config,
+            'Model name':         model_name,
+            'Magnification':      mag,
+            'Epoch limit':        epochs,
+            'Augmentation':       'ON' if use_aug else 'OFF',
+            'Batch size':         batch_size,
+            'Images folder':      str(images_path),
+            'Models folder':      str(model_dir),
+            'Log file':           log_path,
+        })
+
+        train_model(
+            images_dir=str(images_path),
+            model_name=model_name,
+            epochs=epochs,
+            batch_size=batch_size,
+            use_aug=use_aug,
+            log=log,
+            mag=mag,
+        )
+
+        console.print(f"\n[dim]Log saved to: {log_path}[/dim]")
+        return
+
+    # ── Interactive mode ──────────────────────────────────────────────────────
     setup_gpu_console()
 
     # ── Images folder ─────────────────────────────────────────────────────────
     while True:
-        images_dir = input("\nInput the path to the training images folder: ").strip().strip('"')
+        images_dir = input("Input the path to the training images folder: ").strip().strip('"')
         if os.path.isdir(images_dir):
             break
         console.print(f"[red]Folder not found: {images_dir} — please try again.[/red]")
@@ -288,15 +384,24 @@ def main():
             f for f in all_patch_files
             if not f.stem.startswith('val_')
         ])
+        n_val_patches = len([
+            f for f in all_patch_files
+            if f.stem.startswith('val_')
+        ])
     else:
-        n_train_images  = len([
+        n_train_images = len([
             f for f in list_files(str(images_sub), extensions=('.tif', '.tiff', '.png', '.bmp'))
             if not Path(f).stem.lower().startswith('val_')
         ])
+        n_val_images = len([
+            f for f in list_files(str(images_sub), extensions=('.tif', '.tiff', '.png', '.bmp'))
+            if Path(f).stem.lower().startswith('val_')
+        ])
         n_train_patches = n_train_images * PATCHES_PER_IMAGE
+        n_val_patches   = n_val_images   * PATCHES_PER_IMAGE
 
-    batch_size, remainder, bs_status = select_batch_size(n_train_patches, use_gpu=has_gpu)
-
+    batch_size, remainder, bs_status = select_batch_size(n_train_patches, n_val_patches, use_gpu=has_gpu)
+    
     # ── Log setup ─────────────────────────────────────────────────────────────
     log_path = str(log_dir / f"{model_name}_training_log.txt")
     log      = DeepAxonLogger(log_path=log_path, program="DeepAxon Train")
