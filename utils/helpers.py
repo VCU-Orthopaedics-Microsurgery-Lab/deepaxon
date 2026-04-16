@@ -107,7 +107,7 @@ def scan_study(study_dir: str, ignore_4x: bool = True) -> dict:
             nerve_name: {
                 'mag': '40X',
                 'tiff_dir': Path,
-                'segmented_dir': Path | None,
+                'segmented_dir': list[Path] | None.
                 'morphometrics_dir': Path | None,
                 'csa_dir': Path | None,
             }
@@ -151,15 +151,20 @@ def scan_study(study_dir: str, ignore_4x: bool = True) -> dict:
 
             if tiff_dir is None:
                 continue
-
-            seg_dir   = nerve_path / seg_folder
+            
+            seg_candidates = [d for d in nerve_path.iterdir() 
+                  if d.is_dir() and d.name.startswith(seg_folder)]
+            
+            seg_dirs = [d for d in seg_candidates if _has_images(d, tiff_dir)]
+            if not seg_dirs:
+                seg_dirs = None
             morph_dir = nerve_path / morph_folder
             csa_dir   = nerve_path / csa_folder
 
             result[animal_name][nerve_name] = {
                 'mag':               mag,
                 'tiff_dir':          tiff_dir,
-                'segmented_dir':     seg_dir   if _has_images(seg_dir, tiff_dir) else None,
+                'segmented_dir':     seg_dirs,
                 'morphometrics_dir': morph_dir if _has_images(morph_dir)         else None,
                 'csa_dir':           csa_dir   if csa_dir.exists()               else None,
             }
