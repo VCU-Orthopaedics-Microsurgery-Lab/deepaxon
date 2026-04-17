@@ -22,12 +22,6 @@ notebooks/
 
 # ── Internal documents (VCU/study-specific, not for public repo) ──────────────
 DeepAxonv5_TODO.txt
-DeepAxon_ProjectSummary.md
-DeepAxon_Manuscript*.docx
-VCU_SOP_Template.docx
-Protocol_*.docx
-DeepAxon_Protocol_Current.docx
-protocol*.docx
 
 # ── HPRC / cluster internals (VCU-specific, non-interactive mode) ─────────────
 train_config.json
