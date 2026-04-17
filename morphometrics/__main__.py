@@ -30,6 +30,10 @@ from morphometrics.distributions import bin_nerve_diameters, save_distributions
 
 console = Console()
 
+# ── Temporary: hardcoded model name for binned metadata ───────────────────────
+# TODO: derive from segmented image metadata or model_registry.json
+CURRENT_MODEL = "dev_rb40x_cw300_100_100_vl_i20_val4"
+
 def main():
     run_start = time.time()
     print_panel(console, Panel(
@@ -199,7 +203,11 @@ def main():
             if nerve_success > 0:
                 log.rule(f"DISTRIBUTIONS — {nerve}{suffix}")
                 try:
-                    data = bin_nerve_diameters(morph_dir, nerve_path.name, mag, log)
+                    data = bin_nerve_diameters(                         
+                        morph_dir, nerve_path.name, mag, log,
+                        model_name=CURRENT_MODEL,
+                        clahe_cfg=config.get('clahe', {}),
+                    )
                     if data is not None:
                         dist_out = save_distributions(data, str(morph_dir), nerve_path.name)
                         log.success(f"  → {Path(dist_out).name}")

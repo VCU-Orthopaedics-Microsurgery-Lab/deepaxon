@@ -29,7 +29,9 @@ def bin_nerve_diameters(
     morph_dir: Path,
     nerve_name: str,
     mag: str,
-    log: DeepAxonLogger
+    log: DeepAxonLogger,
+    model_name: str = '',
+    clahe_cfg: dict = None, 
 ) -> dict | None:
     """
     Pool axon data across all per-image morphometrics files for a nerve.
@@ -90,9 +92,15 @@ def bin_nerve_diameters(
     mean_gratio      = round(agg_df['gratio'].mean(), 6)               if 'gratio'               in agg_df.columns else None
     mean_axon_diam   = round(agg_df['axon_diam_um'].mean(), 3)         if 'axon_diam_um'         in agg_df.columns else None
 
+    clahe_cfg  = clahe_cfg or {}
+    clahe_on   = clahe_cfg.get('enabled', False)
+    clahe_str  = f"ON (clip={clahe_cfg.get('clip_limit', 1.0)})" if clahe_on else 'OFF'  # ← NEW
+
     global_df = pd.DataFrame([
         ['Nerve',                  nerve_name],
         ['Magnification',          mag],
+        ['Model',                  model_name or 'unknown'],                               # ← NEW
+        ['CLAHE',                  clahe_str],                                             # ← NEW
         ['Total axons',            total_axons],
         ['Mean fiber diameter (µm)', mean_fiber_diam if mean_fiber_diam is not None else 'N/A'],
         ['Mean axon diameter (µm)',  mean_axon_diam  if mean_axon_diam  is not None else 'N/A'],
