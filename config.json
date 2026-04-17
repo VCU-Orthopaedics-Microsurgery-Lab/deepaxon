@@ -47,9 +47,9 @@
         "100X": 256
     },
     "clahe": {
-        "enabled":        true,
+        "enabled":        false,
         "clip_limit":     1.5,
-        "tile_grid_size": [8, 8],
+        "tile_grid_size": [16, 16],
         "_tile_grid_size_note": "[ rows, cols ]"
     },
 

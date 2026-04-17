@@ -10,6 +10,7 @@ Skips nerves that already have a *_Morphometrics folder.
 
 import os
 os.environ['PYTHONDONTWRITEBYTECODE'] = '1'
+os.environ['OPENCV_LOG_LEVEL'] = 'ERROR'
 import sys
 from pathlib import Path
 from datetime import datetime

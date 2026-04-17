@@ -11,6 +11,7 @@ import os
 
 from typer import models
 os.environ['PYTHONDONTWRITEBYTECODE'] = '1'
+os.environ['OPENCV_LOG_LEVEL'] = 'ERROR'
 import sys
 from pathlib import Path
 from datetime import datetime
