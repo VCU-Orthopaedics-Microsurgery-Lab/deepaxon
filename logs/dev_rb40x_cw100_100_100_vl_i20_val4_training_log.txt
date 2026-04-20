@@ -1,0 +1,344 @@
+========================================================================
+DeepAxon Train LOG
+DeepAxon v5.0.0 (v5_pytorch)
+Python: 3.11.6 | PyTorch: 2.6.0+cu124 | CUDA: 12.4
+GPU        : NVIDIA H100 80GB HBM3
+========================================================================
+Start time : 2026-04-17 13:17:56
+Log file   : /lustre/home/mazurm/deepaxon/logs/dev_rb40x_cw100_100_100_vl_i20_val4_training_log.txt
+========================================================================
+
+
+── RUN CONFIGURATION ───────────────────────────────────────────────────
+  Model name         : dev_rb40x_cw100_100_100_vl_i20_val4
+  Magnification      : 40X
+  Epoch limit        : 50
+  Augmentation       : ON
+  Batch size         : 256 (last batch 240/256 = 93% full)
+  Est. train patches : ~1008
+  Images folder      : /lustre/home/mazurm/rb40x_v2_hprc
+  Models folder      : /lustre/home/mazurm/deepaxon/models
+  Log file           : /lustre/home/mazurm/deepaxon/logs/dev_rb40x_cw100_100_100_vl_i20_val4_training_log.txt
+
+── SOURCE MASK QUALITY ─────────────────────────────────────────────────
+[13:18:00] [WARN]    img_1.png: 44 unexpected pixels (0.0%) — will be thresholded to nearest class
+[13:18:00] [WARN]    img_16.png: 8 unexpected pixels (0.0%) — will be thresholded to nearest class
+[13:18:00] [WARN]    img_7.png: 20 unexpected pixels (0.0%) — will be thresholded to nearest class
+[13:18:01] [WARN]    img_8.png: 1 unexpected pixels (0.0%) — will be thresholded to nearest class
+[13:18:01] [WARN]    img_9.png: 4 unexpected pixels (0.0%) — will be thresholded to nearest class
+
+── DATASET VERIFICATION ────────────────────────────────────────────────
+[13:18:01] [INFO]  Source images: 20 pairs | Missing masks: 0 | Missing images: 0
+
+── IMAGE PREPROCESSING ─────────────────────────────────────────────────
+[13:18:01] [INFO]  Patch size: 256px | Interpolation: INTER_LANCZOS4 (image quality)
+[13:18:05] [INFO]    [IMG]  img_1      | Resized: (1024x1440) -> Cropped: (1024x1280) -> 63 patches
+[13:18:08] [INFO]    [IMG]  img_2      | Resized: (1024x1440) -> Cropped: (1024x1280) -> 63 patches
+[13:18:10] [INFO]    [IMG]  img_3      | Resized: (1024x1440) -> Cropped: (1024x1280) -> 63 patches
+[13:18:13] [INFO]    [IMG]  img_4      | Resized: (1024x1360) -> Cropped: (1024x1280) -> 63 patches
+[13:18:17] [INFO]    [IMG]  img_5      | Resized: (1024x1360) -> Cropped: (1024x1280) -> 63 patches
+[13:18:20] [INFO]    [IMG]  img_6      | Resized: (1024x1360) -> Cropped: (1024x1280) -> 63 patches
+[13:18:24] [INFO]    [IMG]  img_7      | Resized: (1024x1360) -> Cropped: (1024x1280) -> 63 patches
+[13:18:27] [INFO]    [IMG]  img_8      | Resized: (1024x1360) -> Cropped: (1024x1280) -> 63 patches
+[13:18:31] [INFO]    [IMG]  img_9      | Resized: (1024x1360) -> Cropped: (1024x1280) -> 63 patches
+[13:18:34] [INFO]    [IMG]  img_10     | Resized: (1024x1360) -> Cropped: (1024x1280) -> 63 patches
+[13:18:39] [INFO]    [IMG]  img_11     | Resized: (1024x1440) -> Cropped: (1024x1280) -> 63 patches
+[13:18:42] [INFO]    [IMG]  img_12     | Resized: (1024x1440) -> Cropped: (1024x1280) -> 63 patches
+[13:18:46] [INFO]    [IMG]  img_13     | Resized: (1024x1440) -> Cropped: (1024x1280) -> 63 patches
+[13:18:52] [INFO]    [IMG]  img_14     | Resized: (1024x1440) -> Cropped: (1024x1280) -> 63 patches
+[13:18:59] [INFO]    [IMG]  img_15     | Resized: (1024x1440) -> Cropped: (1024x1280) -> 63 patches
+[13:19:04] [INFO]    [IMG]  img_16     | Resized: (1024x1440) -> Cropped: (1024x1280) -> 63 patches
+[13:19:08] [INFO]    [IMG]  val_img_17 | Resized: (1024x1280) -> Cropped: (1024x1280) -> 63 patches
+[13:19:13] [INFO]    [IMG]  val_img_18 | Resized: (1024x1440) -> Cropped: (1024x1280) -> 63 patches
+[13:19:17] [INFO]    [IMG]  val_img_19 | Resized: (1024x1440) -> Cropped: (1024x1280) -> 63 patches
+[13:19:21] [INFO]    [IMG]  val_img_20 | Resized: (1024x1360) -> Cropped: (1024x1280) -> 63 patches
+
+── MASK PREPROCESSING ──────────────────────────────────────────────────
+[13:19:21] [INFO]  Patch size: 256px | Interpolation: INTER_NEAREST (preserves label values 0/128/255)
+[13:19:26] [INFO]    [MASK] img_1      | Resized: (1024x1440) -> Cropped: (1024x1280) -> 63 patches
+[13:19:31] [INFO]    [MASK] img_2      | Resized: (1024x1440) -> Cropped: (1024x1280) -> 63 patches
+[13:19:33] [INFO]    [MASK] img_3      | Resized: (1024x1440) -> Cropped: (1024x1280) -> 63 patches
+[13:19:40] [INFO]    [MASK] img_4      | Resized: (1024x1360) -> Cropped: (1024x1280) -> 63 patches
+[13:19:42] [INFO]    [MASK] img_5      | Resized: (1024x1360) -> Cropped: (1024x1280) -> 63 patches
+[13:19:45] [INFO]    [MASK] img_6      | Resized: (1024x1360) -> Cropped: (1024x1280) -> 63 patches
+[13:19:47] [INFO]    [MASK] img_7      | Resized: (1024x1360) -> Cropped: (1024x1280) -> 63 patches
+[13:19:51] [INFO]    [MASK] img_8      | Resized: (1024x1360) -> Cropped: (1024x1280) -> 63 patches
+[13:19:53] [INFO]    [MASK] img_9      | Resized: (1024x1360) -> Cropped: (1024x1280) -> 63 patches
+[13:19:57] [INFO]    [MASK] img_10     | Resized: (1024x1360) -> Cropped: (1024x1280) -> 63 patches
+[13:20:00] [INFO]    [MASK] img_11     | Resized: (1024x1440) -> Cropped: (1024x1280) -> 63 patches
+[13:20:04] [INFO]    [MASK] img_12     | Resized: (1024x1440) -> Cropped: (1024x1280) -> 63 patches
+[13:20:06] [INFO]    [MASK] img_13     | Resized: (1024x1440) -> Cropped: (1024x1280) -> 63 patches
+[13:20:10] [INFO]    [MASK] img_14     | Resized: (1024x1440) -> Cropped: (1024x1280) -> 63 patches
+[13:20:13] [INFO]    [MASK] img_15     | Resized: (1024x1440) -> Cropped: (1024x1280) -> 63 patches
+[13:20:16] [INFO]    [MASK] img_16     | Resized: (1024x1440) -> Cropped: (1024x1280) -> 63 patches
+[13:20:21] [INFO]    [MASK] val_img_17 | Resized: (1024x1280) -> Cropped: (1024x1280) -> 63 patches
+[13:20:27] [INFO]    [MASK] val_img_18 | Resized: (1024x1440) -> Cropped: (1024x1280) -> 63 patches
+[13:20:30] [INFO]    [MASK] val_img_19 | Resized: (1024x1440) -> Cropped: (1024x1280) -> 63 patches
+[13:20:33] [INFO]    [MASK] val_img_20 | Resized: (1024x1360) -> Cropped: (1024x1280) -> 63 patches
+
+── PREPROCESSING SUMMARY ───────────────────────────────────────────────
+[13:20:33] [INFO]  Images: 20 | Masks: 20 | Patches per image: 63
+[13:20:33] [INFO]  Patch size: 256px | Overlap: 50% | Step: 128px
+[13:20:33] [INFO]  Total patches: 1260 image | 1260 mask
+[13:20:33] [OK]    Patches created: 1260 image, 1260 mask
+[13:21:48] [OK]    Patch alignment verified — images: 1260 | masks: 1260
+
+── LOADING PATCHES ─────────────────────────────────────────────────────
+[13:24:26] [INFO]  Train: 16 images → 1008 patches
+[13:24:26] [INFO]  Val:   4 images  → 252 patches (20.0%)
+[13:24:26] [INFO]  Val images: val_img_17, val_img_18, val_img_19, val_img_20
+
+── AUGMENTATION ────────────────────────────────────────────────────────
+[13:24:28] [OK]    955/1008 patches modified (94.7%)
+[13:24:28] [INFO]    Geometric   — H-flip: 532  |  V-flip: 488  |  Rotation: 510
+[13:24:28] [INFO]    Photometric — Brightness: 246  |  Gamma: 266  |  Noise: 275
+
+── TRAINING SETUP ──────────────────────────────────────────────────────
+  Architecture     : UNet++ (DeepAxon++) — resnet34 encoder, imagenet weights
+  Parameters       : 26,072,627
+  Class weights    : bg=1 myelin=1 axon=1
+  Device           : cuda
+  Train patches    : 1008
+  Val patches      : 252
+  Test/Train split : val_prefix
+  Batch size       : 256
+  Epoch limit      : 50
+  Augmentation     : ON — geo_prob=0.50 photo_prob=0.25
+  Loss function    : Weighted Dice (0.5) + CrossEntropy (0.5)
+  Optimizer        : Adam lr=0.001
+  ReduceLR         : patience=15, factor=0.5, min_lr=1e-06 — monitors val_loss
+  EarlyStopping    : patience=40, min_delta=0.001 — monitors val_loss
+  Checkpoint       : best val_loss
+
+── TRAINING ────────────────────────────────────────────────────────────
+[13:26:05]   Epoch   1 (76s) | learning_rate 1.00e-03
+  TRAIN  loss 0.737 | dice 0.539 | bg 0.604 | ax 0.378 | my 0.391
+  VAL    loss 1.005 | dice 0.246 | bg 0.341 | ax 0.285 | my 0.030   ← CHECKPOINT
+
+[13:26:08]   Epoch   2 (3s) | learning_rate 1.00e-03
+  TRAIN  loss 0.488 | dice 0.757 | bg 0.763 | ax 0.594 | my 0.517
+  VAL    loss 1.153 | dice 0.307 | bg 0.077 | ax 0.365 | my 0.358  
+
+[13:26:12]   Epoch   3 (3s) | learning_rate 1.00e-03
+  TRAIN  loss 0.395 | dice 0.800 | bg 0.808 | ax 0.652 | my 0.542
+  VAL    loss 1.246 | dice 0.471 | bg 0.472 | ax 0.392 | my 0.259  
+
+[13:26:16]   Epoch   4 (3s) | learning_rate 1.00e-03
+  TRAIN  loss 0.356 | dice 0.820 | bg 0.838 | ax 0.671 | my 0.559
+  VAL    loss 1.135 | dice 0.455 | bg 0.742 | ax 0.269 | my 0.111  
+
+[13:26:20]   Epoch   5 (3s) | learning_rate 1.00e-03
+  TRAIN  loss 0.311 | dice 0.838 | bg 0.851 | ax 0.690 | my 0.604
+  VAL    loss 0.915 | dice 0.524 | bg 0.758 | ax 0.318 | my 0.206   ← CHECKPOINT
+
+[13:26:23]   Epoch   6 (3s) | learning_rate 1.00e-03
+  TRAIN  loss 0.288 | dice 0.848 | bg 0.863 | ax 0.709 | my 0.629
+  VAL    loss 0.945 | dice 0.500 | bg 0.757 | ax 0.332 | my 0.177  
+
+[13:26:27]   Epoch   7 (3s) | learning_rate 1.00e-03
+  TRAIN  loss 0.272 | dice 0.854 | bg 0.872 | ax 0.733 | my 0.645
+  VAL    loss 0.867 | dice 0.549 | bg 0.772 | ax 0.418 | my 0.248   ← CHECKPOINT
+
+[13:26:30]   Epoch   8 (3s) | learning_rate 1.00e-03
+  TRAIN  loss 0.260 | dice 0.859 | bg 0.879 | ax 0.746 | my 0.656
+  VAL    loss 0.897 | dice 0.558 | bg 0.773 | ax 0.420 | my 0.267  
+
+[13:26:33]   Epoch   9 (3s) | learning_rate 1.00e-03
+  TRAIN  loss 0.254 | dice 0.860 | bg 0.881 | ax 0.772 | my 0.668
+  VAL    loss 0.912 | dice 0.594 | bg 0.786 | ax 0.488 | my 0.330  
+
+[13:26:37]   Epoch  10 (3s) | learning_rate 1.00e-03
+  TRAIN  loss 0.243 | dice 0.865 | bg 0.888 | ax 0.763 | my 0.668
+  VAL    loss 0.830 | dice 0.625 | bg 0.791 | ax 0.582 | my 0.345   ← CHECKPOINT
+
+[13:26:40]   Epoch  11 (3s) | learning_rate 1.00e-03
+  TRAIN  loss 0.234 | dice 0.870 | bg 0.891 | ax 0.778 | my 0.684
+  VAL    loss 0.484 | dice 0.752 | bg 0.831 | ax 0.742 | my 0.503   ← CHECKPOINT
+
+[13:26:44]   Epoch  12 (3s) | learning_rate 1.00e-03
+  TRAIN  loss 0.229 | dice 0.872 | bg 0.894 | ax 0.792 | my 0.707
+  VAL    loss 0.250 | dice 0.868 | bg 0.899 | ax 0.798 | my 0.655   ← CHECKPOINT
+
+[13:26:48]   Epoch  13 (3s) | learning_rate 1.00e-03
+  TRAIN  loss 0.222 | dice 0.875 | bg 0.896 | ax 0.823 | my 0.724
+  VAL    loss 0.216 | dice 0.889 | bg 0.921 | ax 0.805 | my 0.686   ← CHECKPOINT
+
+[13:26:51]   Epoch  14 (3s) | learning_rate 1.00e-03
+  TRAIN  loss 0.220 | dice 0.876 | bg 0.899 | ax 0.820 | my 0.725
+  VAL    loss 0.193 | dice 0.896 | bg 0.928 | ax 0.825 | my 0.729   ← CHECKPOINT
+
+[13:26:55]   Epoch  15 (4s) | learning_rate 1.00e-03
+  TRAIN  loss 0.214 | dice 0.879 | bg 0.901 | ax 0.814 | my 0.722
+  VAL    loss 0.229 | dice 0.881 | bg 0.911 | ax 0.805 | my 0.691  
+
+[13:26:58]   Epoch  16 (3s) | learning_rate 1.00e-03
+  TRAIN  loss 0.210 | dice 0.881 | bg 0.901 | ax 0.831 | my 0.740
+  VAL    loss 0.181 | dice 0.903 | bg 0.933 | ax 0.833 | my 0.724   ← CHECKPOINT
+
+[13:27:03]   Epoch  17 (4s) | learning_rate 1.00e-03
+  TRAIN  loss 0.205 | dice 0.882 | bg 0.907 | ax 0.832 | my 0.747
+  VAL    loss 0.197 | dice 0.892 | bg 0.932 | ax 0.824 | my 0.718  
+
+[13:27:07]   Epoch  18 (3s) | learning_rate 1.00e-03
+  TRAIN  loss 0.203 | dice 0.885 | bg 0.908 | ax 0.816 | my 0.732
+  VAL    loss 0.191 | dice 0.905 | bg 0.938 | ax 0.799 | my 0.710  
+
+[13:27:10]   Epoch  19 (3s) | learning_rate 1.00e-03
+  TRAIN  loss 0.196 | dice 0.888 | bg 0.911 | ax 0.855 | my 0.759
+  VAL    loss 0.191 | dice 0.899 | bg 0.931 | ax 0.823 | my 0.736  
+
+[13:27:19]   Epoch  20 (8s) | learning_rate 1.00e-03
+  TRAIN  loss 0.192 | dice 0.890 | bg 0.913 | ax 0.840 | my 0.754
+  VAL    loss 0.161 | dice 0.913 | bg 0.940 | ax 0.853 | my 0.773   ← CHECKPOINT
+
+[13:27:22]   Epoch  21 (3s) | learning_rate 1.00e-03
+  TRAIN  loss 0.193 | dice 0.890 | bg 0.910 | ax 0.849 | my 0.766
+  VAL    loss 0.179 | dice 0.909 | bg 0.939 | ax 0.814 | my 0.723  
+
+[13:27:25]   Epoch  22 (3s) | learning_rate 1.00e-03
+  TRAIN  loss 0.185 | dice 0.893 | bg 0.916 | ax 0.861 | my 0.776
+  VAL    loss 0.167 | dice 0.911 | bg 0.942 | ax 0.817 | my 0.743  
+
+[13:27:32]   Epoch  23 (6s) | learning_rate 1.00e-03
+  TRAIN  loss 0.181 | dice 0.895 | bg 0.917 | ax 0.858 | my 0.781
+  VAL    loss 0.171 | dice 0.912 | bg 0.941 | ax 0.832 | my 0.750  
+
+[13:27:35]   Epoch  24 (3s) | learning_rate 1.00e-03
+  TRAIN  loss 0.178 | dice 0.898 | bg 0.919 | ax 0.873 | my 0.791
+  VAL    loss 0.168 | dice 0.913 | bg 0.942 | ax 0.825 | my 0.740  
+
+[13:27:42]   Epoch  25 (6s) | learning_rate 1.00e-03
+  TRAIN  loss 0.177 | dice 0.897 | bg 0.919 | ax 0.845 | my 0.767
+  VAL    loss 0.170 | dice 0.912 | bg 0.941 | ax 0.838 | my 0.742  
+
+[13:27:49]   Epoch  26 (6s) | learning_rate 1.00e-03
+  TRAIN  loss 0.174 | dice 0.899 | bg 0.922 | ax 0.870 | my 0.793
+  VAL    loss 0.199 | dice 0.902 | bg 0.937 | ax 0.791 | my 0.711  
+
+[13:27:52]   Epoch  27 (3s) | learning_rate 1.00e-03
+  TRAIN  loss 0.175 | dice 0.898 | bg 0.919 | ax 0.863 | my 0.787
+  VAL    loss 0.161 | dice 0.915 | bg 0.942 | ax 0.847 | my 0.760  
+
+[13:27:56]   Epoch  28 (3s) | learning_rate 1.00e-03
+  TRAIN  loss 0.168 | dice 0.902 | bg 0.923 | ax 0.871 | my 0.799
+  VAL    loss 0.181 | dice 0.910 | bg 0.940 | ax 0.832 | my 0.733  
+
+[13:27:59]   Epoch  29 (3s) | learning_rate 1.00e-03
+  TRAIN  loss 0.163 | dice 0.905 | bg 0.926 | ax 0.865 | my 0.796
+  VAL    loss 0.210 | dice 0.902 | bg 0.935 | ax 0.784 | my 0.688  
+
+[13:28:03]   Epoch  30 (3s) | learning_rate 1.00e-03
+  TRAIN  loss 0.161 | dice 0.906 | bg 0.928 | ax 0.884 | my 0.810
+  VAL    loss 0.192 | dice 0.905 | bg 0.940 | ax 0.793 | my 0.699  
+
+[13:28:06]   Epoch  31 (3s) | learning_rate 1.00e-03
+  TRAIN  loss 0.159 | dice 0.907 | bg 0.927 | ax 0.876 | my 0.809
+  VAL    loss 0.176 | dice 0.910 | bg 0.939 | ax 0.822 | my 0.727  
+
+[13:28:10]   Epoch  32 (3s) | learning_rate 1.00e-03
+  TRAIN  loss 0.156 | dice 0.908 | bg 0.930 | ax 0.889 | my 0.818
+  VAL    loss 0.176 | dice 0.910 | bg 0.941 | ax 0.817 | my 0.721  
+
+[13:28:18]   Epoch  33 (7s) | learning_rate 1.00e-03
+  TRAIN  loss 0.151 | dice 0.911 | bg 0.932 | ax 0.883 | my 0.822
+  VAL    loss 0.160 | dice 0.915 | bg 0.940 | ax 0.857 | my 0.771  
+
+[13:28:23]   Epoch  34 (5s) | learning_rate 1.00e-03
+  TRAIN  loss 0.147 | dice 0.913 | bg 0.934 | ax 0.894 | my 0.821
+  VAL    loss 0.173 | dice 0.909 | bg 0.941 | ax 0.838 | my 0.744  
+
+[13:28:28]   Epoch  35 (4s) | learning_rate 1.00e-03
+  TRAIN  loss 0.143 | dice 0.915 | bg 0.937 | ax 0.893 | my 0.830
+  VAL    loss 0.178 | dice 0.911 | bg 0.942 | ax 0.821 | my 0.708  
+
+[13:28:32]   Epoch  36 (4s) | learning_rate 1.00e-03
+  TRAIN  loss 0.140 | dice 0.917 | bg 0.937 | ax 0.895 | my 0.829
+  VAL    loss 0.174 | dice 0.911 | bg 0.940 | ax 0.838 | my 0.741  
+
+[13:28:36]   Epoch  37 (3s) | learning_rate 1.00e-03
+  TRAIN  loss 0.139 | dice 0.918 | bg 0.939 | ax 0.886 | my 0.827
+  VAL    loss 0.180 | dice 0.911 | bg 0.941 | ax 0.818 | my 0.724  
+
+[13:28:40]   Epoch  38 (4s) | learning_rate 1.00e-03
+  TRAIN  loss 0.136 | dice 0.919 | bg 0.940 | ax 0.889 | my 0.839
+  VAL    loss 0.174 | dice 0.913 | bg 0.942 | ax 0.834 | my 0.735  
+
+[13:28:43]   Epoch  39 (3s) | learning_rate 1.00e-03
+  TRAIN  loss 0.134 | dice 0.920 | bg 0.942 | ax 0.904 | my 0.842
+  VAL    loss 0.176 | dice 0.911 | bg 0.941 | ax 0.823 | my 0.722  
+
+[13:28:47]   Epoch  40 (3s) | learning_rate 1.00e-03
+  TRAIN  loss 0.132 | dice 0.922 | bg 0.942 | ax 0.900 | my 0.847
+  VAL    loss 0.178 | dice 0.911 | bg 0.940 | ax 0.834 | my 0.731  
+
+[13:28:50]   Epoch  41 (3s) | learning_rate 1.00e-03
+  TRAIN  loss 0.127 | dice 0.924 | bg 0.945 | ax 0.906 | my 0.850
+  VAL    loss 0.174 | dice 0.912 | bg 0.941 | ax 0.838 | my 0.739  
+
+[13:28:53]   Epoch  42 (3s) | learning_rate 1.00e-03
+  TRAIN  loss 0.128 | dice 0.924 | bg 0.943 | ax 0.895 | my 0.829
+  VAL    loss 0.169 | dice 0.912 | bg 0.939 | ax 0.840 | my 0.746  
+
+[13:28:57]   Epoch  43 (3s) | learning_rate 1.00e-03
+  TRAIN  loss 0.124 | dice 0.927 | bg 0.947 | ax 0.913 | my 0.847
+  VAL    loss 0.178 | dice 0.911 | bg 0.940 | ax 0.820 | my 0.739  
+
+[13:29:00]   Epoch  44 (3s) | learning_rate 1.00e-03
+  TRAIN  loss 0.126 | dice 0.925 | bg 0.945 | ax 0.889 | my 0.830
+  VAL    loss 0.179 | dice 0.908 | bg 0.942 | ax 0.815 | my 0.717  
+
+[13:29:04]   Epoch  45 (3s) | learning_rate 1.00e-03
+  TRAIN  loss 0.122 | dice 0.928 | bg 0.947 | ax 0.910 | my 0.851
+  VAL    loss 0.183 | dice 0.909 | bg 0.938 | ax 0.818 | my 0.724  
+
+[13:29:08]   Epoch  46 (4s) | learning_rate 1.00e-03
+  TRAIN  loss 0.123 | dice 0.927 | bg 0.947 | ax 0.915 | my 0.852
+  VAL    loss 0.180 | dice 0.906 | bg 0.939 | ax 0.819 | my 0.737  
+
+[13:29:11]   Epoch  47 (3s) | learning_rate 1.00e-03
+  TRAIN  loss 0.122 | dice 0.928 | bg 0.946 | ax 0.908 | my 0.855
+  VAL    loss 0.188 | dice 0.908 | bg 0.940 | ax 0.820 | my 0.711  
+
+[13:29:14]   Epoch  48 (3s) | learning_rate 1.00e-03
+  TRAIN  loss 0.116 | dice 0.932 | bg 0.950 | ax 0.910 | my 0.854
+  VAL    loss 0.166 | dice 0.913 | bg 0.942 | ax 0.833 | my 0.757  
+
+[13:29:18]   ReduceLR: 1.00e-03 → 5.00e-04 (val_loss no improvement for 15 epochs)
+[13:29:18]   Epoch  49 (3s) | learning_rate 1.00e-03
+  TRAIN  loss 0.114 | dice 0.933 | bg 0.950 | ax 0.908 | my 0.852
+  VAL    loss 0.182 | dice 0.910 | bg 0.939 | ax 0.837 | my 0.726  
+
+[13:29:21]   Epoch  50 (3s) | learning_rate 5.00e-04
+  TRAIN  loss 0.108 | dice 0.936 | bg 0.955 | ax 0.920 | my 0.866
+  VAL    loss 0.188 | dice 0.908 | bg 0.941 | ax 0.815 | my 0.723  
+
+
+========================================================================
+=== CHECKPOINT SUMMARY ===
+========================================================================
+Best checkpoint @ epoch 20
+  Val loss        : 0.161
+  Val bg dice     : 0.940
+  Val axon dice   : 0.853
+  Val myelin dice : 0.773
+  Val IoU         : 0.843
+  Saved to        : dev_rb40x_cw100_100_100_vl_i20_val4.pt
+========================================================================
+
+── RUN COMPLETE ────────────────────────────────────────────────────────
+End time : 2026-04-17 13:29:25
+
+  Model         : /lustre/home/mazurm/deepaxon/models/dev_rb40x_cw100_100_100_vl_i20_val4.pt
+  GPU           : NVIDIA H100 80GB HBM3
+  Training time : 11m 29s
+  Epochs        : 50
+  Patches       : 50400
+  Augmented     : 955
+  Best epoch    : 20
+  Best val_loss : 0.161
+  Best val_bg   : 0.940
+  Best val_ax   : 0.853
+  Best val_my   : 0.773
+  Best val_IoU  : 0.843
+
+========================================================================

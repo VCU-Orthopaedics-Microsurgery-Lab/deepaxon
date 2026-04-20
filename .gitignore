@@ -16,6 +16,4 @@ env/
 Thumbs.db
 
 # ── Study data (never in public repo) ────────────────────────────────────────
-images/
-logs/
 notebooks/
