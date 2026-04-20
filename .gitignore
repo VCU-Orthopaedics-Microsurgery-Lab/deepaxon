@@ -19,10 +19,3 @@ Thumbs.db
 images/
 logs/
 notebooks/
-
-# ── Internal documents (VCU/study-specific, not for public repo) ──────────────
-DeepAxonv5_TODO.txt
-
-# ── HPRC / cluster internals (VCU-specific, non-interactive mode) ─────────────
-train_config.json
-train.sbatch
