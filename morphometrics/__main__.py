@@ -33,7 +33,7 @@ console = Console()
 
 # ── Temporary: hardcoded model name for binned metadata ───────────────────────
 # TODO: derive from segmented image metadata or model_registry.json
-CURRENT_MODEL = "dev_rb40x_cw300_100_100_vl_i20_val4"
+CURRENT_MODEL = "rb40x_v1"
 
 def main():
     run_start = time.time()
@@ -152,9 +152,6 @@ def main():
                 log.warn("Resolution mismatch detected:")
                 for name, res in resolutions.items():
                     log.warn(f"  {name}: {res[0]}×{res[1]}")
-            else:
-                res = list(unique_res)[0] if unique_res else ('?', '?')
-                log.info(f"Image resolution: {res[0]}×{res[1]} px")
 
             nerve_success = 0
             all_data      = []  # collect (df, axon_lbl, fiber_lbl, filtered_xy) per image

@@ -59,8 +59,13 @@
         "dilation_disk":      5
     },
     "morphometrics_bins": {
-        "axon_diameter_um": [0, 0.5, 5, 10, 15, 20, 25, 30, 999],
-        "_axon_diameter_um_note": "bin edges in µm — 999 = open upper bound"
+        "_note": "Three-tier binning: granular (physiological detail), mid (broad physiological), coarse (global QC scan)",
+        "granular_um":  [0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0, 7.5, 8.0, 999],
+        "_granular_note": "0.5µm bins, 0–8µm physiological range + ≥8µm catch",
+        "mid_um":       [0, 2, 4, 6, 8, 10, 12, 14, 16, 999],
+        "_mid_note":    "2µm bins, 0–16µm broad physiological range + ≥16µm catch",
+        "coarse_um":    [0, 5, 10, 15, 20, 25, 30, 999],
+        "_coarse_note": "5µm bins, full range global QC scan + ≥30µm catch"
     },
     "quality_filters": {
         "enabled":                      false,

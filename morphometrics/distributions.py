@@ -6,7 +6,10 @@ Reads existing per-image morphometrics .xlsx files for a nerve,
 pools all axons, and produces:
   - Global summary (total axons, mean fiber diameter, mean g-ratio)
   - Per-image summary (axon count, mean g-ratio per image)
-  - Diameter distribution (binned fiber equiv diameter)
+  - Three-tier diameter distribution with g-ratio mean + SD per bin:
+      Granular : 0.5µm bins, 0–8µm physiological range + ≥8µm catch
+      Mid      : 2µm bins,   0–16µm broad physiological range + ≥16µm catch
+      Coarse   : 5µm bins,   full range global QC scan + ≥30µm catch
 
 Requires fiber_equiv_diam_um and gratio columns — pixel size must be
 calibrated in config.json for physical unit output.
@@ -47,7 +50,7 @@ def bin_nerve_diameters(
         log:         Logger instance
 
     Returns:
-        dict with keys: 'global_df', 'per_image_df', 'bins_df'
+        dict with keys: 'global_df', 'per_image_df', 'bins_granular_df', 'bins_mid_df', 'bins_coarse_df'
         Or None if no data found or pixel size uncalibrated.
     """
     config   = load_config()
@@ -119,46 +122,86 @@ def bin_nerve_diameters(
         })
     per_image_df = pd.DataFrame(per_image_rows)
 
-    # ── Diameter distribution ─────────────────────────────────────────────────
+    # ── Diameter distribution — three-tier ───────────────────────────────────
     diameters   = agg_df['fiber_equiv_diam_um'].dropna()
+    gratios     = agg_df['gratio'].dropna() if 'gratio' in agg_df.columns else None
     total_axons = len(diameters)
 
     if total_axons == 0:
         log.warn(f"  No valid fiber diameters found")
         return None
 
-    bin_edges = bins_cfg.get("axon_diameter_um", [0.5, 5, 10, 15, 20, 25, 30, 999])
+    # Default bin edges if config keys missing
+    default_granular = [0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0, 7.5, 8.0, 999]
+    default_mid      = [0, 2, 4, 6, 8, 10, 12, 14, 16, 999]
+    default_coarse   = [0, 5, 10, 15, 20, 25, 30, 999]
 
-    # right=False: left inclusive (≥), right exclusive (<). Last bin open-ended (≥).
-    bins   = pd.cut(diameters, bins=bin_edges, right=False)
-    counts = bins.value_counts(sort=False)
+    granular_edges = bins_cfg.get("granular_um", default_granular)
+    mid_edges      = bins_cfg.get("mid_um",      default_mid)
+    coarse_edges   = bins_cfg.get("coarse_um",   default_coarse)
 
-    percent    = (counts.values / total_axons * 100).round(2)
-    cumulative = np.cumsum(percent).round(2)
+    def make_bins_df(edges: list) -> pd.DataFrame:
+        """
+        Bin diameters by edges, compute count/percent/cumulative and
+        g-ratio mean+SD per bin. Last bin is open-ended catch (≥ lower bound).
+        right=False: ≥ left, < right. 999 upper bound = open-ended catch box.
+        """
+        # Align gratio to the same index as diameters for per-bin lookup
+        diam_series   = agg_df['fiber_equiv_diam_um'].dropna()
+        gratio_series = agg_df.loc[diam_series.index, 'gratio'] if 'gratio' in agg_df.columns else None
 
-    bin_labels = []
-    for idx, b in enumerate(counts.index):
-        if idx == len(counts.index) - 1:
-            bin_labels.append(f"≥{b.left} µm")
+        cut      = pd.cut(diam_series, bins=edges, right=False)
+        groups   = diam_series.groupby(cut, observed=False)
+        counts   = groups.count()
+        percent    = (counts.values / total_axons * 100).round(2)
+        cumulative = np.cumsum(percent).round(2)
+
+        # G-ratio per bin — use mask-based lookup to avoid KeyError on empty intervals
+        gratio_mean = []
+        gratio_sd   = []
+        if gratio_series is not None:
+            for interval in counts.index:
+                mask = (cut == interval)
+                g    = gratio_series[mask].dropna()
+                gratio_mean.append(round(g.mean(), 6) if len(g) > 0 else None)
+                gratio_sd.append(round(g.std(),  6)   if len(g) > 1 else None)
         else:
-            bin_labels.append(f"≥{b.left} and <{b.right} µm")
+            gratio_mean = [None] * len(counts)
+            gratio_sd   = [None] * len(counts)
 
-    bins_df = pd.DataFrame({
-        'Diameter Range':     bin_labels,
-        'Count':              counts.values.astype(int),
-        'Percent (%)':        percent,
-        'Cumulative (%)':     cumulative,
-    })
+        # Build labels — last bin is catch box
+        labels = []
+        for idx, b in enumerate(counts.index):
+            if idx == len(counts.index) - 1:
+                labels.append(f"≥{b.left} µm")
+            else:
+                labels.append(f"≥{b.left} and <{b.right} µm")
+
+        return pd.DataFrame({
+            'Diameter Range':  labels,
+            'Count':           counts.values.astype(int),
+            'Percent (%)':     percent,
+            'Cumulative (%)':  cumulative,
+            'Mean G-ratio':    gratio_mean,
+            'SD G-ratio':      gratio_sd,
+        })
+
+    bins_granular_df = make_bins_df(granular_edges)
+    bins_mid_df      = make_bins_df(mid_edges)
+    bins_coarse_df   = make_bins_df(coarse_edges)
 
     log.success(
-        f"  Distribution complete: {len(bins_df)} bins | "
+        f"  Distribution complete: granular={len(bins_granular_df)} bins | "
+        f"mid={len(bins_mid_df)} bins | coarse={len(bins_coarse_df)} bins | "
         f"{total_axons} axons | mean g-ratio={mean_gratio}"
     )
 
     return {
-        'global_df':    global_df,
-        'per_image_df': per_image_df,
-        'bins_df':      bins_df,
+        'global_df':         global_df,
+        'per_image_df':      per_image_df,
+        'bins_granular_df':  bins_granular_df,
+        'bins_mid_df':       bins_mid_df,
+        'bins_coarse_df':    bins_coarse_df,
     }
 
 
@@ -168,10 +211,12 @@ def save_distributions(
     nerve_name: str
 ) -> str:
     """
-    Save distribution data to Excel with three sections:
+    Save distribution data to Excel with five sections:
       1. Global summary (nerve-level metadata + averages)
       2. Per-image summary (axon count + mean g-ratio per image)
-      3. Diameter distribution (binned fiber equiv diameter)
+      3. Granular distribution (0.5µm bins, 0–8µm + catch)
+      4. Mid distribution (2µm bins, 0–16µm + catch)
+      5. Coarse distribution (5µm bins, full range + catch)
 
     File named: {nerve_name}_binned.xlsx
     Returns output path.
@@ -180,9 +225,11 @@ def save_distributions(
     output_dir.mkdir(parents=True, exist_ok=True)
     out_path = output_dir / f"{nerve_name}_binned.xlsx"
 
-    global_df    = data['global_df']
-    per_image_df = data['per_image_df']
-    bins_df      = data['bins_df']
+    global_df        = data['global_df']
+    per_image_df     = data['per_image_df']
+    bins_granular_df = data['bins_granular_df']
+    bins_mid_df      = data['bins_mid_df']
+    bins_coarse_df   = data['bins_coarse_df']
 
     with pd.ExcelWriter(str(out_path), engine='openpyxl') as writer:
         current_row = 0
@@ -201,10 +248,24 @@ def save_distributions(
         per_image_df.to_excel(writer, index=False, startrow=current_row)
         current_row += len(per_image_df) + 3
 
-        # ── Diameter distribution ─────────────────────────────────────────────
-        header_df = pd.DataFrame([['── Diameter Distribution ──']], columns=[''])
+        # ── Granular distribution (0.5µm bins, 0–8µm + catch) ────────────────
+        header_df = pd.DataFrame([['── Diameter Distribution — Granular (0.5µm bins, physiological range) ──']], columns=[''])
         header_df.to_excel(writer, index=False, header=False, startrow=current_row)
         current_row += 1
-        bins_df.to_excel(writer, index=False, startrow=current_row)
+        bins_granular_df.to_excel(writer, index=False, startrow=current_row)
+        current_row += len(bins_granular_df) + 3
+
+        # ── Mid distribution (2µm bins, 0–16µm + catch) ───────────────────────
+        header_df = pd.DataFrame([['── Diameter Distribution — Mid (2µm bins, broad physiological range) ──']], columns=[''])
+        header_df.to_excel(writer, index=False, header=False, startrow=current_row)
+        current_row += 1
+        bins_mid_df.to_excel(writer, index=False, startrow=current_row)
+        current_row += len(bins_mid_df) + 3
+
+        # ── Coarse distribution (5µm bins, full range + catch) ────────────────
+        header_df = pd.DataFrame([['── Diameter Distribution — Coarse (5µm bins, global QC scan) ──']], columns=[''])
+        header_df.to_excel(writer, index=False, header=False, startrow=current_row)
+        current_row += 1
+        bins_coarse_df.to_excel(writer, index=False, startrow=current_row)
 
     return str(out_path)

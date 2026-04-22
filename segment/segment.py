@@ -450,7 +450,7 @@ def segment_dir(tiff_dir, output_dir, model, mag, log, timing_csv=None, model_na
     log.info(
         f"Found {len(images)} image(s) | patch={patch_size}px | "
         f"step={step}px ({overlap_pct}% overlap) | "
-        f"CLAHE={'ON (clip=' + str(clahe_cfg.get('clip_limit', 1.0)) + ')' if clahe_on else 'OFF'} | "
+        f"CLAHE={'ON' if clahe_on else 'OFF'} | "
         f"Logging={'ON' if logging_on else 'OFF'} | "
         f"Timing={'ON' if timing_on else 'OFF'}"
     )
@@ -470,9 +470,6 @@ def segment_dir(tiff_dir, output_dir, model, mag, log, timing_csv=None, model_na
         for name, res in resolutions.items():
             log.warn(f"  {name}: {res[0]}x{res[1]}")
         log.warn("Continuing with mismatched resolutions.")
-    else:
-        res    = list(unique_res)[0] if unique_res else ('?', '?')
-        log.info(f"Original resolution: {res[0]}x{res[1]} px")
 
     timing_rows = []
     success     = 0
