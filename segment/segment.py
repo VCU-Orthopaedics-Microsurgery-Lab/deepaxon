@@ -406,31 +406,32 @@ def save_qc_sheet(
 
         # Build overlay — RGB
         overlay = cv2.cvtColor(orig, cv2.COLOR_GRAY2RGB).astype(np.float32)
-        alpha   = 0.45
+        alpha_axon   = 0.35                                                        # ← CHANGED
+        alpha_myelin = 0.55  
 
         # Axon → pink (255, 105, 180)
         axon_mask = seg == 255
         overlay[axon_mask] = (
-            overlay[axon_mask] * (1 - alpha) +
-            np.array([255, 105, 180], dtype=np.float32) * alpha
+            overlay[axon_mask] * (1 - alpha_axon) +                               # ← CHANGED
+            np.array([255, 105, 180], dtype=np.float32) * alpha_axon              # ← CHANGED
         )
 
-        # Myelin → orange (255, 160, 100)
+        # Myelin → purple (160, 80, 200)
         myelin_mask = seg == 128
         overlay[myelin_mask] = (
-            overlay[myelin_mask] * (1 - alpha) +
-            np.array([255, 160, 100], dtype=np.float32) * alpha
+            overlay[myelin_mask] * (1 - alpha_myelin) +                           # ← CHANGED
+            np.array([160, 80, 200], dtype=np.float32) * alpha_myelin             # ← CHANGED
         )
         overlay = overlay.astype(np.uint8)
 
         # Plot
-        axes[row][0].imshow(orig, cmap='gray', vmin=0, vmax=255)
-        axes[row][0].set_ylabel(img_path.name, fontsize=7, rotation=0,
-                                labelpad=120, va='center')
-        axes[row][0].axis('off')
+        axes[row][0].imshow(orig, cmap='gray', vmin=0, vmax=255)  # ← CHANGED
+        axes[row][0].axis('off')                                   # ← CHANGED
 
-        axes[row][1].imshow(seg, cmap='gray', vmin=0, vmax=255)
-        axes[row][1].axis('off')
+        axes[row][1].imshow(seg, cmap='gray', vmin=0, vmax=255)   # ← CHANGED
+        axes[row][1].set_title(img_path.name, fontsize=8,          # ← NEW
+                               fontweight='normal', pad=4)         # ← NEW
+        axes[row][1].axis('off')                                   # ← CHANGED
 
         axes[row][2].imshow(overlay)
         axes[row][2].axis('off')
@@ -438,7 +439,7 @@ def save_qc_sheet(
     # Legend on last row overlay panel
     legend = [
         mpatches.Patch(color=(1.0, 0.41, 0.71), label='Axon'),
-        mpatches.Patch(color=(1.0, 0.63, 0.39), label='Myelin'),
+        mpatches.Patch(color=(0.63, 0.31, 0.78), label='Myelin'),
     ]
     axes[-1][2].legend(handles=legend, loc='lower right', fontsize=9, framealpha=0.7)
 

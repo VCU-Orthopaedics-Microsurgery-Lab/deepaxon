@@ -419,7 +419,7 @@ def save_watershed_qc(
     Layout: one row per image
         Always:  Col 1: Axon watershed (randomized colormap)
                  Col 2: Fiber watershed (randomized colormap)
-                 Col 3: Fiber colors + grey axon overlay + red matched centroids
+                 Col 3: Fiber colors + red axon outlines + red matched centroids (image label above)  # ← CHANGED
         qf ON:   Col 4: Filter map — green=kept, red=filtered, black=background
         qf OFF:  Col 4 omitted — 3 columns only
 
@@ -492,7 +492,7 @@ def save_watershed_qc(
             if qf_on else
             f"{img_path.name}  —  {n_kept} axons"
         )
-        ax_axon.set_ylabel(row_label, fontsize=7, rotation=0, labelpad=160, va='center')
+        ax_over.set_title(row_label, fontsize=7, fontweight='normal', pad=4)   # ← CHANGED
 
         if axon_lbl is None or fiber_lbl is None:
             no_data_axes = [ax_axon, ax_fiber, ax_over]
@@ -518,13 +518,19 @@ def save_watershed_qc(
         ax_fiber.set_title(f"Fiber watershed  ({n_fiber} regions)", fontsize=7)
         ax_fiber.axis('off')
 
-        # ── Col 3: Fiber colors + grey axon overlay + red centroids ──────────
+        # ── Col 3: Fiber colors + red axon outlines + red matched centroids (image label above) ──────────
         ax_over.imshow(fiber_lbl, cmap=make_random_cmap(n_fiber, seed=99),
                        interpolation='nearest', alpha=0.85)
 
-        axon_rgba               = np.zeros((*axon_lbl.shape, 4), dtype=np.float32)
-        axon_rgba[axon_lbl > 0] = [0.75, 0.75, 0.75, 0.55]
-        ax_over.imshow(axon_rgba, interpolation='nearest')
+        axon_boundary = np.zeros((*axon_lbl.shape, 4), dtype=np.float32)           # ← CHANGED
+        binary_axon   = (axon_lbl > 0).astype(np.uint8)                            # ← NEW
+        contours, _   = cv2.findContours(                                           # ← NEW
+            binary_axon, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE                # ← NEW
+        )                                                                           # ← NEW
+        contour_mask  = np.zeros(axon_lbl.shape, dtype=np.uint8)                   # ← NEW
+        cv2.drawContours(contour_mask, contours, -1, 1, thickness=1)               # ← NEW
+        axon_boundary[contour_mask == 1] = [0.9, 0.15, 0.15, 0.9]                 # ← NEW — red, 90% opacity
+        ax_over.imshow(axon_boundary, interpolation='nearest')   
 
         if df is not None and not df.empty and 'x' in df.columns and 'y' in df.columns:
             ax_over.scatter(df['y'].values, df['x'].values,
