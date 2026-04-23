@@ -4,7 +4,7 @@ segment/segment.py
 Core segmentation logic for DeepAxon.
 - Position-aware Hann window blending (9-position grid)
 - 50% overlap patching
-- Center crop
+- Reflect padding (right side) for full-image coverage
 - Weak CLAHE for contrast standardisation (configurable)
 - Per-patch normalisation matching original training pipeline (L2 axis=1)
 - BGW output (Black=background, Grey=myelin, White=axon)
@@ -197,6 +197,8 @@ def load_model(
 
 
 # ─── Segment single image (CROPPED VERSION) ─────────────────────────────────────────────────────
+# Kept for reference — switch back by uncommenting this and commenting out
+# the PADDED VERSION below. Also re-enable center_crop import in utils.helpers.
 
 # def segment_image(img_path, model, patch_size=256, log=None, use_clahe=False):
 #     t0   = time.time()
@@ -248,6 +250,12 @@ def load_model(
 #     return result, elapsed, crop_h, crop_w
 
 # ─── Segment single image (PADDED VERSION) ─────────────────────────────────────────────────────
+def _pad_for_patchify(size, patch_size, step):             
+    if size <= patch_size:                                  
+        return patch_size - size                           
+    n_steps = (size - patch_size + step - 1) // step       
+    needed  = n_steps * step + patch_size                  
+    return max(0, needed - size)                            
 
 def segment_image(img_path, model, patch_size=256, log=None, use_clahe=False):
     t0   = time.time()
@@ -261,9 +269,9 @@ def segment_image(img_path, model, patch_size=256, log=None, use_clahe=False):
     # img_proc = center_crop(img, patch_size)
 
     # ── Pad to next multiple of patch_size ────────────────────────────────
-    pad_h    = (patch_size - orig_h % patch_size) % patch_size
-    pad_w    = (patch_size - orig_w % patch_size) % patch_size
-    img_proc = np.pad(img, ((0, pad_h), (0, pad_w)), mode='constant', constant_values=0)
+    pad_h = _pad_for_patchify(orig_h, patch_size, step) 
+    pad_w = _pad_for_patchify(orig_w, patch_size, step)      
+    img_proc = np.pad(img, ((0, pad_h), (0, pad_w)), mode='reflect')  # ← CHANGED
 
     proc_h, proc_w = img_proc.shape[:2]
 
@@ -273,8 +281,24 @@ def segment_image(img_path, model, patch_size=256, log=None, use_clahe=False):
     # Patchify
     patches        = patchify(img_to_patch, (patch_size, patch_size), step=step)
     n_rows, n_cols = patches.shape[:2]
+    n_cols_real = sum(1 for j in range(n_cols) if j * step < orig_w)  # ← NEW
+    n_rows_real = sum(1 for i in range(n_rows) if i * step < orig_h)  # ← NEW
+    
+    # ── DIAGNOSTIC ────────────────────────────────────────────────
+    #print(f"orig:    {orig_h} x {orig_w}")
+    #print(f"padded:  {proc_h} x {proc_w}")
+    #print(f"patches: {n_rows} rows x {n_cols} cols")
+    #print(f"step:    {step}")
+    #print(f"last patch col starts at: {(n_cols-1)*step}, ends at: {(n_cols-1)*step + patch_size}")
+    #print(f"last patch row starts at: {(n_rows-1)*step}, ends at: {(n_rows-1)*step + patch_size}")
+    #print(f"rightmost pixel covered: {(n_cols-1)*step + patch_size}")
+    #print(f"bottommost pixel covered: {(n_rows-1)*step + patch_size}")
+    #print(f"uncovered right strip: {orig_w - ((n_cols-1)*step + patch_size)} px")
+    #print(f"uncovered bottom strip: {orig_h - ((n_rows-1)*step + patch_size)} px")
+    # ── END DIAGNOSTIC ────────────────────────────────────────────
 
-    pred_img = np.zeros((proc_h, proc_w), dtype=float)
+    pred_img    = np.zeros((proc_h, proc_w), dtype=float)
+    weight_img  = np.zeros((proc_h, proc_w), dtype=float)          # ← NEW  
 
     for i in range(n_rows):
         for j in range(n_cols):
@@ -289,13 +313,18 @@ def segment_image(img_path, model, patch_size=256, log=None, use_clahe=False):
             pred = pred.argmax(dim=1).squeeze(0)
             pred = pred.cpu().numpy()
 
-            pos  = get_pos((n_rows, n_cols), i, j)
+            pos  = get_pos((n_rows_real, n_cols_real), i, j)  # ← CHANGED
             hann = hann_window(pos, patch_size)
             adj  = pred * hann
 
             i_start = i * step
             j_start = j * step
             pred_img[i_start:i_start + patch_size, j_start:j_start + patch_size] += adj
+            weight_img[i_start:i_start + patch_size, j_start:j_start + patch_size] += hann  # ← NEW
+
+    # Normalize by accumulated weights before rounding                # ← NEW
+    weight_img  = np.where(weight_img == 0, 1, weight_img)           # ← NEW — avoid div by zero
+    pred_img    = pred_img / weight_img                               # ← NEW
 
     pred_img = np.round(pred_img).astype(int)
 
