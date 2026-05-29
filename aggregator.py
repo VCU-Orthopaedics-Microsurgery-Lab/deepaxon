@@ -3,7 +3,7 @@ aggregator.py
 
 Reads all Wave 1 SW result.json files and produces:
 
-    wave1_all_results.csv   — flat dump of all 3,840 results
+    wave1_all_results.csv   — flat dump of all 5,760 results
     wave1_summary.csv       — mean ± SD per arch/encoder/weights across seeds and splits
     table2.csv              — architecture comparison (encoder fixed resnet34, optimal weights)
     table3.csv              — encoder comparison (winning arch, optimal weights)

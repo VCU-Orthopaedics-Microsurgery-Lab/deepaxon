@@ -9,7 +9,7 @@ Must be run after:
 
 Two steps:
 
-    Step 2a — OAT + matrix aug parameter sweep (2,080 jobs)
+    Step 2a — OAT + matrix aug parameter sweep (2,065 jobs)
         One aug type varied at a time, all others fixed at production defaults.
         Identifies optimal parameters per aug type.
 
