@@ -320,18 +320,24 @@ def train_model(
     aug_counts = {}
     if use_aug:
         log.rule("AUGMENTATION")
-        X_train, Y_train, aug_count, aug_counts = augment_dataset_np(X_train, Y_train)
+        X_train, Y_train, aug_count, aug_counts = augment_dataset_np(  
+            X_train, Y_train,                                           
+            aug_params=run_cfg.get('aug_params') if run_cfg else None,  
+        )
         aug_pct = round(aug_count / len(X_train) * 100, 1)
         log.success(f"{aug_count}/{len(X_train)} patches modified ({aug_pct}%)")
         log.info(
             f"  Geometric   — H-flip: {aug_counts['hflip']}  |  "
             f"V-flip: {aug_counts['vflip']}  |  "
-            f"Rotation: {aug_counts['rotation']}"
+            f"Rotation: {aug_counts['rotation']}  |  "
+            f"Elastic: {aug_counts['elastic']}"                          
         )
         log.info(
             f"  Photometric — Brightness: {aug_counts['brightness']}  |  "
             f"Gamma: {aug_counts['gamma']}  |  "
-            f"Noise: {aug_counts['noise']}"
+            f"Noise: {aug_counts['noise']}  |  "                         
+            f"Blur: {aug_counts['blur']}  |  "                           
+            f"CLAHE: {aug_counts['clahe']}"                              
         )
 
     # ── Build model ────────────────────────────────────────────────────────────
