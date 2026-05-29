@@ -19,6 +19,7 @@ from __future__ import annotations
 import numpy as np
 from pathlib import Path
 from typing import Optional
+import math
 
 
 # ─── Phenotype detection ──────────────────────────────────────────────────────
@@ -135,7 +136,7 @@ def stratified_split(
     regen_sel    = [regen_images[i] for i in sorted(regen_sample)]
 
     # Split each phenotype into train/val
-    n_val_per_class = max(1, round(n_per_class * val_fraction))
+    n_val_per_class = max(1, math.floor(n_per_class * val_fraction + 0.5))
     if n_val_per_class < 1:
         raise ValueError(
             f"val set too small: {n_val_per_class} per phenotype at "

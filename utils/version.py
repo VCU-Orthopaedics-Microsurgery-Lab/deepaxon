@@ -7,8 +7,8 @@ Do not put version in config.json (user-editable) or hardcode it elsewhere.
 """
 import sys
 
-__version__ = "5.0.0"
-__codename__ = "v5_pytorch"
+__version__ = "5.1.0"
+__codename__ = "v5_analysis"
 
 def get_env_info():
     info = {

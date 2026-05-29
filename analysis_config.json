@@ -10,15 +10,19 @@
     "splits": {
         "ratios": [
             [
-                70,
-                30
+                67,
+                33
             ],
             [
                 80,
                 20
+            ],
+            [
+                93,
+                7
             ]
         ],
-        "_ratios_note": "[train_pct, val_pct] \u2014 90/10 added automatically when n_images >= 40",
+        "_ratios_note": "[train_pct, val_pct] — phenotype-balanced approximations. 67/33 = 5 val per class, 80/20 = 3 val per class, 93/7 = 1 val per class at n=30",
         "auto_90_10_threshold": 40,
         "seeds": [
             1,
@@ -120,27 +124,27 @@
                 "encoder": "densenet169"
             },
             {
-                "arch": "attention_unet",
+                "arch": "deeplabv3+",
                 "encoder": "resnet34"
             },
             {
-                "arch": "attention_unet",
+                "arch": "deeplabv3+",
                 "encoder": "resnet50"
             },
             {
-                "arch": "attention_unet",
+                "arch": "deeplabv3+",
                 "encoder": "efficientnet-b3"
             },
             {
-                "arch": "attention_unet",
+                "arch": "deeplabv3+",
                 "encoder": "efficientnet-b4"
             },
             {
-                "arch": "attention_unet",
+                "arch": "deeplabv3+",
                 "encoder": "densenet121"
             },
             {
-                "arch": "attention_unet",
+                "arch": "deeplabv3+",
                 "encoder": "densenet169"
             }
         ],
@@ -255,5 +259,136 @@
         "cpus_per_task": 4,
         "max_concurrent": 60,
         "_concurrency_note": "60 concurrent jobs \u2014 moderately greedy across 20 H100 GPUs (athena531-534). MaxJobsPU=80 per cluster policy."
+    },
+    
+    "wave2": {
+        "_note": "Aug parameter sweep on winning model only. Triggered manually after Wave 1 review. All aug types OFF except the one being swept (OAT design). Step 2b compares optimized aug ON vs Wave 1 aug OFF baseline.",
+
+        "production_defaults": {
+            "_note": "Fixed values for all aug types not being swept. All probabilities 0.0 — one aug active at a time.",
+            "hflip_prob":        0.0,
+            "vflip_prob":        0.0,
+            "rotation_prob":     0.0,
+            "rotation_deg":      15,
+            "brightness_prob":   0.0,
+            "brightness_scale":  [0.80, 1.20],
+            "brightness_offset": [-0.10, 0.10],
+            "gamma_prob":        0.0,
+            "gamma_range":       [0.70, 1.40],
+            "noise_prob":        0.0,
+            "noise_sigma":       0.02,
+            "blur_prob":         0.0,
+            "blur_sigma":        1.0,
+            "elastic_prob":      0.0,
+            "elastic_alpha":     20,
+            "elastic_sigma":     8,
+            "clahe_prob":        0.0,
+            "clahe_clip":        1.5,
+            "clahe_tile":        16
+        },
+
+        "hflip": {
+            "_type": "OAT",
+            "_sweep": "probability only",
+            "prob_levels": [0.25, 0.50, 0.75, 1.00]
+        },
+
+        "vflip": {
+            "_type": "OAT",
+            "_sweep": "probability only",
+            "prob_levels": [0.25, 0.50, 0.75, 1.00]
+        },
+
+        "rotation_prob": {
+            "_type": "OAT",
+            "_sweep": "probability only — intensity fixed at production default (15°)",
+            "prob_levels": [0.25, 0.50, 0.75, 1.00],
+            "fixed_intensity_deg": 15
+        },
+
+        "rotation_intensity": {
+            "_type": "OAT",
+            "_sweep": "intensity only — prob fixed at 0.50",
+            "fixed_prob": 0.50,
+            "intensity_levels_deg": [15, 45, 90, 180, 360]
+        },
+
+        "brightness": {
+            "_type": "matrix",
+            "_sweep": "4 prob × 7 intensity = 28 combinations",
+            "prob_levels": [0.25, 0.50, 0.75, 1.00],
+            "intensity_levels": [
+                {"scale": [0.30, 0.70], "offset": [-0.30,  0.00]},
+                {"scale": [0.55, 0.90], "offset": [-0.20,  0.05]},
+                {"scale": [0.75, 1.10], "offset": [-0.15,  0.10]},
+                {"scale": [0.80, 1.20], "offset": [-0.10,  0.10]},
+                {"scale": [0.85, 1.35], "offset": [-0.05,  0.15]},
+                {"scale": [0.90, 1.50], "offset": [ 0.00,  0.20]},
+                {"scale": [0.95, 1.80], "offset": [ 0.05,  0.30]}
+            ],
+            "_current_level": 4,
+            "_current_note": "Level 4 = current production values"
+        },
+
+        "gamma": {
+            "_type": "matrix",
+            "_sweep": "4 prob × 7 intensity = 28 combinations",
+            "prob_levels": [0.25, 0.50, 0.75, 1.00],
+            "intensity_levels": [
+                [0.20, 0.50],
+                [0.40, 0.75],
+                [0.55, 1.00],
+                [0.70, 1.40],
+                [0.80, 1.80],
+                [0.60, 2.20],
+                [0.40, 3.00]
+            ],
+            "_current_level": 4,
+            "_current_note": "Level 4 = current production values"
+        },
+
+        "noise": {
+            "_type": "matrix",
+            "_sweep": "4 prob × 6 intensity = 24 combinations",
+            "prob_levels": [0.25, 0.50, 0.75, 1.00],
+            "sigma_levels": [0.001, 0.01, 0.02, 0.05, 0.08, 0.12],
+            "_current_level": 3,
+            "_current_note": "Level 3 = current production sigma"
+        },
+
+        "gaussian_blur": {
+            "_type": "matrix",
+            "_sweep": "4 prob × 5 sigma = 20 combinations",
+            "prob_levels": [0.25, 0.50, 0.75, 1.00],
+            "sigma_levels": [0.5, 1.0, 1.5, 2.5, 4.0],
+            "_note": "New aug type — no production default. Production prob = 0.0."
+        },
+
+        "elastic": {
+            "_type": "matrix_3d",
+            "_sweep": "4 prob × 5 alpha × 5 sigma = 100 combinations",
+            "prob_levels": [0.25, 0.50, 0.75, 1.00],
+            "alpha_levels": [5, 10, 20, 40, 80],
+            "sigma_levels": [3, 5, 8, 12, 20],
+            "_note": "New aug type. alpha = displacement magnitude, sigma = smoothness. U-Net paper values scaled for 256px."
+        },
+
+        "clahe": {
+            "_type": "matrix_3d",
+            "_sweep": "4 prob × 7 clip × 7 tile = 196 combinations",
+            "prob_levels": [0.25, 0.50, 0.75, 1.00],
+            "clip_levels": [0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0],
+            "tile_levels": [128, 64, 32, 16, 8, 4, 2],
+            "_current_clip": 1.5,
+            "_current_tile": 16,
+            "_current_note": "Current segment.py CLAHE values used as anchor"
+        },
+
+        "step2b": {
+            "_note": "Aug ON (optimized from 2a) only — 5 seeds × 70/30 split. Aug OFF baseline pulled from Wave 1 SW results by matching arch/encoder/weights/seed/split. No redundant aug_off jobs.",
+            "seeds": [1, 2, 3, 4, 5],
+            "split": "best_split from winner.json",
+            "condition": "aug_on_only"
+        }
     }
 }
