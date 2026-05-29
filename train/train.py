@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import sys
 import socket
+import json
+import os
 import numpy as np
 from pathlib import Path
 from datetime import datetime
@@ -27,6 +29,7 @@ from train.dataset.augment import augment_dataset_np
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 import segmentation_models_pytorch as smp
+from utils.metrics import compute_epoch_metrics, compute_all_metrics
 
 # ─── Global Config ────────────────────────────────────────────────────────────
 _config    = load_config()
@@ -41,6 +44,7 @@ REDUCE_LR_FACTOR     = _train_cfg.get("reduce_lr_factor",     0.5)
 REDUCE_LR_MIN_LR     = _train_cfg.get("reduce_lr_min_lr",     1e-6)
 EARLY_STOP_PATIENCE  = _train_cfg.get("early_stop_patience",  40)
 EARLY_STOP_MIN_DELTA = _train_cfg.get("early_stop_min_delta", 0.001)
+WEIGHT_DECAY         = _train_cfg.get("weight_decay",         0.01)
 DICE_WEIGHT          = _train_cfg.get("dice_weight",          0.5)
 CE_WEIGHT            = _train_cfg.get("ce_weight",            0.5)
 
@@ -69,6 +73,40 @@ def weighted_dice_loss(pred: torch.Tensor, target: torch.Tensor, weights: torch.
     dice   = (2.0 * inter + 1e-6) / (union + 1e-6)
     loss   = 1.0 - dice
     return (weights * loss).sum() / weights.sum()
+
+# ─────────── Parametric arch/encoder: _ARCH_MAP + build_model() ─────────────
+_ARCH_MAP = {
+    'unet++':       smp.UnetPlusPlus,
+    'unet':         smp.Unet,
+    'manet':        smp.MAnet,
+    'deeplabv3+':   smp.DeepLabV3Plus,        
+}                                                                
+                                                                     
+def build_model(arch: str, encoder: str, device):                   
+    """                                                              
+    Instantiate a segmentation model by arch/encoder name.           
+    arch:    'unet++' | 'unet' | 'manet' | 'deeplabv3+'         
+    encoder: 'resnet34' | 'resnet50'                                 
+             'efficientnet-b3' | 'efficientnet-b4'                   
+             'densenet121' | 'densenet169'                           
+    All combinations valid per segmentation-models-pytorch.          
+    encoder_weights: imagenet for all.                               
+    """                                                              
+    arch_key = arch.lower()                                          
+    if arch_key not in _ARCH_MAP:                                    
+        raise ValueError(                                            
+            f"Unknown arch '{arch}' — must be one of {list(_ARCH_MAP)}" 
+        )                                                            
+    model_cls = _ARCH_MAP[arch_key]                                  
+    model = model_cls(                                               
+        encoder_name=encoder,                                        
+        encoder_weights='imagenet',                                  
+        in_channels=1,                                               
+        classes=3,                                                   
+        activation=None,                                             
+    )                                                                
+    return model.to(device)                                          
+
 
 # ─── Training logger ──────────────────────────────────────────────────────────
 
@@ -211,15 +249,18 @@ def prepare_dataset(images_dir: str, mag: str, log: DeepAxonLogger) -> dict:
 # ─── Main training function ───────────────────────────────────────────────────
 
 def train_model(
-    images_dir: str,
-    model_name: str,
-    epochs: int,
-    batch_size: int,
-    use_aug: bool,
-    log: DeepAxonLogger,
-    mag: str,
-    model_type: str = 'unet++'
-):
+        images_dir: str,
+        model_name: str,
+        epochs: int,
+        batch_size: int,
+        use_aug: bool,
+        log: DeepAxonLogger,
+        mag: str,
+        arch: str = 'unet++',                                      
+        encoder: str = 'resnet34',                                  
+        run_cfg: dict | None = None,                                
+    ):
+
     """
     Full training pipeline.
 
@@ -263,10 +304,12 @@ def train_model(
 
     # ── Load patches ─────────────────────────────────────────────────
     log.rule("LOADING PATCHES")
-    X_train, Y_train, X_val, Y_val, split_mode, val_stems= load_all_patches(
+    X_train, Y_train, X_val, Y_val, split_mode, val_stems = load_all_patches(
         str(paths['images_dir']),
         str(paths['masks_dir']),
         log=log,
+        train_stems = run_cfg.get('_train_stems') if run_cfg else None,  
+        val_stems   = run_cfg.get('_val_stems')   if run_cfg else None,  
     )
 
     Y_train = Y_train.astype(np.int64)
@@ -293,25 +336,19 @@ def train_model(
 
     # ── Build model ────────────────────────────────────────────────────────────
     device        = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    CLASS_WEIGHTS = torch.tensor(_class_weights_cfg, dtype=torch.float32).to(device)
+    _weights = run_cfg.get('class_weights', _class_weights_cfg) if run_cfg else _class_weights_cfg
+    CLASS_WEIGHTS = torch.tensor(_weights, dtype=torch.float32).to(device)  
     _ce_loss      = torch.nn.CrossEntropyLoss(weight=CLASS_WEIGHTS)
 
     def loss_fn(pred, target):
         dice = weighted_dice_loss(pred, target, CLASS_WEIGHTS)
         ce   = _ce_loss(pred, target)
         return DICE_WEIGHT * dice + CE_WEIGHT * ce
-
-    model = smp.UnetPlusPlus(
-        encoder_name="resnet34",
-        encoder_weights="imagenet",
-        in_channels=1,
-        classes=3,
-        activation=None,  # raw logits — loss handles softmax internally
-    )
-    model     = model.to(device)
+    
+    model = build_model(arch, encoder, device)
     n_params  = sum(p.numel() for p in model.parameters())
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode='min', factor=REDUCE_LR_FACTOR,
         patience=REDUCE_LR_PATIENCE, min_lr=REDUCE_LR_MIN_LR
@@ -321,9 +358,9 @@ def train_model(
     log.rule("TRAINING SETUP")
     log.log_dict({
         # Architecture
-        'Architecture':     'UNet++ (DeepAxon++) — resnet34 encoder, imagenet weights',
+        'Architecture':     f"{arch} — {encoder} encoder, imagenet weights",
         'Parameters':       f"{n_params:,}",
-        'Class weights':    f"bg={_class_weights_cfg[0]} myelin={_class_weights_cfg[1]} axon={_class_weights_cfg[2]}",
+        'Class weights':    f"bg={_weights[0]} myelin={_weights[1]} axon={_weights[2]}",
         'Device':           str(device),
         # Dataset
         'Train patches':    len(X_train),
@@ -334,7 +371,7 @@ def train_model(
         'Epoch limit':      epochs,
         'Augmentation':     f"ON — geo_prob={GEO_PROB:.2f} photo_prob={PHOTO_PROB:.2f}" if use_aug else "OFF",
         'Loss function':    f"Weighted Dice ({DICE_WEIGHT}) + CrossEntropy ({CE_WEIGHT})",
-        'Optimizer':        f"Adam lr={LEARNING_RATE}",
+        'Optimizer':        f"AdamW lr={LEARNING_RATE} wd={WEIGHT_DECAY}",
         'ReduceLR':         f"patience={REDUCE_LR_PATIENCE}, factor={REDUCE_LR_FACTOR}, min_lr={REDUCE_LR_MIN_LR} — monitors val_loss",
         'EarlyStopping':    f"patience={EARLY_STOP_PATIENCE}, min_delta={EARLY_STOP_MIN_DELTA} — monitors val_loss",
         'Checkpoint':       "best val_loss",
@@ -351,10 +388,13 @@ def train_model(
     val_loader   = DataLoader(TensorDataset(X_val_t,   Y_val_t),   batch_size=batch_size, shuffle=False)
 
     # ── Callbacks setup ────────────────────────────────────────────────────────
-    model_dir  = get_model_dir(images_dir)
+    if run_cfg is not None:                                          
+        model_dir = Path(run_cfg['output']['models_dir'])            
+    else:                                                            
+        model_dir = get_model_dir(images_dir)                       
     model_dir.mkdir(parents=True, exist_ok=True)
     model_path = model_dir / f"{model_name}.pt"
-
+    
     # Best checkpoint trackers — all from the same epoch (best val_loss)
     best_val_loss         = float('inf')
     best_val_bg           = 0.0
@@ -384,12 +424,12 @@ def train_model(
         'codename':            __codename__,
         'trained_date':        datetime.now().strftime('%Y-%m-%d'),
         # Architecture
-        'architecture':        'UNet++',
-        'encoder':             'resnet34',
+        'architecture':        arch,
+        'encoder':             encoder,
         'encoder_weights':     'imagenet',
         'in_channels':         1,
         'classes':             ['background', 'myelin', 'axon'],
-        'class_weights':       _class_weights_cfg,
+        'class_weights':       _weights,
         'input_size':          256,
         'activation':          'none (raw logits)',
         # Inference contract
@@ -416,6 +456,12 @@ def train_model(
         'reduce_lr_patience':  REDUCE_LR_PATIENCE,
         'early_stop_patience': EARLY_STOP_PATIENCE,
         'early_stop_min_delta':EARLY_STOP_MIN_DELTA,
+        'n_images':        run_cfg.get('n_images')    if run_cfg else None,
+        'val_fraction':    run_cfg.get('val_fraction') if run_cfg else None,  
+        'train_pct':       run_cfg.get('train_pct')   if run_cfg else None,  
+        'val_pct':         run_cfg.get('val_pct')     if run_cfg else None,  
+        'seed':            run_cfg.get('seed')        if run_cfg else None,  
+        'run_id':          run_cfg.get('run_id')      if run_cfg else None,
         # Environment
         'gpu':                 torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU',
         'torch_version':       str(torch.__version__),
@@ -474,21 +520,20 @@ def train_model(
         # — Aggregate metrics —
         train_loss /= len(X_train_t)
         val_loss   /= len(X_val_t)
-        train_dice  = smp.metrics.f1_score( train_tp, train_fp, train_fn, train_tn, reduction="macro").item()
-        val_dice    = smp.metrics.f1_score( val_tp,   val_fp,   val_fn,   val_tn,   reduction="macro").item()
-        train_iou   = smp.metrics.iou_score(train_tp, train_fp, train_fn, train_tn, reduction="macro").item()
-        val_iou     = smp.metrics.iou_score(val_tp,   val_fp,   val_fn,   val_tn,   reduction="macro").item()
         current_lr  = optimizer.param_groups[0]['lr']
-
-        # — Per-class dice (background=class 0, myelin=class 1, axon=class 2) —
-        train_dice_bg   = smp.metrics.f1_score(train_tp, train_fp, train_fn, train_tn, reduction="none")[:, 0].mean().item()
-        train_dice_myel = smp.metrics.f1_score(train_tp, train_fp, train_fn, train_tn, reduction="none")[:, 1].mean().item()
-        train_dice_axon = smp.metrics.f1_score(train_tp, train_fp, train_fn, train_tn, reduction="none")[:, 2].mean().item()
-        val_dice_bg     = smp.metrics.f1_score(val_tp,   val_fp,   val_fn,   val_tn,   reduction="none")[:, 0].mean().item()
-        val_dice_myel   = smp.metrics.f1_score(val_tp,   val_fp,   val_fn,   val_tn,   reduction="none")[:, 1].mean().item()
-        val_dice_axon   = smp.metrics.f1_score(val_tp,   val_fp,   val_fn,   val_tn,   reduction="none")[:, 2].mean().item()
-     
         
+        train_m = compute_epoch_metrics(train_tp, train_fp, train_fn, train_tn)  
+        val_m   = compute_epoch_metrics(val_tp,   val_fp,   val_fn,   val_tn)  
+        
+        train_dice = train_m['dice_macro']   
+        val_dice   = val_m['dice_macro']     
+        train_iou  = train_m['iou_macro']    
+        val_iou    = val_m['iou_macro']      
+        
+        # — Per-class dice (background=class 0, myelin=class 1, axon=class 2) —
+        train_dice_bg   = train_m['dice_bg'];    train_dice_myel = train_m['dice_myelin'];  train_dice_axon = train_m['dice_axon']  
+        val_dice_bg     = val_m['dice_bg'];      val_dice_myel   = val_m['dice_myelin'];    val_dice_axon   = val_m['dice_axon']    
+     
         # — Log history —
         history['loss'].append(train_loss);      history['val_loss'].append(val_loss)
         history['dice_coef'].append(train_dice); history['val_dice_coef'].append(val_dice)
@@ -571,6 +616,30 @@ def train_model(
     # ── Load best weights ──────────────────────────────────────────────────────
     model.load_state_dict(checkpoint['model_state_dict'])
 
+    # ── Post-training evaluation — all metrics at best checkpoint ─────────────
+    log.rule("POST-TRAINING EVALUATION")
+    model.eval()
+
+    all_preds  = []
+    all_labels = []
+    with torch.no_grad():
+        for xb, yb in val_loader:
+            xb, yb = xb.to(device), yb.to(device)
+            preds  = model(xb)
+            all_preds.append(preds.argmax(dim=1).cpu())
+            all_labels.append(yb.cpu())
+
+    all_preds  = torch.cat(all_preds)
+    all_labels = torch.cat(all_labels)
+
+    eval_metrics = compute_all_metrics(all_preds, all_labels, device)  
+
+    log.info(f"Dice      — macro: {eval_metrics['dice_macro']:.4f}  | bg: {eval_metrics['dice_bg']:.4f}  | myelin: {eval_metrics['dice_myelin']:.4f}  | axon: {eval_metrics['dice_axon']:.4f}")
+    log.info(f"IoU       — macro: {eval_metrics['iou_macro']:.4f}   | bg: {eval_metrics['iou_bg']:.4f}   | myelin: {eval_metrics['iou_myelin']:.4f}   | axon: {eval_metrics['iou_axon']:.4f}")
+    log.info(f"Precision — macro: {eval_metrics['precision_macro']:.4f} | bg: {eval_metrics['precision_bg']:.4f} | myelin: {eval_metrics['precision_myelin']:.4f} | axon: {eval_metrics['precision_axon']:.4f}")
+    log.info(f"Recall    — macro: {eval_metrics['recall_macro']:.4f} | bg: {eval_metrics['recall_bg']:.4f} | myelin: {eval_metrics['recall_myelin']:.4f} | axon: {eval_metrics['recall_axon']:.4f}")
+    log.info(f"HD95      — macro: {eval_metrics['hd95_macro']:.4f}  | bg: {eval_metrics['hd95_bg']:.4f}  | myelin: {eval_metrics['hd95_myelin']:.4f}  | axon: {eval_metrics['hd95_axon']:.4f}")
+    
     # ── Checkpoint summary ─────────────────────────────────────────────────────
     training_logger.on_train_end({
         'epoch':  best_checkpoint_epoch,
@@ -582,24 +651,59 @@ def train_model(
         'path':   model_path.name,
     })
 
-   # ── Final summary ──────────────────────────────────────────────────────────
+    # ── Final summary ──────────────────────────────────────────────────────────
     t_elapsed               = datetime.now() - t_start
     elapsed_str             = f"{int(t_elapsed.total_seconds() // 60)}m {int(t_elapsed.total_seconds() % 60)}s"
     total_patches_processed = n_epochs * len(X_train)
 
     log.finalize(summary={
-        # Run info
-        'Model':         str(model_path),
-        'GPU':           torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU',
-        'Training time': elapsed_str,
-        'Epochs':        f"{n_epochs} (early stopped)" if early_stopped else str(n_epochs),
-        'Patches':       total_patches_processed,
-        'Augmented':     aug_count,
-        # Best checkpoint
-        'Best epoch':    best_checkpoint_epoch,
-        'Best val_loss': f"{best_val_loss:.3f}",
-        'Best val_bg':   f"{best_val_bg:.3f}",
-        'Best val_ax':   f"{best_val_axon:.3f}",
-        'Best val_my':   f"{best_val_myel:.3f}",
-        'Best val_IoU':  f"{best_val_iou:.3f}",
+        'Model':             str(model_path),
+        'GPU':               torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU',
+        'Training time':     elapsed_str,
+        'Epochs':            f"{n_epochs} (early stopped)" if early_stopped else str(n_epochs),
+        'Patches processed': total_patches_processed,
+        'Augmented':         aug_count,
+        'Best epoch':        best_checkpoint_epoch,
+        'Best val_loss':     f"{best_val_loss:.4f}",
+        'Dice macro':        f"{eval_metrics['dice_macro']:.4f}",
+        'IoU macro':         f"{eval_metrics['iou_macro']:.4f}",
+        'Precision macro':   f"{eval_metrics['precision_macro']:.4f}",
+        'Recall macro':      f"{eval_metrics['recall_macro']:.4f}",
+        'HD95 macro':        f"{eval_metrics['hd95_macro']:.4f}",
+        'Dice axon':         f"{eval_metrics['dice_axon']:.4f}",
+        'Dice myelin':       f"{eval_metrics['dice_myelin']:.4f}",
+        'HD95 axon':         f"{eval_metrics['hd95_axon']:.4f}",
+        'HD95 myelin':       f"{eval_metrics['hd95_myelin']:.4f}",
     })
+    
+    if run_cfg is not None:                                         
+        results_dir = Path(run_cfg['output']['results_dir']) / run_cfg['run_id']  
+        results_dir.mkdir(parents=True, exist_ok=True)       
+              
+        result = {
+            'run_id':            run_cfg['run_id'],
+            'stage':             run_cfg.get('stage', 'sweep'),
+            'wave':              run_cfg.get('wave', 1),
+            'arch':              arch,
+            'encoder':           encoder,
+            'class_weights':     _weights,
+            'n_images':          run_cfg.get('n_images'),
+            'train_pct':         run_cfg.get('train_pct'),
+            'val_pct':           run_cfg.get('val_pct'),
+            'seed':              run_cfg.get('seed'),
+            'augmentation':      use_aug,
+            'checkpoint_metric': 'val_loss',
+            'best_epoch':        best_checkpoint_epoch,
+            'epochs_completed':  n_epochs,
+            'early_stopped':     early_stopped,
+            'best_val_loss':     round(best_val_loss, 4),
+            'train_stems':       run_cfg.get('train_stems', []),
+            'val_stems':         run_cfg.get('val_stems',   []),
+            'model_path':        str(model_path),
+            **eval_metrics,                                          
+        }  
+                                                                 
+        result_path = results_dir / 'result.json'                  
+        with open(result_path, 'w') as f:                          
+            json.dump(result, f, indent=2)                          
+        log.success(f"Result written → {result_path}")             

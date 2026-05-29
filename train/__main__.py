@@ -224,6 +224,16 @@ def _load_run_config(config_path: str) -> dict:
         cfg = json.load(f)
 
     required = ['images_dir', 'mag', 'epochs', 'augmentation', 'batch_size']
+    # Analysis fields — optional for interactive runs, required for Wave 1/2
+    analysis_fields = ['arch', 'encoder', 'n_images', 'val_fraction', 'seed', 'run_id']  
+    is_analysis_run = any(k in cfg for k in analysis_fields)       
+    if is_analysis_run:                                             
+        missing_analysis = [k for k in analysis_fields if k not in cfg]  
+        if missing_analysis:                                        
+            raise ValueError(                                       
+                f"Analysis run detected but missing fields: {missing_analysis}"  
+            )   
+              
     missing  = [k for k in required if k not in cfg]
     if missing:
         raise ValueError(f"train_config.json missing required fields: {missing}")
@@ -236,9 +246,7 @@ def _load_run_config(config_path: str) -> dict:
         raise ValueError(f"'batch_size' must be a positive integer, got: {cfg['batch_size']}")
     if not os.path.isdir(cfg['images_dir']):
         raise FileNotFoundError(f"images_dir not found: {cfg['images_dir']}")
-
     return cfg
-
 
 def main():
     # ── Argument parsing ──────────────────────────────────────────────────────
@@ -270,16 +278,60 @@ def main():
         batch_size = int(run_cfg['batch_size'])
 
         images_path = Path(images_dir).resolve()
-        model_dir   = get_model_dir(str(images_path))
-        log_dir     = get_log_dir(str(images_path))
+        
+        if 'run_id' in run_cfg:                                          
+            model_dir = Path(run_cfg['output']['models_dir'])            
+        else:                                                            
+            model_dir = get_model_dir(str(images_path))  
+        
+        if 'run_id' in run_cfg:                                          
+            log_dir = Path(run_cfg['output']['logs_dir'])                
+        else:                                                            
+            log_dir = get_log_dir(str(images_path))
+                                 
         log_dir.mkdir(parents=True, exist_ok=True)
 
         timestamp  = datetime.now().strftime("%Y%m%d_%H%M%S")
-        model_name = run_cfg.get('model_name', '').strip() or f"{mag.lower()}_{timestamp}"
+        
+        if 'run_id' in run_cfg:                                          
+            model_name = run_cfg['run_id']                               
+        else:                                                            
+            model_name = run_cfg.get('model_name', '').strip() or f"{mag.lower()}_{timestamp}"  
 
         log_path = str(log_dir / f"{model_name}_training_log.txt")
         log      = DeepAxonLogger(log_path=log_path, program="DeepAxon Train")
+        
+        from train.dataset.split import (
+            build_image_manifest, stratified_split, split_summary
+        )
 
+        is_analysis = 'run_id' in run_cfg
+        if is_analysis:
+            manifest = build_image_manifest(
+                images_dir   = run_cfg['images_dir'] + '/images',
+                ctrl_prefix  = run_cfg.get('ctrl_prefix',  'ctrl_'),
+                regen_prefix = run_cfg.get('regen_prefix', 'regen_'),
+            )
+            train_manifest, val_manifest = stratified_split(
+                manifest     = manifest,
+                n_images     = run_cfg['n_images'],
+                val_fraction = run_cfg['val_fraction'],
+                seed         = run_cfg['seed'],
+            )
+            summary = split_summary(train_manifest, val_manifest)
+            run_cfg['train_stems'] = summary['train_stems']
+            run_cfg['val_stems']   = summary['val_stems']
+            run_cfg['_train_stems'] = summary['train_stems']
+            run_cfg['_val_stems']   = summary['val_stems']
+            log.rule("STRATIFIED SPLIT")
+            log.info(
+                f"Split: {summary['train_images']} train "
+                f"({summary['train_ctrl']} ctrl / {summary['train_regen']} regen) | "
+                f"{summary['val_images']} val "
+                f"({summary['val_ctrl']} ctrl / {summary['val_regen']} regen) | "
+                f"seed={run_cfg['seed']}"
+            )
+        
         log.rule("RUN CONFIGURATION")
         log.log_dict({
             'Mode':               'non-interactive (--config)',
@@ -295,13 +347,16 @@ def main():
         })
 
         train_model(
-            images_dir=str(images_path),
-            model_name=model_name,
-            epochs=epochs,
-            batch_size=batch_size,
-            use_aug=use_aug,
-            log=log,
-            mag=mag,
+            images_dir = run_cfg['images_dir'],
+            model_name = model_name,  
+            epochs     = run_cfg['epochs'],
+            batch_size = run_cfg['batch_size'],
+            use_aug    = run_cfg['augmentation'],
+            log        = log,
+            mag        = run_cfg['mag'],
+            arch       = run_cfg.get('arch',    'unet++'),              
+            encoder    = run_cfg.get('encoder', 'resnet34'),            
+            run_cfg    = run_cfg if is_analysis else None,              
         )
 
         console.print(f"\n[dim]Log saved to: {log_path}[/dim]")
@@ -319,9 +374,10 @@ def main():
 
     images_path = Path(images_dir).resolve()
     images_sub  = images_path / "images"
-    model_dir   = get_model_dir(str(images_path))
-    log_dir     = get_log_dir(str(images_path))
-    log_dir.mkdir(parents=True, exist_ok=True)
+    
+    model_dir   = get_model_dir(str(images_path))                   
+    log_dir     = get_log_dir(str(images_path))                     
+    log_dir.mkdir(parents=True, exist_ok=True)                      
 
     console.print("[yellow]Val set: auto-detected from val_ prefixed images (or 20% random split if none found)[/yellow]")
 

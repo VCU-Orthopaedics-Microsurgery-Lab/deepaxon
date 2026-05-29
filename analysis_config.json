@@ -1,0 +1,259 @@
+{
+    "_readme": "Master config for Wave 1/2 analysis runs. Read by wave1_launcher.py and wave2_launcher.py. Do NOT merge into train_config.json \u2014 that file drives single interactive runs only.",
+    "dataset": {
+        "images_dir": "/path/to/rb40x_v2_hprc",
+        "mag": "40X",
+        "ctrl_prefix": "ctrl_",
+        "regen_prefix": "regen_",
+        "_phenotype_note": "Images identified as control or regenerating by filename prefix"
+    },
+    "splits": {
+        "ratios": [
+            [
+                70,
+                30
+            ],
+            [
+                80,
+                20
+            ]
+        ],
+        "_ratios_note": "[train_pct, val_pct] \u2014 90/10 added automatically when n_images >= 40",
+        "auto_90_10_threshold": 40,
+        "seeds": [
+            1,
+            2,
+            3,
+            4,
+            5
+        ]
+    },
+    "learning_curve": {
+        "_note": "Fixed arch/encoder/weights \u2014 purpose is dataset sufficiency, not optimization",
+        "arch": "unet++",
+        "encoder": "resnet34",
+        "class_weights": [
+            3.0,
+            1.0,
+            1.0
+        ],
+        "dataset_sizes": [
+            10,
+            20,
+            30
+        ]
+    },
+    "sweep": {
+        "_note": "Full arch/encoder/weight sweep at n=30 only",
+        "dataset_size": 30,
+        "architectures": [
+            {
+                "arch": "unet++",
+                "encoder": "resnet34"
+            },
+            {
+                "arch": "unet++",
+                "encoder": "resnet50"
+            },
+            {
+                "arch": "unet++",
+                "encoder": "efficientnet-b3"
+            },
+            {
+                "arch": "unet++",
+                "encoder": "efficientnet-b4"
+            },
+            {
+                "arch": "unet++",
+                "encoder": "densenet121"
+            },
+            {
+                "arch": "unet++",
+                "encoder": "densenet169"
+            },
+            {
+                "arch": "unet",
+                "encoder": "resnet34"
+            },
+            {
+                "arch": "unet",
+                "encoder": "resnet50"
+            },
+            {
+                "arch": "unet",
+                "encoder": "efficientnet-b3"
+            },
+            {
+                "arch": "unet",
+                "encoder": "efficientnet-b4"
+            },
+            {
+                "arch": "unet",
+                "encoder": "densenet121"
+            },
+            {
+                "arch": "unet",
+                "encoder": "densenet169"
+            },
+            {
+                "arch": "manet",
+                "encoder": "resnet34"
+            },
+            {
+                "arch": "manet",
+                "encoder": "resnet50"
+            },
+            {
+                "arch": "manet",
+                "encoder": "efficientnet-b3"
+            },
+            {
+                "arch": "manet",
+                "encoder": "efficientnet-b4"
+            },
+            {
+                "arch": "manet",
+                "encoder": "densenet121"
+            },
+            {
+                "arch": "manet",
+                "encoder": "densenet169"
+            },
+            {
+                "arch": "attention_unet",
+                "encoder": "resnet34"
+            },
+            {
+                "arch": "attention_unet",
+                "encoder": "resnet50"
+            },
+            {
+                "arch": "attention_unet",
+                "encoder": "efficientnet-b3"
+            },
+            {
+                "arch": "attention_unet",
+                "encoder": "efficientnet-b4"
+            },
+            {
+                "arch": "attention_unet",
+                "encoder": "densenet121"
+            },
+            {
+                "arch": "attention_unet",
+                "encoder": "densenet169"
+            }
+        ],
+        "class_weights": [
+            [
+                1.0,
+                1.0,
+                1.0
+            ],
+            [
+                2.0,
+                1.0,
+                1.0
+            ],
+            [
+                3.0,
+                1.0,
+                1.0
+            ],
+            [
+                4.0,
+                1.0,
+                1.0
+            ],
+            [
+                1.0,
+                2.0,
+                1.0
+            ],
+            [
+                1.0,
+                3.0,
+                1.0
+            ],
+            [
+                1.0,
+                1.0,
+                2.0
+            ],
+            [
+                1.0,
+                1.0,
+                3.0
+            ],
+            [
+                2.0,
+                2.0,
+                1.0
+            ],
+            [
+                2.0,
+                1.0,
+                2.0
+            ],
+            [
+                1.0,
+                2.0,
+                2.0
+            ],
+            [
+                3.0,
+                2.0,
+                1.0
+            ],
+            [
+                3.0,
+                1.0,
+                2.0
+            ],
+            [
+                3.0,
+                2.0,
+                2.0
+            ],
+            [
+                3.0,
+                3.0,
+                1.0
+            ],
+            [
+                3.0,
+                1.0,
+                3.0
+            ]
+        ],
+        "_class_weights_note": "16 configs \u2014 [bg, myelin, axon]. Row 3 = rb40x_v1 production value."
+    },
+    "training": {
+        "epochs": 400,
+        "batch_size": 256,
+        "augmentation": false,
+        "learning_rate": 0.001,
+        "weight_decay": 0.01,
+        "_augmentation_note": "Wave 1 always aug OFF. Wave 2 launcher overrides this."
+    },
+    "output": {
+        "jobs_dir": "/path/to/deepaxon/analysis/jobs",
+        "results_dir": "/path/to/deepaxon/analysis/results",
+        "models_dir": "/path/to/deepaxon/analysis/models",
+        "logs_dir": "/path/to/deepaxon/analysis/logs"
+    },
+    "slurm": {
+        "partition": "gpu-h100",
+        "gres": "gpu:1",
+        "nodes": 1,
+        "time": "00:30:00",
+        "_time_note": "30 min ceiling \u2014 ~7 min observed per run on H100",
+        "mem": "32G",
+        "mail_type": "END,FAIL",
+        "mail_user": "your@email.edu",
+        "venv": "/path/to/deepaxon/venv",
+        "cpus_per_task": 4,
+        "max_concurrent": 60,
+        "_concurrency_note": "60 concurrent jobs \u2014 moderately greedy across 20 H100 GPUs (athena531-534). MaxJobsPU=80 per cluster policy."
+    }
+}
