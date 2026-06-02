@@ -1,7 +1,7 @@
 # DeepAxon — To-Do List
-**Updated:** May 2026 | **Branch:** v5_analysis
-**Previous sessions:** S1 Audit, S2 Bug fixing, S3 PyTorch migration, S4 Phenotype split, S5 Training overhaul, S6 Analysis pipeline
-**All changes through S6 committed and pushed to v5_analysis.**
+**Updated:** June 2026 | **Branch:** v5_analysis
+**Previous sessions:** S1 Audit, S2 Bug fixing, S3 PyTorch migration, S4 Phenotype split, S5 Training overhaul, S6 Analysis pipeline, S7 Morphometrics refactor + pipeline hardening
+**All changes through S7 committed and pushed to v5_analysis.**
 
 ---
 
@@ -16,14 +16,14 @@
 
 ## Section 1 — Critical
 
-**[CRIT-02] BGW Color Mapping — Partial**
-Practical verification complete (segmentation visually correct).
-Remaining: run morphometrics on a known sample, confirm g-ratio ~0.6–0.7 for healthy control nerve.
-Not blocking Wave 1 training. Blocking morphometric result trust.
+**[CRIT-02] BGW Color Mapping** ✅
+Segmentation visually confirmed correct on real images. G-ratio values physiologically
+plausible in current morphometrics outputs. Practical verification complete.
 
-**[CRIT-08] ROI Coordinate Space — Pending Workflow Change**
-Workflow changing to QuPath + GeoJSON. Address before NT Validation Study 5 processing.
-Not blocking analysis pipeline.
+**[CRIT-08] ROI Coordinate Space — Deferred**
+Deferred to QuPath migration project. Not blocking current analysis.
+Will be addressed when workflow transitions from Fiji ROI export to QuPath/GeoJSON.
+No action until that project begins.
 
 ---
 
@@ -58,9 +58,32 @@ Document expected format after Wave 2a review:
 `{ "optimized_params": { "hflip_prob": 0.75, ... } }`
 Add example to aggregator.py --wave 2a terminal output.
 
+**[ANAL-09] Production model retrain after Wave 3** 🟠
+No .pt files saved during analysis pipeline (save_checkpoint=False throughout).
+After Wave 3 completes and winner is selected, retrain once interactively:
+`python -m train`
+Names output `rb40x_v2.pt` — production model for Paper 1.
+
 ---
 
-## Section 3 — Docs
+## Section 3 — Morphometrics
+
+**[MORPH-01] File-level skip logic in morphometrics/__main__.py** 🟡
+Currently skips whole nerve if Morphometrics/ folder exists.
+Should skip individual images if {stem}_morphometrics.xlsx already exists.
+Allows adding new images to a nerve without reprocessing everything.
+
+**[MORPH-02] batch_axon/__main__.py — full run test** 🟡
+Confirm Provenance sheet writes correctly, study workbook structure intact.
+Test with a full study folder containing multiple animals and nerves.
+
+**[MORPH-03] Delete batch_axon/analyze_nerve.py** 🟡
+Moved to morphometrics/analyze_nerve.py. Old file still present — delete after
+confirming batch_axon/__main__.py imports correctly from new location.
+
+---
+
+## Section 4 — Docs
 
 **[DOC-01] README — v5_analysis update** 📄
 Update training section to reflect:
@@ -68,16 +91,14 @@ Update training section to reflect:
 - sbatch mode (`python -m train --config`) instead of srun interactive
 - v5_analysis branch
 - New analysis pipeline entry points
-
-**[DOC-02] G-ratio column names** 📄
-Currently `gratio_area` and `gratio_axes`. Consider `gratio_equiv_diam` / `gratio_mean_axes` before publication. Low priority.
+- Fine-tuning entry point (python -m train.finetune)
 
 **[DOC-03] Annotation protocol in README** 📄
 Add Training section covering minimum mask counts, phenotype balance, naming convention.
 
 ---
 
-## Section 4 — Post-Analysis / Paper 2 (do not implement mid-study)
+## Section 5 — Post-Analysis / Paper 2 (do not implement mid-study)
 
 These require full retraining or are Paper 2 scope. Listed here for reference only.
 
@@ -92,10 +113,11 @@ These require full retraining or are Paper 2 scope. Listed here for reference on
 - CRIT-08: QuPath/GeoJSON workflow
 - GEN-01: 100X pixel size calibration
 - GEN-04: Multi-GPU support
+- FINETUNE-01: Fine-tuning sbatch support (interactive only currently)
 
 ---
 
-## Section 5 — V2 Production Model (post-Paper 1)
+## Section 6 — V2 Production Model (post-Paper 1)
 
 Do not implement any of these mid-study — all require full retraining.
 
@@ -121,7 +143,7 @@ Do not implement any of these mid-study — all require full retraining.
 ✅ split.py — math.floor rounding, 3 splits (67/33, 80/20, 93/7), docstring updated
 ✅ data_loader.py — manifest mode, val_ prefix removed
 ✅ augment.py — parametric aug_params mode, elastic/blur/CLAHE added
-✅ train.py — aug_params passed through, log lines updated
+✅ train.py — aug_params passed through, deterministic seeding, save_checkpoint flag
 ✅ metrics.py — compute_epoch_metrics + compute_all_metrics with HD95
 ✅ analysis_config.json — deeplabv3+ replacing attention_unet, wave2 block, 3 splits
 ✅ utils/version.py — bumped to 5.1.0, codename v5_analysis
@@ -129,9 +151,31 @@ Do not implement any of these mid-study — all require full retraining.
 
 ---
 
+## Resolved — S7 (morphometrics refactor + pipeline hardening)
+
+✅ TIFF provenance metadata — segmented images embed model/version/CLAHE/watershed via tifffile
+✅ morphometrics.py — gratio_area → gratio_equiv_diam, gratio_axes → gratio_mean_axes
+✅ morphometrics.py — µm-primary output, raw pixel DataFrame separate (Sheet 5)
+✅ save_morphometrics() — 5-sheet openpyxl output (Summary, Axon, Myelin+G-ratio, Fiber, Raw px)
+✅ save_distributions() — multi-sheet output (Summary, Granular, Mid, Coarse)
+✅ analyze_nerve.py — moved from batch_axon/ to morphometrics/, primary_gratio_method config
+✅ batch_axon/__main__.py — Provenance sheet, updated import from morphometrics.analyze_nerve
+✅ segment/segment.py — tifffile write, arch map in load_model, import cleanup, datetime fix
+✅ segment/__main__.py — meta passed to segment_dir, stray typer import removed
+✅ utils/helpers.py — resolve_scan PermissionError fix, nerve-level direct construction
+✅ config.json — primary_gratio_method, three-tier morphometrics_bins, weight_decay confirmed
+✅ requirements.txt — matplotlib==3.10.9 added
+✅ save_checkpoint: False — all Wave 1/2a/2b/3 analysis jobs
+✅ CRIT-02: Resolved — g-ratio physiologically plausible in morphometrics outputs
+✅ DOC-02: Resolved — gratio_equiv_diam / gratio_mean_axes renamed
+✅ FINETUNE-01: train/finetune.py built, 3 freeze strategies (full/encoder/none)
+
+---
+
 ## Open item count
-- Critical: 2 (CRIT-02 partial, CRIT-08)
-- Analysis pipeline: 8 (ANAL-01 through ANAL-08)
-- Docs: 3 (DOC-01 through DOC-03)
-- Post-analysis/Paper 2: ~10
+- Critical: 0
+- Analysis pipeline: 9 (ANAL-01 through ANAL-09)
+- Morphometrics: 3 (MORPH-01 through MORPH-03)
+- Docs: 2 (DOC-01, DOC-03)
+- Post-analysis/Paper 2: ~11
 - V2: 10

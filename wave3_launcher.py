@@ -27,6 +27,12 @@ Usage:
 Output:
     results/lc/  — same directory as Wave 1 LC (different run_ids — no conflict)
     Table 1: learning curve — mean Dice ± SD vs dataset size
+
+Note:
+    No .pt files are saved during Wave 3 (save_checkpoint=False).
+    After selecting the final winner, retrain once interactively:
+        python -m train
+    This produces the production .pt file (rb40x_v2) with full metadata.
 """
 
 from __future__ import annotations
@@ -115,6 +121,7 @@ def build_lc_jobs(cfg: dict, winner: dict, winner_aug: dict) -> list[dict]:
             'batch_size':    train['batch_size'],
             'augmentation':  True,
             'aug_params':    optimized_aug,
+            'save_checkpoint': False,
             'learning_rate': train['learning_rate'],
             'weight_decay':  train['weight_decay'],
             'output': {

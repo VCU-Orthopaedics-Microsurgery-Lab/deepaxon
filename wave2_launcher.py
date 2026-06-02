@@ -138,6 +138,7 @@ def base_job(cfg: dict, winner: dict, run_id: str, aug_params: dict,
         'batch_size':    train['batch_size'],
         'augmentation':  True,
         'aug_params':    aug_params,
+        'save_checkpoint': False, 
         'learning_rate': train['learning_rate'],
         'weight_decay':  train['weight_decay'],
         'output': {

@@ -1,5 +1,5 @@
 # DeepAxon Paper 1 — Analysis Pipeline: Coding Brief
-**Version:** 2.0 | **Branch:** v5_analysis | **Updated:** May 2026
+**Version:** 2.1 | **Branch:** v5_analysis | **Updated:** June 2026
 
 ---
 
@@ -113,10 +113,24 @@ densenet121, densenet169
 
 ## Three-Wave Analysis Structure
 
+### Checkpoint policy — all waves
+**No `.pt` files are saved during the analysis pipeline** (`save_checkpoint=False` in all wave launchers).
+Results are fully captured in `result.json` per job. Any model can be exactly recreated from
+`result.json` + `analysis_config.json` + seed (deterministic seeding confirmed).
+
+After Wave 3 completes and the final winner is selected, retrain once interactively:
+```bash
+python -m train
+```
+This produces the production model `rb40x_v2.pt` (~7 min on H100) with full metadata.
+
+---
+
 ### Wave 1 — Architecture/Encoder/Weight Sweep (aug OFF)
 ```
 24 arch/encoder × 16 class weights × 3 splits × 5 seeds = 5,760 jobs
 ~34 hours wall time at 60 concurrent on 20 H100s
+save_checkpoint: False
 ```
 
 Launcher: `python wave1_launcher.py --config analysis_config.json [--dry-run]`
@@ -139,7 +153,7 @@ python aggregator.py --config analysis_config.json --select \
 
 ### Wave 2 — Augmentation Sweep (on winning model only)
 
-**Step 2a — OAT + matrix sweep (2,065 jobs)**
+**Step 2a — OAT + matrix sweep (2,065 jobs, save_checkpoint: False)**
 All aug types OFF except the one being swept (pure OAT design).
 
 | Aug type | Design | Jobs (×5 seeds) |
@@ -165,7 +179,7 @@ python aggregator.py --config analysis_config.json --wave 2a
 # Manually write analysis/aggregated/winner_aug.json with optimized params
 ```
 
-**Step 2b — Aug ON validation (5 jobs)**
+**Step 2b — Aug ON validation (5 jobs, save_checkpoint: False)**
 Aug ON (optimized params from 2a) × 5 seeds × best_split from winner.json.
 Aug OFF baseline pulled from Wave 1 SW results — no redundant re-runs.
 
@@ -181,6 +195,7 @@ Launcher: `python wave2_launcher.py --config analysis_config.json --step 2b`
 ```
 3 dataset sizes × 3 splits × 5 seeds = 45 jobs
 Fully optimized model — best arch, encoder, weights, aug params
+save_checkpoint: False
 ```
 
 Launcher: `python wave3_launcher.py --config analysis_config.json`
@@ -224,12 +239,47 @@ Outputs to `analysis/aggregated/`. Download via scp for review in Prism/Excel.
 | `wave2_launcher.py` | Generate and submit Wave 2a/2b job arrays |
 | `wave3_launcher.py` | Generate and submit Wave 3 LC job array |
 | `aggregator.py` | Aggregate results, produce tables, write winner.json |
-| `train/train.py` | Training loop — parametric arch/encoder/aug_params |
+| `train/train.py` | Training loop — parametric arch/encoder/aug_params, deterministic seeding |
 | `train/__main__.py` | Entry point — interactive + sbatch modes |
+| `train/finetune.py` | Domain adaptation via fine-tuning (`python -m train.finetune`) |
 | `train/dataset/split.py` | Stratified phenotype-balanced split |
-| `train/dataset/data_loader.py` | Manifest mode loading (no val_ prefix) |
+| `train/dataset/data_loader.py` | Manifest mode loading (ctrl_/regen_ prefixes) |
 | `train/dataset/augment.py` | Parametric aug — config mode + aug_params mode |
 | `utils/metrics.py` | compute_epoch_metrics + compute_all_metrics (HD95) |
+| `utils/version.py` | Version string + full env fingerprint (`python utils/version.py`) |
+| `morphometrics/analyze_nerve.py` | Nerve-level aggregation, CSA, axon density |
+| `segment/segment.py` | Inference, Hann blending, BGW output, TIFF provenance write |
+| `morphometrics/morphometrics.py` | Watershed, matching, quality filters, 5-sheet xlsx output |
+| `morphometrics/distributions.py` | Three-tier binning, multi-sheet _binned.xlsx |
+
+---
+
+## Morphometrics Output Format (per-image .xlsx)
+
+Each image produces a 5-sheet Excel file:
+
+| Sheet | Content |
+|---|---|
+| Summary | Provenance block (model, version, CLAHE, watershed) + headline metrics row |
+| Axon | Per-axon axon measurements (µm) |
+| Myelin+G-ratio | Per-axon myelin thickness, fiber dims, gratio_equiv_diam, gratio_mean_axes |
+| Fiber | Per-axon fiber measurements (µm) |
+| Raw (px) | Full flat DataFrame in pixel units — sanity check only |
+
+Nerve-level `{nerve}_binned.xlsx` has 4 sheets: Summary, Granular (0.5µm), Mid (2µm), Coarse (5µm).
+
+Primary g-ratio method controlled by `config.json: primary_gratio_method` (`equiv_diam` | `mean_axes`).
+Both methods always computed and stored in Myelin+G-ratio sheet.
+
+---
+
+## Provenance Tracking
+
+Segmented TIFFs embed JSON metadata (model name, architecture, encoder, DeepAxon version,
+segmented date, CLAHE settings, patch size, magnification) via tifffile ImageDescription tag.
+
+Morphometrics reads this tag automatically — Sheet 1 Summary shows full provenance for every
+per-image file. `{study}_Data.xlsx` has a Provenance sheet as the first tab.
 
 ---
 
@@ -273,6 +323,7 @@ Outputs to `analysis/aggregated/`. Download via scp for review in Prism/Excel.
 - BatchAxon demonstration
 - Multi-species and multi-magnification generalization
 - Open-source release (GitHub, MIT license)
+- Fine-tuning sbatch support (FINETUNE-01)
 
 ---
 
