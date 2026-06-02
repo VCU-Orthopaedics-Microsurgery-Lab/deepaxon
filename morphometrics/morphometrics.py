@@ -35,6 +35,9 @@ import matplotlib.colors as mcolors
 
 from utils.logger import DeepAxonLogger
 from utils.helpers import get_pixel_size, load_config
+from utils.version import __version__                                  
+import tifffile                                                        
+import json                                                            
 
 
 # ─── Watershed labelling ──────────────────────────────────────────────────────
@@ -172,8 +175,18 @@ def get_morphometrics(
     img = cv2.imread(seg_path, cv2.IMREAD_GRAYSCALE)
     if img is None:
         log.error(f"Could not read: {seg_path}")
-        return (None, None, None, []) if return_labels else None
+        return (None, None, None, None, []) if return_labels else (None, None)
 
+    # ── Read provenance from TIFF metadata ────────────────────────────────────
+    provenance = {}                                                    
+    try:                                                               
+        with tifffile.TiffFile(seg_path) as tif:                      
+            desc = tif.pages[0].description                           
+            if desc:                                                   
+                provenance = json.loads(desc)                         
+    except Exception:                                                  
+        pass  # legacy images without metadata — silent               
+    
     h, w    = img.shape
     px_size = get_pixel_size(mag, w)
     config  = load_config()
@@ -203,7 +216,7 @@ def get_morphometrics(
 
     if not np.any(axon_mask):
         log.warn(f"No axons detected in {Path(seg_path).name}")
-        return (pd.DataFrame(), None, None, []) if return_labels else pd.DataFrame()
+        return (pd.DataFrame(), pd.DataFrame(), None, None, []) if return_labels else (pd.DataFrame(), pd.DataFrame())
 
     axon_label  = get_labels_axons(axon_mask.astype(bool))
     fiber_label = get_labels_fiber(fiber_mask.astype(bool), axon_label)
@@ -233,9 +246,10 @@ def get_morphometrics(
 
     if axon_df.empty or fiber_df.empty:
         log.warn(f"No regions found in {Path(seg_path).name}")
-        return (pd.DataFrame(), axon_label_out, fiber_label_out, []) if return_labels else pd.DataFrame()
+        return (pd.DataFrame(), pd.DataFrame(), axon_label_out, fiber_label_out, []) if return_labels else (pd.DataFrame(), pd.DataFrame())
 
     rows                 = []
+    raw_rows             = []  
     filtered_centroids   = []  # (x, y) of filtered pairs — used by QC sheet col 4
     assigned_axon_labels = set()
 
@@ -329,20 +343,77 @@ def get_morphometrics(
                 if myelin_thick_um < min_myelin_thick_um:
                     n_filtered += 1; n_filtered_myelin += 1; _filtered(); continue
 
-        # ── Build output row ──────────────────────────────────────────────────
-        new_row = {
-            'label': int(row['label']),
-            'x':     round(x, 1),
-            'y':     round(y, 1),
-            'axon_area':         round(axon_area, 2),
-            'axon_perimeter':    round(axon_perimeter, 3),
-            'axon_diam':         round(axon_equiv_diam, 3),
-            'axon_major':        round(axon_major, 3),
-            'axon_minor':        round(axon_minor, 3),
-            'axon_solidity':     round(axon_solidity, 4),
-            'axon_deformation':  round(axon_deformation, 4) if not np.isnan(axon_deformation) else np.nan,
-            'axon_eccentricity': round(axon_eccentricity, 4),
-            'axon_orientation':  round(axon_orientation, 4),
+        # ── Build output row — µm units (primary) ─────────────────────────────
+        if px_size is not None:
+            new_row = {
+                'label':               int(row['label']),
+                'x':                   round(x, 1),
+                'y':                   round(y, 1),
+                'axon_area_um2':       round(axon_area        * px_size ** 2, 3),
+                'axon_diam_um':        round(axon_equiv_diam  * px_size, 3),
+                'axon_major_um':       round(axon_major       * px_size, 3),
+                'axon_minor_um':       round(axon_minor       * px_size, 3),
+                'axon_solidity':       round(axon_solidity, 4),
+                'axon_deformation':    round(axon_deformation, 4) if not np.isnan(axon_deformation) else np.nan,
+                'axon_eccentricity':   round(axon_eccentricity, 4),
+                'axon_orientation':    round(axon_orientation, 4),
+                'myelin_area_um2':     round(myelin_area      * px_size ** 2, 3),
+                'myelin_thickness_um': round(myelin_thickness * px_size, 3),
+                'myelin_perimeter_um': round(fiber_perimeter  * px_size, 3),
+                'fiber_area_um2':      round(fiber_area       * px_size ** 2, 3),
+                'fiber_equiv_diam_um': round(fiber_equiv_diam * px_size, 3),
+                'fiber_major_um':      round(fiber_major      * px_size, 3),
+                'fiber_minor_um':      round(fiber_minor      * px_size, 3),
+                'fiber_deformation':   round(fiber_deformation, 4) if not np.isnan(fiber_deformation) else np.nan,
+                'fiber_eccentricity':  round(fiber_eccentricity, 4),
+                'fiber_orientation':   round(fiber_orientation, 4),
+                'gratio_equiv_diam':   round(gratio_area, 4),
+                'gratio_mean_axes':    round(gratio_axes, 4),
+                'gratio':              round(gratio, 4),
+            }
+        else:
+            # Uncalibrated fallback — pixel units with _px suffix
+            new_row = {
+                'label':               int(row['label']),
+                'x':                   round(x, 1),
+                'y':                   round(y, 1),
+                'axon_area_px':        round(axon_area, 2),
+                'axon_diam_px':        round(axon_equiv_diam, 3),
+                'axon_major_px':       round(axon_major, 3),
+                'axon_minor_px':       round(axon_minor, 3),
+                'axon_solidity':       round(axon_solidity, 4),
+                'axon_deformation':    round(axon_deformation, 4) if not np.isnan(axon_deformation) else np.nan,
+                'axon_eccentricity':   round(axon_eccentricity, 4),
+                'axon_orientation':    round(axon_orientation, 4),
+                'myelin_area_px':      round(myelin_area, 2),
+                'myelin_thickness_px': round(myelin_thickness, 3),
+                'myelin_perimeter_px': round(fiber_perimeter, 3),
+                'fiber_area_px':       round(fiber_area, 2),
+                'fiber_equiv_diam_px': round(fiber_equiv_diam, 3),
+                'fiber_major_px':      round(fiber_major, 3),
+                'fiber_minor_px':      round(fiber_minor, 3),
+                'fiber_deformation':   round(fiber_deformation, 4) if not np.isnan(fiber_deformation) else np.nan,
+                'fiber_eccentricity':  round(fiber_eccentricity, 4),
+                'fiber_orientation':   round(fiber_orientation, 4),
+                'gratio_equiv_diam':   round(gratio_area, 4),
+                'gratio_mean_axes':    round(gratio_axes, 4),
+                'gratio':              round(gratio, 4),
+            }
+
+        # ── Raw pixel row (Sheet 5 sanity check) ──────────────────────────────
+        raw_row = {                                                    
+            'label':              int(row['label']),
+            'x':                  round(x, 1),
+            'y':                  round(y, 1),
+            'axon_area':          round(axon_area, 2),
+            'axon_perimeter':     round(axon_perimeter, 3),
+            'axon_diam':          round(axon_equiv_diam, 3),
+            'axon_major':         round(axon_major, 3),
+            'axon_minor':         round(axon_minor, 3),
+            'axon_solidity':      round(axon_solidity, 4),
+            'axon_deformation':   round(axon_deformation, 4) if not np.isnan(axon_deformation) else np.nan,
+            'axon_eccentricity':  round(axon_eccentricity, 4),
+            'axon_orientation':   round(axon_orientation, 4),
             'myelin_area':        round(myelin_area, 2),
             'myelin_thickness':   round(myelin_thickness, 3),
             'myelin_perimeter':   round(fiber_perimeter, 3),
@@ -353,31 +424,20 @@ def get_morphometrics(
             'fiber_deformation':  round(fiber_deformation, 4) if not np.isnan(fiber_deformation) else np.nan,
             'fiber_eccentricity': round(fiber_eccentricity, 4),
             'fiber_orientation':  round(fiber_orientation, 4),
-            'gratio_area': round(gratio_area, 4),
-            'gratio_axes': round(gratio_axes, 4),
-            'gratio':      round(gratio, 4),
+            'gratio_equiv_diam':  round(gratio_area, 4),
+            'gratio_mean_axes':   round(gratio_axes, 4),
+            'gratio':             round(gratio, 4),
         }
 
-        if px_size is not None:
-            new_row['axon_area_um2']       = round(axon_area        * px_size ** 2, 3)
-            new_row['myelin_area_um2']     = round(myelin_area      * px_size ** 2, 3)
-            new_row['fiber_area_um2']      = round(fiber_area       * px_size ** 2, 3)
-            new_row['axon_diam_um']        = round(axon_equiv_diam  * px_size, 3)
-            new_row['axon_major_um']       = round(axon_major       * px_size, 3)
-            new_row['axon_minor_um']       = round(axon_minor       * px_size, 3)
-            new_row['fiber_equiv_diam_um'] = round(fiber_equiv_diam * px_size, 3)
-            new_row['fiber_major_um']      = round(fiber_major      * px_size, 3)
-            new_row['fiber_minor_um']      = round(fiber_minor      * px_size, 3)
-            new_row['myelin_thickness_um'] = round(myelin_thickness * px_size, 3)
-
         rows.append(new_row)
+        raw_rows.append(raw_row)                                      
 
     del axon_df, fiber_df
     gc.collect()
 
     if not rows:
         log.warn(f"No valid axon-fiber pairs in {Path(seg_path).name}")
-        return (pd.DataFrame(), axon_label_out, fiber_label_out, filtered_centroids) if return_labels else pd.DataFrame()
+        return (pd.DataFrame(), pd.DataFrame(), axon_label_out, fiber_label_out, filtered_centroids) if return_labels else (pd.DataFrame(), pd.DataFrame())
 
     log_breakdown = qf.get("log_filter_breakdown", True)
     
@@ -396,9 +456,14 @@ def get_morphometrics(
     df.insert(1, 'resolution', f"{w}x{h}")
     df.insert(2, 'magnification', mag)
 
+    raw_df = pd.DataFrame(raw_rows)                                    
+    raw_df.insert(0, 'image', Path(seg_path).stem)                    
+    raw_df.insert(1, 'resolution', f"{w}x{h}")                        
+    raw_df.insert(2, 'magnification', mag)                            
+
     if return_labels:
-        return df, axon_label_out, fiber_label_out, filtered_centroids
-    return df
+        return df, raw_df, axon_label_out, fiber_label_out, filtered_centroids  
+    return df, raw_df                                                             
 
 
 # ─── Watershed QC sheet ───────────────────────────────────────────────────────
@@ -419,7 +484,7 @@ def save_watershed_qc(
     Layout: one row per image
         Always:  Col 1: Axon watershed (randomized colormap)
                  Col 2: Fiber watershed (randomized colormap)
-                 Col 3: Fiber colors + red axon outlines + red matched centroids (image label above)  # ← CHANGED
+                 Col 3: Fiber colors + red axon outlines + red matched centroids (image label above)  
         qf ON:   Col 4: Filter map — green=kept, red=filtered, black=background
         qf OFF:  Col 4 omitted — 3 columns only
 
@@ -492,7 +557,7 @@ def save_watershed_qc(
             if qf_on else
             f"{img_path.name}  —  {n_kept} axons"
         )
-        ax_over.set_title(row_label, fontsize=7, fontweight='normal', pad=4)   # ← CHANGED
+        ax_over.set_title(row_label, fontsize=7, fontweight='normal', pad=4) 
 
         if axon_lbl is None or fiber_lbl is None:
             no_data_axes = [ax_axon, ax_fiber, ax_over]
@@ -522,14 +587,14 @@ def save_watershed_qc(
         ax_over.imshow(fiber_lbl, cmap=make_random_cmap(n_fiber, seed=99),
                        interpolation='nearest', alpha=0.85)
 
-        axon_boundary = np.zeros((*axon_lbl.shape, 4), dtype=np.float32)           # ← CHANGED
-        binary_axon   = (axon_lbl > 0).astype(np.uint8)                            # ← NEW
-        contours, _   = cv2.findContours(                                           # ← NEW
-            binary_axon, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE                # ← NEW
-        )                                                                           # ← NEW
-        contour_mask  = np.zeros(axon_lbl.shape, dtype=np.uint8)                   # ← NEW
-        cv2.drawContours(contour_mask, contours, -1, 1, thickness=1)               # ← NEW
-        axon_boundary[contour_mask == 1] = [0.9, 0.15, 0.15, 0.9]                 # ← NEW — red, 90% opacity
+        axon_boundary = np.zeros((*axon_lbl.shape, 4), dtype=np.float32)        
+        binary_axon   = (axon_lbl > 0).astype(np.uint8)                            
+        contours, _   = cv2.findContours(                                           
+            binary_axon, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE                
+        )                                                                           
+        contour_mask  = np.zeros(axon_lbl.shape, dtype=np.uint8)                   
+        cv2.drawContours(contour_mask, contours, -1, 1, thickness=1)               
+        axon_boundary[contour_mask == 1] = [0.9, 0.15, 0.15, 0.9]                 
         ax_over.imshow(axon_boundary, interpolation='nearest')   
 
         if df is not None and not df.empty and 'x' in df.columns and 'y' in df.columns:
@@ -580,13 +645,168 @@ def save_watershed_qc(
 
 # ─── Save output ──────────────────────────────────────────────────────────────
 
-def save_morphometrics(df: pd.DataFrame, output_dir: str, stem: str) -> str:
-    """Save morphometrics DataFrame to Excel. Returns output path."""
-    config = load_config()
-    suffix = config.get("morphometrics_suffix", "_morphometrics")
+def _autofit_columns(ws, min_width: int = 12, max_width: int = 40):
+    """Auto-fit column widths based on max content length."""
+    for col in ws.columns:
+        max_len = max(
+            len(str(cell.value)) if cell.value is not None else 0
+            for cell in col
+        )
+        ws.column_dimensions[col[0].column_letter].width = min(
+            max(max_len + 4, min_width), max_width
+        )
+
+
+def save_morphometrics(
+    df:         pd.DataFrame,
+    raw_df:     pd.DataFrame,
+    output_dir: str,
+    stem:       str,
+    provenance: dict = None,
+) -> str:
+    """
+    Save morphometrics to a 5-sheet Excel file.
+
+    Sheet 1 — Summary     : provenance block + one headline row
+    Sheet 2 — Axon        : per-axon axon measurements (µm)
+    Sheet 3 — Myelin+G    : per-axon myelin and g-ratio measurements (µm)
+    Sheet 4 — Fiber       : per-axon fiber measurements (µm)
+    Sheet 5 — Raw (px)    : full flat DataFrame in pixel units (sanity check)
+
+    Returns output path.
+    """
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from openpyxl.utils import get_column_letter
+
+    config     = load_config()
+    suffix     = config.get("morphometrics_suffix", "_morphometrics")
+    wsh_cfg    = config.get("watershed", {})
+    provenance = provenance or {}
 
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     out_path = output_dir / f"{stem}{suffix}.xlsx"
-    df.to_excel(str(out_path), index=False)
+
+    wb = Workbook()
+
+    # ── Shared styles ─────────────────────────────────────────────────────────
+    hdr_font   = Font(bold=True)
+    hdr_fill   = PatternFill('solid', fgColor='D9E1F2')
+    prov_font  = Font(italic=True, color='666666')
+    label_font = Font(bold=True)
+
+    def write_header_row(ws, columns: list):
+        """Write a bold blue header row and freeze it."""
+        for col_idx, col_name in enumerate(columns, 1):
+            cell            = ws.cell(row=1, column=col_idx, value=col_name)
+            cell.font       = hdr_font
+            cell.fill       = hdr_fill
+            cell.alignment  = Alignment(horizontal='center')
+        ws.freeze_panes = ws['A2']
+
+    def write_df_to_sheet(ws, frame: pd.DataFrame, start_row: int = 1):
+        """Write DataFrame to sheet with header row."""
+        cols = list(frame.columns)
+        write_header_row(ws, cols)
+        for r_idx, row_data in enumerate(frame.itertuples(index=False), start_row + 1):
+            for c_idx, value in enumerate(row_data, 1):
+                ws.cell(row=r_idx, column=c_idx, value=value)
+
+    # ── Sheet 1 — Summary ─────────────────────────────────────────────────────
+    ws1 = wb.active
+    ws1.title = 'Summary'
+
+    prov_rows = [
+        ('DeepAxon version',   provenance.get('deepaxon_version', __version__)),
+        ('Model',              provenance.get('model_name',       'unknown')),
+        ('Architecture',       provenance.get('architecture',     'unknown')),
+        ('Encoder',            provenance.get('encoder',          'unknown')),
+        ('Segmented date',     provenance.get('segmented_date',   'unknown')),
+        ('CLAHE',              'ON' if provenance.get('clahe_enabled') else 'OFF'),
+        ('Patch size',         provenance.get('patch_size',       'unknown')),
+        ('Magnification',      provenance.get('magnification',    'unknown')),
+        ('Watershed threshold',wsh_cfg.get('distance_threshold', 0.17)),
+        ('Watershed disk',     wsh_cfg.get('dilation_disk',      5)),
+        ('Morphometrics date', pd.Timestamp.now().strftime('%Y-%m-%d')),
+    ]
+
+    for r_idx, (label, value) in enumerate(prov_rows, 1):
+        lbl_cell       = ws1.cell(row=r_idx, column=1, value=label)
+        lbl_cell.font  = prov_font
+        ws1.cell(row=r_idx, column=2, value=value)
+
+    # Blank separator row
+    sep_row = len(prov_rows) + 2
+
+    # Headline summary row
+    if not df.empty:
+        summary_headers = [
+            'Image', 'Axon Count',
+            'Mean Axon Diam (µm)', 'SD Axon Diam (µm)',
+            'Mean G-ratio',        'SD G-ratio',
+            'Mean Myelin Thick (µm)', 'SD Myelin Thick (µm)',
+        ]
+        for c_idx, h in enumerate(summary_headers, 1):
+            cell       = ws1.cell(row=sep_row, column=c_idx, value=h)
+            cell.font  = hdr_font
+            cell.fill  = hdr_fill
+        ws1.freeze_panes = ws1.cell(row=sep_row + 1, column=1)
+
+        diam_col  = 'axon_diam_um'  if 'axon_diam_um'  in df.columns else 'axon_diam_px'  if 'axon_diam_px'  in df.columns else None
+        gratio_col = 'gratio'
+        myelin_col = 'myelin_thickness_um' if 'myelin_thickness_um' in df.columns else 'myelin_thickness_px' if 'myelin_thickness_px' in df.columns else None
+
+        summary_values = [
+            stem,
+            len(df),
+            round(df[diam_col].mean(),   3) if diam_col  else 'N/A',
+            round(df[diam_col].std(),    3) if diam_col  else 'N/A',
+            round(df[gratio_col].mean(), 4) if gratio_col in df.columns else 'N/A',
+            round(df[gratio_col].std(),  4) if gratio_col in df.columns else 'N/A',
+            round(df[myelin_col].mean(), 3) if myelin_col else 'N/A',
+            round(df[myelin_col].std(),  3) if myelin_col else 'N/A',
+        ]
+        for c_idx, val in enumerate(summary_values, 1):
+            ws1.cell(row=sep_row + 1, column=c_idx, value=val)
+
+    _autofit_columns(ws1)
+
+    # ── Sheet 2 — Axon ────────────────────────────────────────────────────────
+    ws2 = wb.create_sheet('Axon')
+    axon_cols = [c for c in df.columns if any(c.startswith(p) for p in
+        ['image', 'resolution', 'magnification', 'label', 'x', 'y',
+         'axon_area', 'axon_diam', 'axon_major', 'axon_minor',
+         'axon_solidity', 'axon_deformation', 'axon_eccentricity', 'axon_orientation'])]
+    write_df_to_sheet(ws2, df[axon_cols])
+    _autofit_columns(ws2)
+
+    # ── Sheet 3 — Myelin + G-ratio ────────────────────────────────────────────
+    ws3 = wb.create_sheet('Myelin+G-ratio')
+    myelin_cols = [c for c in df.columns if any(c.startswith(p) for p in
+        ['image', 'resolution', 'magnification', 'label',
+         'myelin', 'fiber', 'gratio'])]
+    write_df_to_sheet(ws3, df[myelin_cols])
+    _autofit_columns(ws3)
+
+    # ── Sheet 4 — Fiber ───────────────────────────────────────────────────────
+    ws4 = wb.create_sheet('Fiber')
+    fiber_cols = [c for c in df.columns if any(c.startswith(p) for p in
+        ['image', 'resolution', 'magnification', 'label',
+         'fiber_area', 'fiber_equiv', 'fiber_major', 'fiber_minor',
+         'fiber_deformation', 'fiber_eccentricity', 'fiber_orientation'])]
+    write_df_to_sheet(ws4, df[fiber_cols])
+    _autofit_columns(ws4)
+
+    # ── Sheet 5 — Raw (pixel units, sanity check) ─────────────────────────────
+    ws5 = wb.create_sheet('Raw (px)')
+    ws5.cell(row=1, column=1, value='Pixel units — for sanity check only. Do not use for analysis.').font = prov_font
+    if not raw_df.empty:
+        write_df_to_sheet(ws5, raw_df)
+        # Shift data down one row to leave space for the warning label
+        ws5.insert_rows(1)
+        ws5.cell(row=1, column=1, value='Pixel units — for sanity check only. Do not use for analysis.').font = prov_font
+    _autofit_columns(ws5)
+
+    wb.save(str(out_path))
     return str(out_path)

@@ -130,7 +130,11 @@ def scan_study(study_dir: str, ignore_4x: bool = True) -> dict:
         animal_name         = animal_path.name
         result[animal_name] = {}
 
-        for nerve_path in sorted(animal_path.iterdir()):
+        try:
+            nerve_paths = sorted(animal_path.iterdir())
+        except PermissionError:
+            continue
+        for nerve_path in nerve_paths:
             if not nerve_path.is_dir():
                 continue
             nerve_name = nerve_path.name
@@ -236,18 +240,49 @@ def resolve_scan(input_dir: str) -> tuple:
         return {animal_path.name: {nerve_path.name: nerve_data}}, study_dir
 
     if level == 'nerve':
-        animal_path = p.parent
-        study_dir   = str(animal_path.parent)
-        full        = scan_study(study_dir)
-        return {
-            animal_path.name: {
-                p.name: full.get(animal_path.name, {}).get(p.name, {})
-            }
-        }, study_dir
+        animal_path  = p.parent
+        study_dir    = str(animal_path.parent)
+
+        # Guard — build nerve data directly rather than scanning upward.
+        # Scanning upward from a shallow path (e.g. Desktop) risks iterating
+        # protected system folders. Direct construction is always safe.
+        seg_folder    = config.get("segmented_folder",    "Segmented")
+        morph_folder  = config.get("morphometrics_folder","Morphometrics")
+        csa_folder    = config.get("csa_folder",          "CSA")
+        tiff_suffixes = [s.upper() for s in config.get("tiff_suffixes", ["_TIFF"])]
+
+        tiff_dir = next(
+            (sub for sub in p.iterdir()
+             if sub.is_dir() and any(sub.name.upper().endswith(s) for s in tiff_suffixes)),
+            None
+        )
+        matched  = next(
+            (s for s in tiff_suffixes if tiff_dir and tiff_dir.name.upper().endswith(s)),
+            "_TIFF"
+        ) if tiff_dir else "_TIFF"
+        mag      = tiff_dir.name.upper().replace(matched, "") if tiff_dir else None
+
+        seg_candidates = [
+            d for d in p.iterdir()
+            if d.is_dir() and d.name.startswith(seg_folder)
+        ] if tiff_dir else []
+        seg_dirs = [d for d in seg_candidates if _has_images(d, tiff_dir)] or None
+
+        nerve_data = {
+            'mag':               mag,
+            'tiff_dir':          tiff_dir,
+            'segmented_dir':     seg_dirs,
+            'morphometrics_dir': (p / morph_folder) if (p / morph_folder).exists() else None,
+            'csa_dir':           (p / csa_folder)   if (p / csa_folder).exists()   else None,
+        }
+        return {animal_path.name: {p.name: nerve_data}}, str(p)     # ← study_dir = nerve path
 
     elif level == 'animal':
         study_dir = str(p.parent)
-        full      = scan_study(study_dir)
+        try:                                                           
+            full = scan_study(study_dir)                              
+        except PermissionError:                                       
+            full = scan_study(str(p))                                 
         return {p.name: full.get(p.name, {})}, study_dir
 
     else:

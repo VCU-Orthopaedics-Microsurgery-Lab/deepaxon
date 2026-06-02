@@ -21,18 +21,13 @@ from morphometrics.distributions import bin_nerve_diameters
 
 
 def make_aggregate_df(morph_dir: Path, log: DeepAxonLogger) -> tuple[pd.DataFrame, dict[str, pd.DataFrame]]:
-    """
-    Concatenate all per-image morphometrics .xlsx files into one DataFrame.
-    Also returns a per-file dict to avoid re-reading files in get_nerve_data().
-
-    Returns:
-        (aggregate_df, {filename_stem: DataFrame})
-    """
     dfs      = []
     per_file = {}
     for f in sorted(morph_dir.glob("*.xlsx")):
+        if f.stem.endswith("_binned"):                                 
+            continue
         try:
-            df = pd.read_excel(str(f))
+            df = pd.read_excel(str(f), sheet_name='Axon')             
             dfs.append(df)
             per_file[f.stem] = df
         except Exception as e:
@@ -195,15 +190,24 @@ def get_nerve_data(
 
         px_size = get_pixel_size(mag, img_width)
 
+        _gratio_method = config.get('primary_gratio_method', 'equiv_diam')         
+        _gratio_col    = (                                                           
+            'gratio_equiv_diam' if _gratio_method == 'equiv_diam'                  
+            else 'gratio_mean_axes'                                                 
+        )                                                                            
         row = {
             'name':        img_name,
             'resolution':  f"{img_width}px",
             'csa_um2':     img_csa,
             'total_axons': len(img_df),
-            'gratio':      img_df['gratio'].mean() if 'gratio' in img_df.columns else None,
+            'gratio':      (                                                         
+                img_df[_gratio_col].mean() if _gratio_col in img_df.columns        
+                else img_df['gratio'].mean() if 'gratio' in img_df.columns         
+                else None                                                           
+            ),                                                                      
             'axon_diam_um': (
                 img_df['axon_diam_um'].mean() if 'axon_diam_um' in img_df.columns else
-                img_df['axon_diam'].mean() * px_size if px_size and 'axon_diam' in img_df.columns else
+                img_df['axon_diam_px'].mean() * px_size if px_size and 'axon_diam_px' in img_df.columns else  
                 None
             ),
         }
@@ -222,15 +226,19 @@ def get_nerve_data(
         'fourx_csa_um2': fourx_csa,
         'total_images':  img_count,
         'total_axons':   len(agg_df),
-        'mean_gratio':   agg_df['gratio'].mean() if 'gratio' in agg_df.columns else None,
+        'mean_gratio':   (                                                           
+            agg_df[_gratio_col].mean() if _gratio_col in agg_df.columns            
+            else agg_df['gratio'].mean() if 'gratio' in agg_df.columns             
+            else None                                                               
+        ),                                                                          
     }
 
     # Axon diameter — prefer um column, fall back to pixel column × px_size
     if 'axon_diam_um' in agg_df.columns:
         aggregate['mean_axon_diam_um'] = agg_df['axon_diam_um'].mean()
-    elif 'axon_diam' in agg_df.columns:
+    elif 'axon_diam_px' in agg_df.columns:                                          
         px_size = get_pixel_size(mag, TARGET_SIZE[0])
-        aggregate['mean_axon_diam_um'] = agg_df['axon_diam'].mean() * px_size if px_size else None
+        aggregate['mean_axon_diam_um'] = agg_df['axon_diam_px'].mean() * px_size if px_size else None  
     else:
         aggregate['mean_axon_diam_um'] = None
 

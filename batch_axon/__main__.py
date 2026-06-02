@@ -25,7 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from utils.logger import DeepAxonLogger
 from utils.helpers import detect_study_mag, resolve_scan, load_config, print_panel
-from batch_axon.analyze_nerve import get_nerve_data
+from morphometrics.analyze_nerve import get_nerve_data
 from morphometrics.distributions import save_distributions
 
 console = Console()
@@ -158,6 +158,29 @@ def main():
     workbook_path = study_path / f"{study_name}_Data.xlsx"
     workbook      = xlsxwriter.Workbook(str(workbook_path))
     formats       = add_formats(workbook)
+
+    # ── Provenance sheet (first sheet) ────────────────────────────────────────
+    from utils.version import __version__                                          
+    prov_sheet  = workbook.add_worksheet('Provenance')                             
+    prov_fmt    = workbook.add_format({'italic': True, 'font_color': '#666666'})   
+    bold_fmt    = workbook.add_format({'bold': True})                              
+    config_prov = load_config()                                                    
+    wsh_cfg     = config_prov.get('watershed', {})                                 
+    prov_rows   = [                                                                
+        ('Study',                 str(study_path)),                                
+        ('Generated',             datetime.now().strftime('%Y-%m-%d')),            
+        ('DeepAxon version',      __version__),                                    
+        ('Magnification',         mag),                                            
+        ('Primary g-ratio method',config_prov.get('primary_gratio_method', 'equiv_diam')),  
+        ('Watershed threshold',   wsh_cfg.get('distance_threshold', 0.17)),        
+        ('Watershed disk',        wsh_cfg.get('dilation_disk', 5)),                
+        ('CLAHE',                 'ON' if config_prov.get('clahe', {}).get('enabled') else 'OFF'),  
+    ]                                                                              
+    for r_idx, (label, value) in enumerate(prov_rows):                            
+        prov_sheet.write(r_idx, 0, label, prov_fmt)                                
+        prov_sheet.write(r_idx, 1, str(value))                                     
+    prov_sheet.set_column(0, 0, 28)                                                
+    prov_sheet.set_column(1, 1, 50)                                                
 
     nerves_processed = 0
     nerves_failed    = 0

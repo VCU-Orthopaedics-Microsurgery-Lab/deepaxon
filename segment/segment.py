@@ -12,20 +12,28 @@ Core segmentation logic for DeepAxon.
 
 from __future__ import annotations
 
+# ── Standard library ──────────────────────────────────────────────────────────
 import csv
+import json
 import time
-import numpy as np
-import cv2
+from datetime import datetime
 from pathlib import Path
-from patchify import patchify
-import torch
-import segmentation_models_pytorch as smp
 
-from utils.resize import resize_img, get_image_resolution
-from utils.logger import DeepAxonLogger
-from utils.helpers import load_config, list_files, center_crop, get_hann_compatible_step
+# ── Third-party ───────────────────────────────────────────────────────────────
+import cv2
+import numpy as np
+import segmentation_models_pytorch as smp
+import tifffile
+import torch
+from patchify import patchify
 from torch.serialization import add_safe_globals
 from torch.torch_version import TorchVersion
+
+# ── Local ─────────────────────────────────────────────────────────────────────
+from utils.helpers import load_config, list_files, get_hann_compatible_step
+from utils.logger import DeepAxonLogger
+from utils.resize import resize_img, get_image_resolution
+from utils.version import __version__
 
 add_safe_globals([TorchVersion])
 
@@ -155,18 +163,33 @@ def load_model(
 
     encoder_name = meta.get('encoder', 'resnet34')
 
-    if 'encoder' not in meta:
+    if not encoder_name or 'encoder' not in meta:                    
         if log:
-            log.warn("Missing encoder in meta → defaulting to resnet34")
+            log.warn("Missing encoder in model metadata — defaulting to resnet34")
     
-    # Build model from metadata if available, else use defaults
-    model = smp.UnetPlusPlus(
+    # ── Build model from metadata ─────────────────────────────────────────────
+    _ARCH_MAP = {                                                       
+        'unet++':     smp.UnetPlusPlus,                                
+        'unet':       smp.Unet,                                        
+        'manet':      smp.MAnet,                                       
+        'deeplabv3+': smp.DeepLabV3Plus,                               
+    }                                                                   
+    arch_key  = meta.get('architecture', 'unet++').lower()             
+    model_cls = _ARCH_MAP.get(arch_key, smp.UnetPlusPlus)
+    if arch_key not in _ARCH_MAP:                                      
+        if log:                                                        
+            log.warn(                                                  
+                f"Unknown architecture '{arch_key}' in model metadata " 
+                f"— falling back to unet++"                            
+            )                                                          
+    model = model_cls(                                                 
         encoder_name    = encoder_name,
         encoder_weights = None,
         in_channels     = meta.get('in_channels', 1),
         classes         = len(meta.get('classes', ['background', 'myelin', 'axon'])),
         activation      = None,
     )
+    
     model.load_state_dict(state_dict)
     model.to(device)
     model.eval()
@@ -281,8 +304,8 @@ def segment_image(img_path, model, patch_size=256, log=None, use_clahe=False):
     # Patchify
     patches        = patchify(img_to_patch, (patch_size, patch_size), step=step)
     n_rows, n_cols = patches.shape[:2]
-    n_cols_real = sum(1 for j in range(n_cols) if j * step < orig_w)  # ← NEW
-    n_rows_real = sum(1 for i in range(n_rows) if i * step < orig_h)  # ← NEW
+    n_cols_real = sum(1 for j in range(n_cols) if j * step < orig_w)  
+    n_rows_real = sum(1 for i in range(n_rows) if i * step < orig_h)  
     
     # ── DIAGNOSTIC ────────────────────────────────────────────────
     #print(f"orig:    {orig_h} x {orig_w}")
@@ -298,7 +321,7 @@ def segment_image(img_path, model, patch_size=256, log=None, use_clahe=False):
     # ── END DIAGNOSTIC ────────────────────────────────────────────
 
     pred_img    = np.zeros((proc_h, proc_w), dtype=float)
-    weight_img  = np.zeros((proc_h, proc_w), dtype=float)          # ← NEW  
+    weight_img  = np.zeros((proc_h, proc_w), dtype=float)            
 
     for i in range(n_rows):
         for j in range(n_cols):
@@ -320,11 +343,11 @@ def segment_image(img_path, model, patch_size=256, log=None, use_clahe=False):
             i_start = i * step
             j_start = j * step
             pred_img[i_start:i_start + patch_size, j_start:j_start + patch_size] += adj
-            weight_img[i_start:i_start + patch_size, j_start:j_start + patch_size] += hann  # ← NEW
+            weight_img[i_start:i_start + patch_size, j_start:j_start + patch_size] += hann  
 
-    # Normalize by accumulated weights before rounding                # ← NEW
-    weight_img  = np.where(weight_img == 0, 1, weight_img)           # ← NEW — avoid div by zero
-    pred_img    = pred_img / weight_img                               # ← NEW
+    # Normalize by accumulated weights before rounding                
+    weight_img  = np.where(weight_img == 0, 1, weight_img)            # ← avoid div by zero
+    pred_img    = pred_img / weight_img                               
 
     pred_img = np.round(pred_img).astype(int)
 
@@ -429,8 +452,8 @@ def save_qc_sheet(
         axes[row][0].axis('off')                                   # ← CHANGED
 
         axes[row][1].imshow(seg, cmap='gray', vmin=0, vmax=255)   # ← CHANGED
-        axes[row][1].set_title(img_path.name, fontsize=8,          # ← NEW
-                               fontweight='normal', pad=4)         # ← NEW
+        axes[row][1].set_title(img_path.name, fontsize=8,          
+                               fontweight='normal', pad=4)         
         axes[row][1].axis('off')                                   # ← CHANGED
 
         axes[row][2].imshow(overlay)
@@ -454,7 +477,8 @@ def save_qc_sheet(
 
 # ─── Segment directory ────────────────────────────────────────────────────────
 
-def segment_dir(tiff_dir, output_dir, model, mag, log, timing_csv=None, model_name='unknown'):
+def segment_dir(tiff_dir, output_dir, model, mag, log, timing_csv=None, model_name='unknown', meta=None):
+    meta = meta or {}  
     config         = load_config()
     patch_size     = config.get("patch_size", {}).get(mag, 256)
     seg_suffix     = config.get("segmented_suffix", "_segmented")
@@ -473,7 +497,6 @@ def segment_dir(tiff_dir, output_dir, model, mag, log, timing_csv=None, model_na
     log.rule(f"SEGMENTING {tiff_dir.parent.name} / {tiff_dir.name}")
     clahe_cfg  = config.get("clahe", {})
     clahe_on   = clahe_cfg.get("enabled", False)
-    timing_on  = config.get("timing", False)
     logging_cfg = config.get("logging", {})
     logging_on  = logging_cfg.get("segment", False) if isinstance(logging_cfg, dict) else bool(logging_cfg)
 
@@ -482,7 +505,7 @@ def segment_dir(tiff_dir, output_dir, model, mag, log, timing_csv=None, model_na
         f"step={step}px ({overlap_pct}% overlap) | "
         f"CLAHE={'ON' if clahe_on else 'OFF'} | "
         f"Logging={'ON' if logging_on else 'OFF'} | "
-        f"Timing={'ON' if timing_on else 'OFF'}"
+        f"Timing={'ON' if timing_csv else 'OFF'}"
     )
 
     # Resolution check
@@ -505,6 +528,18 @@ def segment_dir(tiff_dir, output_dir, model, mag, log, timing_csv=None, model_na
     success     = 0
     failed      = 0
 
+    _provenance = {                                                        
+                'deepaxon_version': __version__,
+                'model_name':       model_name,
+                'architecture':     meta.get('architecture', '?'),
+                'encoder':          meta.get('encoder', '?'),
+                'segmented_date':   datetime.now().strftime('%Y-%m-%d'),
+                'clahe_enabled':    clahe_on,
+                'clahe_clip':       clahe_cfg.get('clip_limit', 1.5) if clahe_on else None,
+                'patch_size':       patch_size,
+                'magnification':    mag,
+            }
+     
     for img_path in images:
         stem     = img_path.stem
         out_path = output_dir / f"{stem}{seg_suffix}.tif"
@@ -518,7 +553,13 @@ def segment_dir(tiff_dir, output_dir, model, mag, log, timing_csv=None, model_na
                 use_clahe=clahe_on
             )
             log.success(f"{img_path.name} [{crop_w}x{crop_h}] -> {elapsed:.1f}s")
-            cv2.imwrite(str(out_path), mask)
+            
+            tifffile.imwrite(
+                str(out_path),
+                mask,
+                description=json.dumps(_provenance),
+            )
+            
             timing_rows.append({
                 'image': img_path.name, 'resolution': res_str,
                 'crop_size': f"{crop_w}x{crop_h}", 'patch_size': patch_size,

@@ -28,6 +28,8 @@ from utils.helpers import detect_study_mag, load_config, list_files, resolve_sca
 from utils.resize import get_image_resolution
 from morphometrics.morphometrics import get_morphometrics, save_morphometrics, save_watershed_qc
 from morphometrics.distributions import bin_nerve_diameters, save_distributions
+import tifffile
+import json   
 
 console = Console()
 
@@ -163,16 +165,25 @@ def main():
 
                 try:
                     if watershed_qc_on:
-                        df, axon_lbl, fiber_lbl, filtered_xy = get_morphometrics(
+                        df, raw_df, axon_lbl, fiber_lbl, filtered_xy = get_morphometrics(  
                             str(img_path), mag, log, return_labels=True
                         )
                         all_data.append((df, axon_lbl, fiber_lbl, filtered_xy))
                     else:
-                        df = get_morphometrics(str(img_path), mag, log)
+                        df, raw_df = get_morphometrics(str(img_path), mag, log)             
                         all_data.append((df, None, None, []))
 
                     if df is not None and not df.empty:
-                        out = save_morphometrics(df, str(morph_dir), stem)
+                        # Read provenance from TIFF for pass-through to Excel
+                        _prov = {}                                                          
+                        try:                                                                                                       
+                            with tifffile.TiffFile(str(img_path)) as tif:                 
+                                desc = tif.pages[0].description                            
+                                if desc:                                                    
+                                    _prov = json.loads(desc)                               
+                        except Exception:                                                   
+                            pass                                                          
+                        out = save_morphometrics(df, raw_df, str(morph_dir), stem, provenance=_prov)  
                         log.success(f"  → {len(df)} axons → {Path(out).name}")
                         total_images += 1
                         nerve_success += 1

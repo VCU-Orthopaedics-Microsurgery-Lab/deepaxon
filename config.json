@@ -58,6 +58,9 @@
         "distance_threshold": 0.17,
         "dilation_disk":      5
     },
+    "primary_gratio_method": "equiv_diam",
+    "_primary_gratio_note": "equiv_diam | mean_axes — controls headline g-ratio in summaries and study workbook. Both methods always computed and stored in Sheet 3 (Myelin + G-ratio).",   
+        
     "morphometrics_bins": {
         "_note": "Three-tier binning: granular (physiological detail), mid (broad physiological), coarse (global QC scan)",
         "granular_um":  [0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0, 7.5, 8.0, 999],

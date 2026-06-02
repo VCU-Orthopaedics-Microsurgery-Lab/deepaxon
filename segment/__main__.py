@@ -9,7 +9,6 @@ segments all nerves. Skips nerves that already have a Segmented folder.
 
 import os
 
-from typer import models
 os.environ['PYTHONDONTWRITEBYTECODE'] = '1'
 os.environ['OPENCV_LOG_LEVEL'] = 'ERROR'
 import sys
@@ -181,7 +180,8 @@ def main():
             mag=mag,
             log=log,
             timing_csv=timing_csv,
-            model_name=meta.get('model_name') or selected_model_path.stem
+            model_name=meta.get('model_name') or selected_model_path.stem,
+            meta=meta,
         )
 
     log.finalize(summary={

@@ -32,21 +32,12 @@
             5
         ]
     },
+
     "learning_curve": {
-        "_note": "Fixed arch/encoder/weights \u2014 purpose is dataset sufficiency, not optimization",
-        "arch": "unet++",
-        "encoder": "resnet34",
-        "class_weights": [
-            3.0,
-            1.0,
-            1.0
-        ],
-        "dataset_sizes": [
-            10,
-            20,
-            30
-        ]
+    "_note": "Wave 3 learning curve — fully optimized model, run after Waves 1 and 2. Arch/encoder/weights/aug read from winner.json and winner_aug.json at runtime.",
+    "dataset_sizes": [10, 20, 30]
     },
+
     "sweep": {
         "_note": "Full arch/encoder/weight sweep at n=30 only",
         "dataset_size": 30,
@@ -390,5 +381,19 @@
             "split": "best_split from winner.json",
             "condition": "aug_on_only"
         }
+    },
+
+    "wave3": {
+    "_note": "Learning curve on fully optimized model. Launched by wave3_launcher.py after winner.json and winner_aug.json are written. Reads arch/encoder/weights from winner.json, aug params from winner_aug.json.",
+    "_launcher": "python wave3_launcher.py --config analysis_config.json",
+    "_requires": ["winner.json", "winner_aug.json"],
+    "dataset_sizes": [10, 20, 30],
+    "_dataset_sizes_note": "Same sizes as Wave 1 LC — direct comparison possible",
+    "splits": "all 3 from splits.ratios — 67/33, 80/20, 93/7",
+    "seeds": "all 5 from splits.seeds",
+    "augmentation": "ON — optimized params from winner_aug.json",
+    "total_jobs": 45,
+    "_total_jobs_note": "3 sizes × 3 splits × 5 seeds",
+    "_output": "results/lc/ — Table 1 (learning curve)"
     }
 }

@@ -26,6 +26,7 @@ from pathlib import Path
 
 from utils.helpers import load_config
 from utils.logger import DeepAxonLogger
+from utils.version import __version__
 
 
 def bin_nerve_diameters(
@@ -65,11 +66,13 @@ def bin_nerve_diameters(
     morph_suffix = config.get("morphometrics_suffix", "_morphometrics")
     dfs          = {}
     for f in sorted(morph_dir.glob("*.xlsx")):
-        # Skip previously generated output files
         if f.stem.endswith("_binned") or f.stem == "compiled_summary":
             continue
         try:
-            df = pd.read_excel(str(f))
+            df = pd.read_excel(str(f), sheet_name='Axon')             
+            # Also read Myelin+G-ratio sheet for fiber_equiv_diam_um and gratio
+            df_myelin = pd.read_excel(str(f), sheet_name='Myelin+G-ratio')  
+            df = pd.concat([df, df_myelin.drop(columns=[c for c in df_myelin.columns if c in df.columns])], axis=1)  
             dfs[f.stem.replace(morph_suffix, '')] = df
         except Exception as e:
             log.warn(f"Could not read {f.name}: {e}")
@@ -97,27 +100,36 @@ def bin_nerve_diameters(
 
     clahe_cfg  = clahe_cfg or {}
     clahe_on   = clahe_cfg.get('enabled', False)
-    clahe_str  = f"ON (clip={clahe_cfg.get('clip_limit', 1.0)})" if clahe_on else 'OFF'  # ← NEW
+    clahe_str  = f"ON (clip={clahe_cfg.get('clip_limit', 1.0)})" if clahe_on else 'OFF'  
 
+    config_gratio = config.get('primary_gratio_method', 'equiv_diam')              
+    wsh_cfg       = config.get('watershed', {}) 
     global_df = pd.DataFrame([
-        ['Nerve',                  nerve_name],
-        ['Magnification',          mag],
-        ['Model',                  model_name or 'unknown'],                               # ← NEW
-        ['CLAHE',                  clahe_str],                                             # ← NEW
-        ['Total axons',            total_axons],
+        ['Nerve',                    nerve_name],
+        ['Magnification',            mag],
+        ['DeepAxon version',         __version__],                                  
+        ['Model',                    model_name or 'unknown'],
+        ['CLAHE',                    clahe_str],
+        ['Watershed threshold',      wsh_cfg.get('distance_threshold', 0.17)],      
+        ['Watershed disk',           wsh_cfg.get('dilation_disk', 5)],              
+        ['Primary g-ratio method',   config_gratio],                                
+        ['Total axons',              total_axons],
         ['Mean fiber diameter (µm)', mean_fiber_diam if mean_fiber_diam is not None else 'N/A'],
         ['Mean axon diameter (µm)',  mean_axon_diam  if mean_axon_diam  is not None else 'N/A'],
-        ['Mean g-ratio',             mean_gratio     if mean_gratio     is not None else 'N/A'],
+        ['Mean g-ratio (avg)',        mean_gratio     if mean_gratio     is not None else 'N/A'],
     ], columns=['Metric', 'Value'])
 
     # ── Per-image summary ─────────────────────────────────────────────────────
     per_image_rows = []
     for img_name, img_df in dfs.items():
         img_df['gratio'] = pd.to_numeric(img_df.get('gratio', pd.Series()), errors='coerce')
+        config_gratio = config.get('primary_gratio_method', 'equiv_diam')          
+        gratio_col    = 'gratio_equiv_diam' if config_gratio == 'equiv_diam' else 'gratio_mean_axes'  
         per_image_rows.append({
             'Image':          img_name,
             'Axon Count':     len(img_df),
             'Mean G-ratio':   round(img_df['gratio'].dropna().mean(), 6) if 'gratio' in img_df.columns else None,
+            f'Mean G-ratio ({config_gratio})': round(img_df[gratio_col].dropna().mean(), 6) if gratio_col in img_df.columns else None,
             'Mean Fiber Diam (µm)': round(img_df['fiber_equiv_diam_um'].dropna().mean(), 3) if 'fiber_equiv_diam_um' in img_df.columns else None,
         })
     per_image_df = pd.DataFrame(per_image_rows)
@@ -211,16 +223,19 @@ def save_distributions(
     nerve_name: str
 ) -> str:
     """
-    Save distribution data to Excel with five sections:
-      1. Global summary (nerve-level metadata + averages)
-      2. Per-image summary (axon count + mean g-ratio per image)
-      3. Granular distribution (0.5µm bins, 0–8µm + catch)
-      4. Mid distribution (2µm bins, 0–16µm + catch)
-      5. Coarse distribution (5µm bins, full range + catch)
+    Save distribution data to a multi-sheet Excel file.
+
+    Sheet 1 — Summary    : global nerve metadata + per-image summary
+    Sheet 2 — Granular   : 0.5µm bins, 0–8µm + catch
+    Sheet 3 — Mid        : 2µm bins, 0–16µm + catch
+    Sheet 4 — Coarse     : 5µm bins, full range + catch
 
     File named: {nerve_name}_binned.xlsx
     Returns output path.
     """
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     out_path = output_dir / f"{nerve_name}_binned.xlsx"
@@ -231,41 +246,65 @@ def save_distributions(
     bins_mid_df      = data['bins_mid_df']
     bins_coarse_df   = data['bins_coarse_df']
 
-    with pd.ExcelWriter(str(out_path), engine='openpyxl') as writer:
-        current_row = 0
+    hdr_font = Font(bold=True)
+    hdr_fill = PatternFill('solid', fgColor='D9E1F2')
+    prov_font = Font(italic=True, color='666666')
 
-        # ── Global summary ────────────────────────────────────────────────────
-        header_df = pd.DataFrame([['── Global Summary ──']], columns=[''])
-        header_df.to_excel(writer, index=False, header=False, startrow=current_row)
-        current_row += 1
-        global_df.to_excel(writer, index=False, header=False, startrow=current_row)
-        current_row += len(global_df) + 2
+    def write_header_row(ws, columns: list, start_row: int = 1):
+        for c_idx, col_name in enumerate(columns, 1):
+            cell           = ws.cell(row=start_row, column=c_idx, value=col_name)
+            cell.font      = hdr_font
+            cell.fill      = hdr_fill
+            cell.alignment = Alignment(horizontal='center')
+        ws.freeze_panes = ws.cell(row=start_row + 1, column=1)
 
-        # ── Per-image summary ─────────────────────────────────────────────────
-        header_df = pd.DataFrame([['── Per-Image Summary ──']], columns=[''])
-        header_df.to_excel(writer, index=False, header=False, startrow=current_row)
-        current_row += 1
-        per_image_df.to_excel(writer, index=False, startrow=current_row)
-        current_row += len(per_image_df) + 3
+    def write_df(ws, frame: pd.DataFrame, start_row: int = 1):
+        write_header_row(ws, list(frame.columns), start_row)
+        for r_idx, row_data in enumerate(frame.itertuples(index=False), start_row + 1):
+            for c_idx, value in enumerate(row_data, 1):
+                ws.cell(row=r_idx, column=c_idx, value=value)
 
-        # ── Granular distribution (0.5µm bins, 0–8µm + catch) ────────────────
-        header_df = pd.DataFrame([['── Diameter Distribution — Granular (0.5µm bins, physiological range) ──']], columns=[''])
-        header_df.to_excel(writer, index=False, header=False, startrow=current_row)
-        current_row += 1
-        bins_granular_df.to_excel(writer, index=False, startrow=current_row)
-        current_row += len(bins_granular_df) + 3
+    def autofit(ws, min_width: int = 12, max_width: int = 40):
+        for col in ws.columns:
+            max_len = max(
+                len(str(cell.value)) if cell.value is not None else 0
+                for cell in col
+            )
+            ws.column_dimensions[col[0].column_letter].width = min(
+                max(max_len + 4, min_width), max_width
+            )
 
-        # ── Mid distribution (2µm bins, 0–16µm + catch) ───────────────────────
-        header_df = pd.DataFrame([['── Diameter Distribution — Mid (2µm bins, broad physiological range) ──']], columns=[''])
-        header_df.to_excel(writer, index=False, header=False, startrow=current_row)
-        current_row += 1
-        bins_mid_df.to_excel(writer, index=False, startrow=current_row)
-        current_row += len(bins_mid_df) + 3
+    wb = Workbook()
 
-        # ── Coarse distribution (5µm bins, full range + catch) ────────────────
-        header_df = pd.DataFrame([['── Diameter Distribution — Coarse (5µm bins, global QC scan) ──']], columns=[''])
-        header_df.to_excel(writer, index=False, header=False, startrow=current_row)
-        current_row += 1
-        bins_coarse_df.to_excel(writer, index=False, startrow=current_row)
+    # ── Sheet 1 — Summary ─────────────────────────────────────────────────────
+    ws1 = wb.active
+    ws1.title = 'Summary'
 
+    # Global metadata block
+    for r_idx, row_data in enumerate(global_df.itertuples(index=False), 1):
+        lbl_cell      = ws1.cell(row=r_idx, column=1, value=row_data[0])
+        lbl_cell.font = prov_font
+        ws1.cell(row=r_idx, column=2, value=row_data[1])
+
+    # Per-image table below with blank separator
+    sep = len(global_df) + 2
+    write_df(ws1, per_image_df, start_row=sep)
+    autofit(ws1)
+
+    # ── Sheet 2 — Granular ────────────────────────────────────────────────────
+    ws2 = wb.create_sheet('Granular (0.5µm)')
+    write_df(ws2, bins_granular_df)
+    autofit(ws2)
+
+    # ── Sheet 3 — Mid ─────────────────────────────────────────────────────────
+    ws3 = wb.create_sheet('Mid (2µm)')
+    write_df(ws3, bins_mid_df)
+    autofit(ws3)
+
+    # ── Sheet 4 — Coarse ──────────────────────────────────────────────────────
+    ws4 = wb.create_sheet('Coarse (5µm)')
+    write_df(ws4, bins_coarse_df)
+    autofit(ws4)
+
+    wb.save(str(out_path))
     return str(out_path)
