@@ -340,6 +340,18 @@ def train_model(
             f"CLAHE: {aug_counts['clahe']}"                              
         )
 
+    # ── Deterministic seeding — ensures exact reproducibility from result.json ─
+    if run_cfg is not None:                                                  
+        _seed = run_cfg.get('seed', 42)                                      
+        import random                                                         
+        random.seed(_seed)                                                    
+        np.random.seed(_seed)                                                 
+        torch.manual_seed(_seed)                                              
+        torch.cuda.manual_seed_all(_seed)                                    
+        torch.backends.cudnn.deterministic = True                            
+        torch.backends.cudnn.benchmark     = False                           
+        log.info(f"Deterministic seeding — seed={_seed}")                   
+        
     # ── Build model ────────────────────────────────────────────────────────────
     device        = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     _weights = run_cfg.get('class_weights', _class_weights_cfg) if run_cfg else _class_weights_cfg
@@ -476,6 +488,7 @@ def train_model(
     }
 
     # ── Training loop ──────────────────────────────────────────────────────────
+    _save_checkpoint = run_cfg.get('save_checkpoint', True) if run_cfg else True
     log.rule("TRAINING")
     for epoch in range(epochs):
         epoch_start = datetime.now()
@@ -554,20 +567,23 @@ def train_model(
             best_val_myel         = val_dice_myel
             best_val_iou          = val_iou
             best_checkpoint_epoch = epoch + 1
-            torch.save({
-                'model_state_dict': model.state_dict(),
-                'meta': {
-                    **_base_meta,
-                    'best_epoch':       epoch + 1,
-                    'best_val_loss':    val_loss,
-                    'best_bg_dice':     val_dice_bg,
-                    'best_axon_dice':   val_dice_axon,
-                    'best_myelin_dice': val_dice_myel,
-                    'best_val_iou':     val_iou,
-                    'epochs_completed': None,
-                    'early_stopped':    None,
-                }
-            }, str(model_path))
+            
+            if _save_checkpoint:
+                torch.save({
+                    'model_state_dict': model.state_dict(),
+                    'meta': {
+                        **_base_meta,
+                        'best_epoch':       epoch + 1,
+                        'best_val_loss':    val_loss,
+                        'best_bg_dice':     val_dice_bg,
+                        'best_axon_dice':   val_dice_axon,
+                        'best_myelin_dice': val_dice_myel,
+                        'best_val_iou':     val_iou,
+                        'epochs_completed': None,
+                        'early_stopped':    None,
+                    }
+                }, str(model_path))
+            
             epochs_no_improve = 0
             checkpoint_flag   = " ← CHECKPOINT"
 
@@ -614,13 +630,19 @@ def train_model(
     # ── Update final fields in checkpoint ─────────────────────────────────────
     n_epochs      = len(history['loss'])
     early_stopped = n_epochs < epochs
-    checkpoint = torch.load(str(model_path), map_location=device, weights_only=False)
-    checkpoint['meta']['epochs_completed'] = n_epochs
-    checkpoint['meta']['early_stopped']    = early_stopped
-    torch.save(checkpoint, str(model_path))
-
-    # ── Load best weights ──────────────────────────────────────────────────────
-    model.load_state_dict(checkpoint['model_state_dict'])
+    if _save_checkpoint:
+        checkpoint = torch.load(str(model_path), map_location=device, weights_only=False)
+        checkpoint['meta']['epochs_completed'] = n_epochs
+        checkpoint['meta']['early_stopped']    = early_stopped
+        torch.save(checkpoint, str(model_path))
+        model.load_state_dict(checkpoint['model_state_dict'])   # Load best checkpoint for final evaluation
+    
+    else:
+        log.info(                                                    
+            "save_checkpoint=False — post-training evaluation on "  
+            f"final epoch weights (epoch {n_epochs}), not best "    
+            f"checkpoint (epoch {best_checkpoint_epoch})"           
+        )                                                            
 
     # ── Post-training evaluation — all metrics at best checkpoint ─────────────
     log.rule("POST-TRAINING EVALUATION")

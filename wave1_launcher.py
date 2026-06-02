@@ -91,6 +91,7 @@ def build_sweep_jobs(cfg: dict) -> list[dict]:
             'epochs':        train['epochs'],
             'batch_size':    train['batch_size'],
             'augmentation':  False,
+            'save_checkpoint': False,
             'learning_rate': train['learning_rate'],
             'weight_decay':  train['weight_decay'],
             'output': {

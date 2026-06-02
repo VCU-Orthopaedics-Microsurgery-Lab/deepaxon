@@ -9,6 +9,7 @@ python -m segment        # Segment a study folder of nerve images
 python -m morphometrics  # Run per-image morphometric analysis
 python -m batch_axon     # Compile study-level morphometric summary
 python -m train          # Train a new segmentation model
+python -m train.finetune  # Fine-tune an existing model on new images
 ```
 
 > **Note:** Use `python -m` to ensure the repo root is on the Python path.

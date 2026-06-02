@@ -3,6 +3,9 @@ train/__main__.py
 
 Entry point for: python -m train
 
+For fine-tuning an existing model on new images:
+    python -m train.finetune
+
 Interactive mode (default):
     python -m train
     Handles all user prompts, GPU setup, then calls train.train_model().
@@ -250,7 +253,10 @@ def _load_run_config(config_path: str) -> dict:
 
 def main():
     # ── Argument parsing ──────────────────────────────────────────────────────
-    parser = argparse.ArgumentParser(description="DeepAxon training entry point")
+    parser = argparse.ArgumentParser(
+        description="DeepAxon training entry point. "
+                    "To fine-tune an existing model: python -m train.finetune"
+    )
     parser.add_argument(
         '--config', metavar='FILE',
         help='Path to train_config.json for non-interactive (sbatch) mode'
