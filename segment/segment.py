@@ -418,6 +418,8 @@ def save_qc_sheet(
 
         # Load segmented
         if not seg_path.exists():
+            if log:
+                log.warn(f"QC: segmented file not found: {seg_path}")
             continue
         seg = cv2.imread(str(seg_path), cv2.IMREAD_GRAYSCALE)
         if seg is None:

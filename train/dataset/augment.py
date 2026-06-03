@@ -19,9 +19,11 @@ Two modes:
         All probabilities default to 0.0 — only the swept aug type fires.
 
 New aug types added for Wave 2 sweep:
-    gaussian_blur   — simulates focus variation (image only)
-    elastic         — tissue deformation during sectioning (image + mask)
-    clahe           — contrast enhancement variation (image only)
+    gaussian_blur      — simulates focus variation (image only)
+    elastic            — tissue deformation during sectioning (image + mask)
+    clahe              — contrast enhancement variation (image only)
+    contrast_stretch   — inter-batch staining intensity variation (image only)
+    random_erase       — tissue fold / artifact simulation (image only)
 """
 
 from __future__ import annotations
@@ -59,25 +61,29 @@ def augment_pair(
     # ── Resolve parameters ────────────────────────────────────────────────────
     if aug_params is not None:
         # Parametric mode — Wave 2
-        hflip_prob        = aug_params.get('hflip_prob',        0.0)
-        vflip_prob        = aug_params.get('vflip_prob',        0.0)
-        rotation_prob     = aug_params.get('rotation_prob',     0.0)
-        rotation_deg      = aug_params.get('rotation_deg',      15)
-        brightness_prob   = aug_params.get('brightness_prob',   0.0)
-        brightness_scale  = aug_params.get('brightness_scale',  [0.8, 1.2])
-        brightness_offset = aug_params.get('brightness_offset', [-0.1, 0.1])
-        gamma_prob        = aug_params.get('gamma_prob',        0.0)
-        gamma_range       = aug_params.get('gamma_range',       [0.7, 1.4])
-        noise_prob        = aug_params.get('noise_prob',        0.0)
-        noise_sigma       = aug_params.get('noise_sigma',       0.02)
-        blur_prob         = aug_params.get('blur_prob',         0.0)
-        blur_sigma        = aug_params.get('blur_sigma',        1.0)
-        elastic_prob      = aug_params.get('elastic_prob',      0.0)
-        elastic_alpha     = aug_params.get('elastic_alpha',     20)
-        elastic_sigma     = aug_params.get('elastic_sigma',     8)
-        clahe_prob        = aug_params.get('clahe_prob',        0.0)
-        clahe_clip        = aug_params.get('clahe_clip',        1.5)
-        clahe_tile        = aug_params.get('clahe_tile',        16)
+        hflip_prob             = aug_params.get('hflip_prob',             0.0)
+        vflip_prob             = aug_params.get('vflip_prob',             0.0)
+        rotation_prob          = aug_params.get('rotation_prob',          0.0)
+        rotation_deg           = aug_params.get('rotation_deg',           15)
+        brightness_prob        = aug_params.get('brightness_prob',        0.0)
+        brightness_scale       = aug_params.get('brightness_scale',       [0.8, 1.2])
+        brightness_offset      = aug_params.get('brightness_offset',      [-0.1, 0.1])
+        gamma_prob             = aug_params.get('gamma_prob',             0.0)
+        gamma_range            = aug_params.get('gamma_range',            [0.7, 1.4])
+        noise_prob             = aug_params.get('noise_prob',             0.0)
+        noise_sigma            = aug_params.get('noise_sigma',            0.02)
+        blur_prob              = aug_params.get('blur_prob',              0.0)
+        blur_sigma             = aug_params.get('blur_sigma',             1.0)
+        elastic_prob           = aug_params.get('elastic_prob',           0.0)
+        elastic_alpha          = aug_params.get('elastic_alpha',          20)
+        elastic_sigma          = aug_params.get('elastic_sigma',          8)
+        clahe_prob             = aug_params.get('clahe_prob',             0.0)
+        clahe_clip             = aug_params.get('clahe_clip',             1.5)
+        clahe_tile             = aug_params.get('clahe_tile',             16)
+        contrast_stretch_prob  = aug_params.get('contrast_stretch_prob',  0.0)    
+        contrast_stretch_scale = aug_params.get('contrast_stretch_scale', 2)      
+        erase_prob             = aug_params.get('erase_prob',             0.0)    
+        erase_scale            = aug_params.get('erase_scale',            0.05)   
     else:
         # Config mode — Wave 1 / interactive
         config    = load_config()
@@ -108,6 +114,12 @@ def augment_pair(
         clahe_prob        = 0.0
         clahe_clip        = 1.5
         clahe_tile        = 16
+        # New aug types default OFF in config mode
+        contrast_stretch_prob  = 0.0                                              
+        contrast_stretch_scale = 2                                                
+        erase_prob             = 0.0                                              
+        erase_scale            = 0.05         
+                                            
 
     # ── Geometric — applied to BOTH image and mask ────────────────────────────
 
@@ -162,6 +174,14 @@ def augment_pair(
     if rng.random() < clahe_prob:
         image = _apply_clahe(image, clahe_clip, int(clahe_tile))
         applied.append('clahe')
+    
+    if rng.random() < contrast_stretch_prob:                                      
+        image = _contrast_stretch(image, contrast_stretch_scale)                  
+        applied.append('contrast_stretch')                                        
+
+    if rng.random() < erase_prob:                                                 
+        image = _random_erase(image, erase_scale, rng)                           
+        applied.append('erase')                                                   
 
     return image.astype(np.float32), mask.astype(np.float32), applied
 
@@ -239,6 +259,62 @@ def _apply_clahe(image: np.ndarray, clip_limit: float, tile_size: int) -> np.nda
     return (enhanced.astype(np.float32) / 255.0)[..., np.newaxis]
 
 
+def _contrast_stretch(image: np.ndarray, clip_pct: float) -> np.ndarray:
+    """
+    Contrast stretch via percentile clipping — image only.
+    Simulates inter-batch staining intensity variation (dark/light slides).
+
+    Clips the bottom and top clip_pct% of pixel values then linearly
+    stretches the remaining range to fill [0, 1].
+
+    image:    (H, W, 1) float32 [0,1]
+    clip_pct: percentile to clip at each end (e.g. 2 = clip bottom 2% and top 2%)
+    """
+    img = image.squeeze(-1)
+    p_low  = np.percentile(img, clip_pct)
+    p_high = np.percentile(img, 100 - clip_pct)
+    if p_high > p_low:
+        img = np.clip((img - p_low) / (p_high - p_low), 0.0, 1.0)
+    return img[..., np.newaxis].astype(np.float32)
+
+
+def _random_erase(
+    image:      np.ndarray,
+    erase_scale: float,
+    rng:        np.random.Generator,
+) -> np.ndarray:
+    """
+    Random erasing — image only.
+    Masks a random rectangle with the patch mean intensity.
+    Simulates tissue folds, artifacts, or processing damage.
+
+    erase_scale: target erased area as fraction of total patch area (e.g. 0.05 = 5%)
+    Aspect ratio randomized in [0.3, 3.0].
+    If sampled rectangle falls outside image bounds it is clipped silently.
+
+    image: (H, W, 1) float32 [0,1]
+    """
+    img   = image.copy()
+    h, w  = img.shape[:2]
+    area  = h * w
+
+    target_area = erase_scale * area
+    aspect      = rng.uniform(0.3, 3.0)
+    erase_h     = int(round(np.sqrt(target_area * aspect)))
+    erase_w     = int(round(np.sqrt(target_area / aspect)))
+
+    erase_h = min(erase_h, h)
+    erase_w = min(erase_w, w)
+
+    top  = rng.integers(0, h - erase_h + 1)
+    left = rng.integers(0, w - erase_w + 1)
+
+    fill = float(img.mean())
+    img[top:top + erase_h, left:left + erase_w, :] = fill
+
+    return img
+
+
 # ─── Dataset augmentation ─────────────────────────────────────────────────────
 
 def augment_dataset_np(
@@ -269,6 +345,7 @@ def augment_dataset_np(
         'hflip': 0, 'vflip': 0, 'rotation': 0,
         'brightness': 0, 'gamma': 0, 'noise': 0,
         'blur': 0, 'elastic': 0, 'clahe': 0,
+        'contrast_stretch': 0, 'erase': 0,                                       
     }
 
     for i in range(len(images)):

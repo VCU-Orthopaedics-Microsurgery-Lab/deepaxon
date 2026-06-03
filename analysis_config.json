@@ -275,7 +275,11 @@
             "elastic_sigma":     8,
             "clahe_prob":        0.0,
             "clahe_clip":        1.5,
-            "clahe_tile":        16
+            "clahe_tile":        16,
+            "contrast_stretch_prob": 0.0,
+            "contrast_stretch_scale": 2,
+            "erase_prob":            0.0,
+            "erase_scale":           0.05
         },
 
         "hflip": {
@@ -373,6 +377,22 @@
             "_current_clip": 1.5,
             "_current_tile": 16,
             "_current_note": "Current segment.py CLAHE values used as anchor"
+        },
+
+        "contrast_stretch": {
+            "_type": "matrix",
+            "_sweep": "4 prob × 5 clip_pct = 20 combinations",
+            "_note": "Simulates inter-batch staining variation (dark/light slides). clip_pct = percentile clipped at each end before stretching to [0,1].",
+            "prob_levels": [0.25, 0.50, 0.75, 1.00],
+            "clip_levels": [1, 2, 5, 10, 20]
+        },
+
+        "random_erase": {
+            "_type": "matrix",
+            "_sweep": "4 prob × 5 scale = 20 combinations",
+            "_note": "Simulates tissue folds, processing artifacts. erase_scale = fraction of 256×256 patch area erased. Single random rectangle filled with patch mean.",
+            "prob_levels": [0.25, 0.50, 0.75, 1.00],
+            "scale_levels": [0.02, 0.05, 0.10, 0.15, 0.20]
         },
 
         "step2b": {

@@ -5,11 +5,25 @@ Automated nerve cross-section segmentation and morphometric analysis using deep 
 ## Entry Points
 
 ```bash
+# ── Core pipeline ──────────────────────────────────────────────────────────
 python -m segment        # Segment a study folder of nerve images
 python -m morphometrics  # Run per-image morphometric analysis
 python -m batch_axon     # Compile study-level morphometric summary
-python -m train          # Train a new segmentation model
-python -m train.finetune  # Fine-tune an existing model on new images
+
+# ── Training ───────────────────────────────────────────────────────────────
+python -m train                   # Train a new segmentation model (interactive)
+python -m train --config FILE     # Train non-interactively (sbatch mode)
+python -m train.finetune          # Fine-tune an existing model on new images
+
+# ── Analysis pipeline (v5_analysis branch, Athena cluster) ─────────────────
+python wave1_launcher.py --config analysis_config.json [--dry-run]
+python wave2_launcher.py --config analysis_config.json --step 2a [--dry-run]
+python wave2_launcher.py --config analysis_config.json --step 2b [--dry-run]
+python wave3_launcher.py --config analysis_config.json [--dry-run]
+python aggregator.py     --config analysis_config.json [--wave 1/2a/2b/3]
+
+# ── Utilities ──────────────────────────────────────────────────────────────
+python utils/version.py  # Print DeepAxon version and full environment info
 ```
 
 > **Note:** Use `python -m` to ensure the repo root is on the Python path.

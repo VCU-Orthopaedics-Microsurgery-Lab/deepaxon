@@ -335,9 +335,11 @@ def train_model(
         log.info(
             f"  Photometric — Brightness: {aug_counts['brightness']}  |  "
             f"Gamma: {aug_counts['gamma']}  |  "
-            f"Noise: {aug_counts['noise']}  |  "                         
-            f"Blur: {aug_counts['blur']}  |  "                           
-            f"CLAHE: {aug_counts['clahe']}"                              
+            f"Noise: {aug_counts['noise']}  |  "
+            f"Blur: {aug_counts['blur']}  |  "
+            f"CLAHE: {aug_counts['clahe']}  |  "
+            f"Contrast stretch: {aug_counts['contrast_stretch']}  |  "  
+            f"Erase: {aug_counts['erase']}"                             
         )
 
     # ── Deterministic seeding — ensures exact reproducibility from result.json ─

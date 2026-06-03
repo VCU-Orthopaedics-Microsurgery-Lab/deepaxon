@@ -26,21 +26,25 @@ Usage:
 
 Job counts:
     Step 2a:
-        H-flip prob          :   4 × 5 seeds =   20
-        V-flip prob          :   4 × 5 seeds =   20
-        Rotation prob        :   4 × 5 seeds =   20
-        Rotation intensity   :   5 × 5 seeds =   25
-        Brightness matrix    :  28 × 5 seeds =  140
-        Gamma matrix         :  28 × 5 seeds =  140
-        Noise matrix         :  24 × 5 seeds =  120
-        Gaussian blur matrix :  20 × 5 seeds =  100
-        Elastic 3D matrix    : 100 × 5 seeds =  500
-        CLAHE 3D matrix      : 196 × 5 seeds =  980
-        Total 2a             :                2,065
+        H-flip prob              :   4 × 5 seeds =   20
+        V-flip prob              :   4 × 5 seeds =   20
+        Rotation prob            :   4 × 5 seeds =   20
+        Rotation intensity       :   5 × 5 seeds =   25
+        Brightness matrix        :  28 × 5 seeds =  140
+        Gamma matrix             :  28 × 5 seeds =  140
+        Noise matrix             :  24 × 5 seeds =  120
+        Gaussian blur matrix     :  20 × 5 seeds =  100
+        Elastic 3D matrix        : 100 × 5 seeds =  500
+        CLAHE 3D matrix          : 196 × 5 seeds =  980
+        Contrast stretch matrix  :  20 × 5 seeds =  100
+        Random erase matrix      :  20 × 5 seeds =  100
+        Total 2a                 :                2,265
+        
     Step 2b: aug ON only × 5 seeds = 5
         Aug OFF baseline pulled from Wave 1 SW results by matching
         arch/encoder/weights/split/seed — no redundant aug_off jobs.
-    Wave 2 total: 2,070 jobs (~4.3 hours wall time)
+        
+    Wave 2 total: 2,270 jobs (~4.7 hours wall time)
 """
 
 from __future__ import annotations
@@ -88,25 +92,29 @@ def load_winner_aug(winner_aug_path: Path) -> dict:
 
 # All aug params fixed at these values when not being swept
 PRODUCTION_AUG = {
-    'hflip_prob':         0.0,    # all other aug OFF during OAT sweep
-    'vflip_prob':         0.0,
-    'rotation_prob':      0.0,
-    'rotation_deg':       15,
-    'brightness_prob':    0.0,
-    'brightness_scale':   [0.80, 1.20],
-    'brightness_offset':  [-0.10, 0.10],
-    'gamma_prob':         0.0,
-    'gamma_range':        [0.70, 1.40],
-    'noise_prob':         0.0,
-    'noise_sigma':        0.02,
-    'blur_prob':          0.0,
-    'blur_sigma':         1.0,
-    'elastic_prob':       0.0,
-    'elastic_alpha':      20,
-    'elastic_sigma':      8,
-    'clahe_prob':         0.0,
-    'clahe_clip':         1.5,
-    'clahe_tile':         16,
+    'hflip_prob':             0.0,    # all other aug OFF during OAT sweep
+    'vflip_prob':             0.0,
+    'rotation_prob':          0.0,
+    'rotation_deg':           15,
+    'brightness_prob':        0.0,
+    'brightness_scale':       [0.80, 1.20],
+    'brightness_offset':      [-0.10, 0.10],
+    'gamma_prob':             0.0,
+    'gamma_range':            [0.70, 1.40],
+    'noise_prob':             0.0,
+    'noise_sigma':            0.02,
+    'blur_prob':              0.0,
+    'blur_sigma':             1.0,
+    'elastic_prob':           0.0,
+    'elastic_alpha':          20,
+    'elastic_sigma':          8,
+    'clahe_prob':             0.0,
+    'clahe_clip':             1.5,
+    'clahe_tile':             16,
+    'contrast_stretch_prob':  0.0,                                     
+    'contrast_stretch_scale': 2,                                       
+    'erase_prob':             0.0,                                     
+    'erase_scale':            0.05,                                    
 }
 
 
@@ -256,6 +264,26 @@ def build_2a_jobs(cfg: dict, winner: dict) -> list[dict]:
                 })
     add_jobs('clahe', clahe_combos)
 
+    # Contrast stretch — 4 prob × 5 clip_pct
+    contrast_combos = []
+    for prob in w2['contrast_stretch']['prob_levels']:
+        for clip in w2['contrast_stretch']['clip_levels']:
+            contrast_combos.append({
+                'contrast_stretch_prob':  prob,
+                'contrast_stretch_scale': clip,
+            })
+    add_jobs('contrast_stretch', contrast_combos)
+
+    # Random erase — 4 prob × 5 scale
+    erase_combos = []
+    for prob in w2['random_erase']['prob_levels']:
+        for scale in w2['random_erase']['scale_levels']:
+            erase_combos.append({
+                'erase_prob':  prob,
+                'erase_scale': scale,
+            })
+    add_jobs('random_erase', erase_combos)
+    
     return jobs
 
 
