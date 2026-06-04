@@ -7,9 +7,9 @@
 - **Marc Mazur** — MD, MSc, Research Fellow & PhD Student, VCU Orthopaedic Surgery. Primary developer, corresponding author.
 - **Kush Savsani** — Co-programmer
 - **Preetam Ghosh, PhD** — Technical supervisor (VCU CS)
-- **Geetanjali Bendale** — Daily lab supervisor
-- **J.H. Coert, MD PhD** — Utrecht Medical Center, Division of Plastic Surgery
-- **Jonathan Isaacs, MD** — PI, last author
+- **Geetanjali Bendale** — Daily lab supervisor (VCU Ortho)
+- **J.H. Coert, MD PhD** — PhD Supervisor, Utrecht Medical Center, Division of Plastic Surgery
+- **Jonathan Isaacs, MD** — PI, last author (VCU Ortho)
 
 **Author order:** Marc Mazur, Kush Savsani, Preetam Ghosh, Geetanjali Bendale, J.H. Coert, Jonathan Isaacs
 
@@ -61,10 +61,10 @@
 - Splits are phenotype-balanced approximations — effective splits at n=30:
 
 | Target | n_val_per_class | Val total | Train total | Effective split |
-|---|---|---|---|---|
-| 67/33 | 5 | 10 | 20 | 67/33 ✅ exact |
-| 80/20 | 3 | 6 | 24 | 80/20 ✅ exact |
-| 93/7 | 1 | 2 | 28 | 93/7 ✅ exact |
+|--------|-----------------|-----------|-------------|-----------------|
+| 67/33  |         5       |     10    |      20     |  67/33 ✅ exact |
+| 80/20  |         3       |     6     |      24     |  80/20 ✅ exact |
+| 93/7   |         1       |     2     |      28     |  93/7  ✅ exact |
 
 All three splits used in Wave 1. 93/7 is minimum viable phenotype-balanced val set (1 ctrl + 1 regen).
 

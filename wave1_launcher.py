@@ -149,7 +149,7 @@ cd {repo}
 
 JOB_CONFIG={jobs_dir}/sw/job_$(printf '%04d' $SLURM_ARRAY_TASK_ID).json
 
-echo "Wave 1 [SW] job $SLURM_ARRAY_TASK_ID — config: $JOB_CONFIG"
+echo "Wave 1 [SW] job $SLURM_ARRAY_TASK_ID - config: $JOB_CONFIG"
 python -m train --config "$JOB_CONFIG"
 """
     out_path.parent.mkdir(parents=True, exist_ok=True)
