@@ -151,14 +151,20 @@ def compute_all_metrics(
         percentile=95,
         reduction="mean",
     )
+    
     hd_metric(y_pred=preds_onehot, y=labels_onehot)
-    hd95_per_class = hd_metric.aggregate(reduction="none")  # (num_classes,)
+    hd95_raw = hd_metric.aggregate(reduction="none")
     hd_metric.reset()
+    if hd95_raw.ndim == 2:
+        hd95_per_class = hd95_raw.nanmean(dim=0)              # (N, C) → (C,)
+    else:
+        hd95_per_class = hd95_raw                             # already (C,)
 
-    hd95_bg    = round(hd95_per_class[CLASS_BG    ].item(), 4)
-    hd95_myel  = round(hd95_per_class[CLASS_MYELIN].item(), 4)
-    hd95_axon  = round(hd95_per_class[CLASS_AXON  ].item(), 4)
-    hd95_macro = round(hd95_per_class.mean().item(),        4)
+    hd95_bg          = round(hd95_per_class[CLASS_BG    ].item(), 4)
+    hd95_myel        = round(hd95_per_class[CLASS_MYELIN].item(), 4)
+    hd95_axon        = round(hd95_per_class[CLASS_AXON  ].item(), 4)
+    hd95_macro       = round(hd95_per_class.nanmean().item(),     4)
+    hd95_combined = round(hd95_per_class[[CLASS_MYELIN, CLASS_AXON]].nanmean().item(), 4)
 
     return {
         # Macro
@@ -166,7 +172,8 @@ def compute_all_metrics(
         'iou_macro':        round(iou_macro,       4),
         'precision_macro':  round(precision_macro, 4),
         'recall_macro':     round(recall_macro,    4),
-        'hd95_macro':       hd95_macro,
+        'hd95_macro':          hd95_macro,
+        'hd95_myelin_axon':    hd95_combined,            #myelin + axon
         # Per-class Dice
         'dice_bg':          _pc(dice_pc, CLASS_BG),
         'dice_myelin':      _pc(dice_pc, CLASS_MYELIN),

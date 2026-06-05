@@ -704,6 +704,7 @@ def train_model(
         'Dice myelin':       f"{eval_metrics['dice_myelin']:.4f}",
         'HD95 axon':         f"{eval_metrics['hd95_axon']:.4f}",
         'HD95 myelin':       f"{eval_metrics['hd95_myelin']:.4f}",
+        'HD95 myelin_axon':  f"{eval_metrics['hd95_myelin_axon']:.4f}",
     })
     
     if run_cfg is not None:                                         

@@ -1,77 +1,77 @@
-# DeepAxon v5.1.0 — canonical requirements
-# Branch: v5_analysis
-# Python: 3.11.x
-# Frozen: May 2026 — from confirmed working deep_axon environment
+# DeepAxon v5.1.0 — requirements
+# Branch: v5_analysis | Python: 3.11.x
 #
 # ── Install order ─────────────────────────────────────────────────────────────
+#   Step 1 — Everything except torch and patchify:
+#     pip install -r requirements.txt
 #
-#   Step 1 — PyTorch (CUDA wheel, install before everything else):
+#   Step 2 — PyTorch CUDA wheel (must come after to override any drift):
 #     pip install torch==2.5.1+cu121 torchvision==0.20.1+cu121 \
 #         --index-url https://download.pytorch.org/whl/cu121
 #
-#   Step 2 — Everything else:
-#     pip install -r requirements.txt
-#
-#   Step 3 — Patchify last (--no-deps to avoid numpy conflict):
+#   Step 3 — Patchify (--no-deps required, cannot be in this file):
 #     pip install patchify==0.2.3 --no-deps
 #
-# torch and torchvision excluded — CUDA wheel is system-specific.
-# patchify excluded — must install with --no-deps.
+#   Step 4 — Verify:
+#     python utils/version.py
+#
+# Note: sympy is intentionally excluded — torch 2.5.1 pins it to 1.13.1
+# automatically. Including it causes unnecessary version churn.
+# Note: narwhals is a transitive dep of scikit-learn>=1.5 — not listed directly.
 
 # ── Core ML ───────────────────────────────────────────────────────────────────
 segmentation_models_pytorch==0.5.0
-timm==1.0.26
 monai==1.5.2
-safetensors==0.7.0
+timm>=1.0
+safetensors
 
 # ── Scientific stack ──────────────────────────────────────────────────────────
-numpy==1.26.4
-scipy==1.17.1
-scikit-learn==1.8.0
-scikit-image==0.26.0
-pandas==3.0.2
+numpy==2.2.4
+scipy>=1.13
+scikit-learn>=1.5
+scikit-image>=0.24
+pandas>=2.2
 
 # ── Imaging ───────────────────────────────────────────────────────────────────
-opencv-python==4.13.0.92
-pillow==12.1.1
-tifffile==2026.3.3
-ImageIO==2.37.3
-matplotlib==3.10.9
+opencv-python>=4.10
+pillow
+tifffile
+imageio
+matplotlib
 
 # ── Data / IO ─────────────────────────────────────────────────────────────────
-openpyxl==3.1.5
-xlsxwriter==3.2.9
-PyYAML==6.0.3
+openpyxl
+xlsxwriter
+PyYAML
 
 # ── Pipeline utilities ────────────────────────────────────────────────────────
-rich==14.3.3
-tqdm==4.67.3
-click==8.3.1
-typer==0.24.1
-shellingham==1.5.4
-joblib==1.5.3
-threadpoolctl==3.6.0
+rich
+tqdm
+click
+typer
+shellingham
+joblib
+threadpoolctl
 
-# ── Networking / HuggingFace (timm pretrained weights) ───────────────────────
-huggingface_hub==1.8.0
-requests==2.32.3
-certifi==2026.2.25
-filelock==3.25.2
-fsspec==2026.2.0
+# ── Networking / HuggingFace ──────────────────────────────────────────────────
+huggingface_hub
+requests
+certifi
+filelock
+fsspec
 
 # ── General utilities ─────────────────────────────────────────────────────────
-packaging==26.0
-typing_extensions==4.15.0
-sympy==1.14.0
-mpmath==1.3.0
-networkx==3.6.1
-six==1.17.0
-python-dateutil==2.9.0.post0
-tzdata==2025.3
-lazy-loader==0.5
-colorama==0.4.6
+packaging
+mpmath
+networkx
+six
+python-dateutil
+tzdata
+lazy-loader
+colorama
 
 # ── NOT included — install separately ────────────────────────────────────────
-# torch==2.5.1+cu121        → Step 1 above
-# torchvision==0.20.1+cu121 → Step 1 above
+# torch==2.5.1+cu121        → Step 2 above
+# torchvision==0.20.1+cu121 → Step 2 above
 # patchify==0.2.3           → Step 3 above (--no-deps)
+# sympy                     → managed automatically by torch 2.5.1 (pins 1.13.1)

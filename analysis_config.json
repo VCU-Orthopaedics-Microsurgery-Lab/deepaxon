@@ -1,7 +1,7 @@
 {
     "_readme": "Master config for Wave 1/2 analysis runs. Read by wave1_launcher.py and wave2_launcher.py. Do NOT merge into train_config.json \u2014 that file drives single interactive runs only.",
     "dataset": {
-        "images_dir": "/path/to/rb40x_v2_hprc",
+        "images_dir": "/tmp/mazurm_test/rb40x_val_hprc/images",
         "mag": "40X",
         "ctrl_prefix": "ctrl_",
         "regen_prefix": "regen_",
@@ -232,21 +232,21 @@
         "_augmentation_note": "Wave 1 always aug OFF. Wave 2 launcher overrides this."
     },
     "output": {
-        "jobs_dir": "/path/to/deepaxon/analysis/jobs",
-        "results_dir": "/path/to/deepaxon/analysis/results",
-        "models_dir": "/path/to/deepaxon/analysis/models",
-        "logs_dir": "/path/to/deepaxon/analysis/logs"
+        "jobs_dir":   "/tmp/mazurm_test/deepaxon/analysis/jobs",
+        "results_dir":"/tmp/mazurm_test/deepaxon/analysis/results",
+        "models_dir": "/tmp/mazurm_test/deepaxon/analysis/models",
+        "logs_dir":   "/tmp/mazurm_test/deepaxon/analysis/logs"
     },
     "slurm": {
         "partition": "gpu-h100",
         "gres": "gpu:1",
         "nodes": 1,
         "time": "00:30:00",
-        "_time_note": "30 min ceiling \u2014 ~7 min observed per run on H100",
+        "_time_note": "30 min ceiling — 5m 22s observed GPU training + ~10min Lustre/startup overhead on H100",
         "mem": "32G",
         "mail_type": "END,FAIL",
-        "mail_user": "your@email.edu",
-        "venv": "/path/to/deepaxon/venv",
+        "mail_user":  "mazurm@vcu.edu",
+        "venv":       "/tmp/mazurm_test/deepaxon/venv",
         "cpus_per_task": 4,
         "max_concurrent": 60,
         "_concurrency_note": "60 concurrent jobs \u2014 moderately greedy across 20 H100 GPUs (athena531-534). MaxJobsPU=80 per cluster policy."

@@ -51,6 +51,9 @@ from utils.helpers import (
     list_files, load_config, print_panel
 )
 from train.train import train_model
+from train.dataset.split import (
+            build_image_manifest, stratified_split, split_summary
+        )
 
 console  = Console()
 has_gpu  = torch.cuda.is_available()
@@ -306,10 +309,6 @@ def main():
 
         log_path = str(log_dir / f"{model_name}_training_log.txt")
         log      = DeepAxonLogger(log_path=log_path, program="DeepAxon Train")
-        
-        from train.dataset.split import (
-            build_image_manifest, stratified_split, split_summary
-        )
 
         is_analysis = 'run_id' in run_cfg
         if is_analysis:
@@ -325,8 +324,6 @@ def main():
                 seed         = run_cfg['seed'],
             )
             summary = split_summary(train_manifest, val_manifest)
-            run_cfg['train_stems'] = summary['train_stems']
-            run_cfg['val_stems']   = summary['val_stems']
             run_cfg['_train_stems'] = summary['train_stems']
             run_cfg['_val_stems']   = summary['val_stems']
             log.rule("STRATIFIED SPLIT")
