@@ -25,7 +25,8 @@ Cluster: VCU Athena H100 partition
 
 Wave 1 SW job count:
     24 arch/encoder × 16 weights × 3 splits × 5 seeds = 5,760 jobs
-    ~34 hours wall time at 60 concurrent on 20 H100s
+    Fast (unet++, unet, manet): 4,320 jobs — 45 min wall time
+    DeepLab (deeplabv3+):       1,440 jobs — 6 hour wall time
 """
 
 from __future__ import annotations
@@ -50,10 +51,11 @@ def load_analysis_config(path: str) -> dict:
 
 # ─── Permutation builder ──────────────────────────────────────────────────────
 
-def build_sweep_jobs(cfg: dict) -> list[dict]:
+def build_sweep_jobs(cfg: dict, deeplab_only: bool = False) -> list[dict]:
     """
     Stage SW — full arch/encoder/weight sweep at n=30.
-    5,760 jobs: 24 arch/encoder × 16 weights × 3 splits × 5 seeds
+    deeplab_only: if True, return only deeplabv3+ jobs (1,440)
+                  if False, return all non-deeplabv3+ jobs (4,320)
     """
     sw     = cfg['sweep']
     splits = cfg['splits']
@@ -100,7 +102,10 @@ def build_sweep_jobs(cfg: dict) -> list[dict]:
                 'logs_dir':    str(Path(output['logs_dir'])    / 'sw'),
             }
         })
-    return jobs
+
+    if deeplab_only:
+        return [j for j in jobs if j['arch'] == 'deeplabv3+']
+    return [j for j in jobs if j['arch'] != 'deeplabv3+']
 
 
 # ─── Job config writer ────────────────────────────────────────────────────────
@@ -120,23 +125,27 @@ def write_job_configs(jobs: list[dict], jobs_dir: Path) -> list[Path]:
 # ─── SLURM script writer ──────────────────────────────────────────────────────
 
 def write_sbatch(
-    n_jobs:   int,
-    jobs_dir: Path,
-    cfg:      dict,
-    out_path: Path,
+    n_jobs:        int,
+    jobs_dir:      Path,
+    cfg:           dict,
+    out_path:      Path,
+    time_override: str | None = None,
+    job_name:      str = 'deepaxon_wave1_sw',
+    index_offset:  int = 0,
 ) -> Path:
-    slurm    = cfg['slurm']
-    venv     = slurm['venv']
-    repo     = str(Path(venv).parent)
-    logs_dir = cfg['output']['logs_dir']
+    slurm     = cfg['slurm']
+    venv      = slurm['venv']
+    repo      = str(Path(venv).parent)
+    logs_dir  = cfg['output']['logs_dir']
+    wall_time = time_override or slurm['time']
 
     script = f"""#!/bin/bash
-#SBATCH --job-name=deepaxon_wave1_sw
+#SBATCH --job-name={job_name}
 #SBATCH --partition={slurm['partition']}
 #SBATCH --gres={slurm['gres']}
 #SBATCH --nodes={slurm['nodes']}
 #SBATCH --cpus-per-task={slurm['cpus_per_task']}
-#SBATCH --time={slurm['time']}
+#SBATCH --time={wall_time}
 #SBATCH --mem={slurm['mem']}
 #SBATCH --array=0-{n_jobs - 1}%{slurm['max_concurrent']}
 #SBATCH --output={logs_dir}/sw/%A_%a.out
@@ -147,9 +156,9 @@ def write_sbatch(
 source {venv}/bin/activate
 cd {repo}
 
-JOB_CONFIG={jobs_dir}/sw/job_$(printf '%04d' $SLURM_ARRAY_TASK_ID).json
+JOB_CONFIG={jobs_dir}/sw/job_$(printf '%04d' $(( $SLURM_ARRAY_TASK_ID + {index_offset} ))).json
 
-echo "Wave 1 [SW] job $SLURM_ARRAY_TASK_ID - config: $JOB_CONFIG"
+echo "Wave 1 [{job_name}] job $SLURM_ARRAY_TASK_ID - config: $JOB_CONFIG"
 python -m train --config "$JOB_CONFIG"
 """
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -170,30 +179,56 @@ def main():
     jobs_dir = Path(cfg['output']['jobs_dir'])
     out_dir  = jobs_dir.parent
 
-    sw_jobs = build_sweep_jobs(cfg)
-    print(f"Wave 1 SW: {len(sw_jobs)} jobs")
+    fast_jobs    = build_sweep_jobs(cfg, deeplab_only=False)
+    deeplab_jobs = build_sweep_jobs(cfg, deeplab_only=True)
+    all_jobs     = fast_jobs + deeplab_jobs
+    print(f"Wave 1 SW: {len(all_jobs)} jobs total ({len(fast_jobs)} fast, {len(deeplab_jobs)} deeplab)")
 
-    write_job_configs(sw_jobs, jobs_dir)
-    sbatch_sw = out_dir / 'wave1_sw.sbatch'
-    write_sbatch(len(sw_jobs), jobs_dir, cfg, sbatch_sw)
-    print(f"SW sbatch written → {sbatch_sw}")
+    write_job_configs(all_jobs, jobs_dir)
+
+    # Fast sbatch — unet++, unet, manet (45 min wall time)
+    sbatch_fast = out_dir / 'wave1_sw_fast.sbatch'
+    write_sbatch(
+        len(fast_jobs), jobs_dir, cfg, sbatch_fast,
+        time_override=cfg['slurm']['time'],
+        job_name='deepaxon_wave1_fast',
+        index_offset=0,
+    )
+    print(f"Fast sbatch written → {sbatch_fast}")
+
+    # DeepLab sbatch — deeplabv3+ only (6 hour wall time)
+    sbatch_deeplab = out_dir / 'wave1_sw_deeplab.sbatch'
+    write_sbatch(
+        len(deeplab_jobs), jobs_dir, cfg, sbatch_deeplab,
+        time_override=cfg['slurm']['time_deeplab'],
+        job_name='deepaxon_wave1_deeplab',
+        index_offset=len(fast_jobs),
+    )
+    print(f"DeepLab sbatch written → {sbatch_deeplab}")
 
     if args.dry_run:
         print("--dry-run: not submitting.")
         return
 
-    r = subprocess.run(['sbatch', str(sbatch_sw)], capture_output=True, text=True)
-    if r.returncode != 0:
-        print(f"sbatch FAILED:\n{r.stderr}", file=sys.stderr)
+    r_fast = subprocess.run(['sbatch', str(sbatch_fast)], capture_output=True, text=True)
+    if r_fast.returncode != 0:
+        print(f"sbatch fast FAILED:\n{r_fast.stderr}", file=sys.stderr)
         sys.exit(1)
+    fast_job_id = r_fast.stdout.strip().split()[-1]
 
-    sw_job_id = r.stdout.strip().split()[-1]
-    id_file   = out_dir / 'wave1_job_ids.json'
+    r_deeplab = subprocess.run(['sbatch', str(sbatch_deeplab)], capture_output=True, text=True)
+    if r_deeplab.returncode != 0:
+        print(f"sbatch deeplab FAILED:\n{r_deeplab.stderr}", file=sys.stderr)
+        sys.exit(1)
+    deeplab_job_id = r_deeplab.stdout.strip().split()[-1]
+
+    id_file = out_dir / 'wave1_job_ids.json'
     with open(id_file, 'w') as f:
-        json.dump({'sw': sw_job_id}, f, indent=2)
+        json.dump({'fast': fast_job_id, 'deeplab': deeplab_job_id}, f, indent=2)
 
-    print(f"Wave 1 SW submitted — SLURM array ID: {sw_job_id}")
-    print(f"Job ID saved → {id_file}")
+    print(f"Wave 1 fast submitted — SLURM array ID: {fast_job_id}")
+    print(f"Wave 1 deeplab submitted — SLURM array ID: {deeplab_job_id}")
+    print(f"Job IDs saved → {id_file}")
     print(f"You will be emailed at {cfg['slurm']['mail_user']} on completion/failure.")
 
 

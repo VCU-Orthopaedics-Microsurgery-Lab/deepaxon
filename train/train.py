@@ -490,7 +490,7 @@ def train_model(
     }
 
     # ── Training loop ──────────────────────────────────────────────────────────
-    _save_checkpoint = run_cfg.get('save_checkpoint', True) if run_cfg else True
+    _save_checkpoint = run_cfg.get('save_checkpoint', True) if run_cfg else True                                         
     log.rule("TRAINING")
     for epoch in range(epochs):
         epoch_start = datetime.now()
@@ -505,7 +505,7 @@ def train_model(
             preds = model(xb)
             loss  = loss_fn(preds, yb)
             loss.backward()
-            optimizer.step()
+            optimizer.step()                                        
             train_loss += loss.item() * len(xb)
             tp, fp, fn, tn = smp.metrics.get_stats(
                 preds.argmax(dim=1), yb, mode="multiclass", num_classes=3
@@ -525,7 +525,7 @@ def train_model(
         with torch.no_grad():
             for xb, yb in val_loader:
                 xb, yb = xb.to(device), yb.to(device)
-                preds  = model(xb)
+                preds     = model(xb)
                 val_loss += loss_fn(preds, yb).item() * len(xb)
                 tp, fp, fn, tn = smp.metrics.get_stats(
                     preds.argmax(dim=1), yb, mode="multiclass", num_classes=3
