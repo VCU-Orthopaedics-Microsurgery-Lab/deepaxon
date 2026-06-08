@@ -349,6 +349,12 @@ def main():
             'Log file':           log_path,
         })
 
+        if is_analysis:
+            result_path = Path(run_cfg['output']['results_dir']) / run_cfg['run_id'] / 'result.json'
+            if result_path.exists():
+                console.print(f"[dim]Result already exists — skipping: {run_cfg['run_id']}[/dim]")
+                sys.exit(0)
+                
         train_model(
             images_dir = run_cfg['images_dir'],
             model_name = model_name,  

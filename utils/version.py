@@ -103,11 +103,22 @@ def get_env_info() -> dict:
     except ImportError:
         info["pandas"] = None
 
+    try:
+        import patchify
+        info["patchify"] = patchify.__version__
+    except ImportError:
+        info["patchify"] = None
+
     return info
 
 
-if __name__ == "__main__":
-    print(__version_str__)
-    info = get_env_info()
-    for k, v in info.items():
-        print(f"  {k}: {v}")
+def main() -> None:                          
+    print(f"\n{__version_str__}\n")          
+    for k, v in get_env_info().items():      
+        status = str(v) if v is not None else "NOT FOUND"  
+        print(f"  {k:<30} {status}")         
+    print()                                  
+
+
+if __name__ == "__main__":                   
+    main()                                   

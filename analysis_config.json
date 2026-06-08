@@ -99,8 +99,7 @@
         "mail_user":  "mazurm@vcu.edu",
         "venv":       "/lustre/home/mazurm/deepaxon/venv",
         "cpus_per_task": 4,
-        "max_concurrent": 8,
-        "_concurrency_note": "8 concurrent jobs — current QOSMaxGRESPerUser limit. Pending Carlisle approval to increase."
+        "_concurrency_note": "SLURM noraml limit 6, raised to 9 by HPRC admin"
     },
 
     "wave2": {

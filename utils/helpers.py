@@ -392,6 +392,19 @@ def get_yes_no(prompt: str, default: bool = False) -> bool:
     return raw in ('y', 'yes')
 
 
+def get_path_input(prompt: str, must_exist: bool = True) -> Path:    
+    while True:                                                        
+        raw = input(prompt).strip()                                    
+        if not raw:                                                    
+            print("  Please enter a path.")                           
+            continue                                                   
+        p = Path(raw)                                                  
+        if must_exist and not p.exists():                              
+            print(f"  Path not found: {p}")                           
+            continue                                                   
+        return p                                                       
+
+
 # ─── Training helpers ─────────────────────────────────────────────────────────
 
 def _get_gpu_batch_candidates() -> list[int] | None:

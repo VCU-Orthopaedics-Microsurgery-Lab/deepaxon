@@ -169,7 +169,7 @@ def write_sbatch(
 #SBATCH --cpus-per-task={slurm['cpus_per_task']}
 #SBATCH --time={slurm['time']}
 #SBATCH --mem={slurm['mem']}
-#SBATCH --array=0-{n_jobs - 1}%{slurm['max_concurrent']}
+#SBATCH --array=0-{n_jobs - 1}
 #SBATCH --output={logs_dir}/wave3_lc/%A_%a.out
 #SBATCH --error={logs_dir}/wave3_lc/%A_%a.err
 #SBATCH --mail-type={slurm['mail_type']}
@@ -180,7 +180,7 @@ cd {repo}
 
 JOB_CONFIG={jobs_dir}/wave3_lc/job_$(printf '%04d' $SLURM_ARRAY_TASK_ID).json
 
-echo "Wave 3 [LC] job $SLURM_ARRAY_TASK_ID — config: $JOB_CONFIG"
+echo "Wave 3 [LC] job $SLURM_ARRAY_TASK_ID - config: $JOB_CONFIG"
 python -m train --config "$JOB_CONFIG"
 """
     out_path.parent.mkdir(parents=True, exist_ok=True)

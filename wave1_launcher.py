@@ -15,13 +15,12 @@ Job configs written to:
 Results written per job by train.py:
     {results_dir}/sw/{arch}__{encoder}__{weights}__{split}__{seed}/result.json
 
-Cluster: VCU Athena H100 partition
-    athena531: 8 GPUs
-    athena532: 4 GPUs
-    athena533: 4 GPUs
-    athena534: 4 GPUs (draining — may be unavailable)
-    Total stable: 16-20 GPUs
-    Concurrency limit: %60
+Cluster: VCU Athena H100 partition (general reference — check sinfo for current state)
+    athena531: 112 CPUs, ~8 H100 GPUs
+    athena532: 64 CPUs,  ~4 H100 GPUs
+    athena533: 64 CPUs,  ~4 H100 GPUs
+    athena534: 64 CPUs,  ~4 H100 GPUs
+    No software concurrency limit set — SLURM enforces account policy.
 
 Wave 1 SW job count:
     24 arch/encoder × 16 weights × 3 splits × 5 seeds = 5,760 jobs
@@ -147,7 +146,7 @@ def write_sbatch(
 #SBATCH --cpus-per-task={slurm['cpus_per_task']}
 #SBATCH --time={wall_time}
 #SBATCH --mem={slurm['mem']}
-#SBATCH --array=0-{n_jobs - 1}%{slurm['max_concurrent']}
+#SBATCH --array=0-{n_jobs - 1}
 #SBATCH --output={logs_dir}/sw/%A_%a.out
 #SBATCH --error={logs_dir}/sw/%A_%a.err
 #SBATCH --mail-type={slurm['mail_type']}
