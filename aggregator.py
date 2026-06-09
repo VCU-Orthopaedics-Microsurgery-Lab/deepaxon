@@ -5,13 +5,13 @@ Reads Wave 1/2/3 result.json files and produces paper tables.
 
 Outputs by wave:
     Wave 1 (--wave 1, default):
-        wave1_all_results.csv   — flat dump of all 5,760 results
-        wave1_summary.csv       — mean ± SD per arch/encoder/weights combo
-        wave1_collapse_report.csv — collapse analysis by arch/encoder/class weight
-        table2_architecture.csv — architecture comparison (encoder=resnet34)
-        table3_encoders_<arch>  — encoder comparison (winning arch)
-        candidates.json         — top 5 per metric + consensus
-        winner.json             — written via --select after review
+        wave1_all_results.csv       — flat dump of all 5,760 results
+        wave1_summary.csv           — mean ± SD per arch/encoder/weights combo
+        wave1_collapse_report.csv   — collapse analysis by arch/encoder/class weight
+        table2_architecture.csv     — architecture comparison (encoder=resnet34)
+        table3_encoders_<arch>      — encoder comparison (winning arch)
+        candidates.json             — top 5 per metric + consensus
+        winner.json                 — written via --select after review
 
     Wave 2a (--wave 2a):
         wave2a_all_results.csv  — flat dump of all 2a results

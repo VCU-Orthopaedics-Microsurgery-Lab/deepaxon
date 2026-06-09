@@ -16,10 +16,10 @@ Design:
     Arch/encoder/weights: from winner.json
     Aug params:           from winner_aug.json (optimized from Wave 2a)
     Aug ON:               True — fully optimized model
-    Dataset sizes:        10, 20, 30
-    Splits:               all 3 from analysis_config.json (70/30, 80/20, 93/7)
+    Dataset sizes:        [6,12,18,24,30] if winner=67/33, else [10,20,30]
+    Splits:               winning split only (read from winner.json at runtime)
     Seeds:                1–5
-    Total jobs:           3 sizes × 3 splits × 5 seeds = 45
+    Total jobs:           25 (67/33 winner) or 15 (other winner)
 
 Usage:
     python wave3_launcher.py --config analysis_config.json [--dry-run]
@@ -80,7 +80,8 @@ def load_winner_aug(winner_aug_path: Path) -> dict:
 def build_lc_jobs(cfg: dict, winner: dict, winner_aug: dict) -> list[dict]:
     """
     Build Wave 3 learning curve jobs.
-    45 jobs: 3 sizes × 3 splits × 5 seeds
+    25 jobs (67/33 winner): 5 sizes × 1 split × 5 seeds
+    15 jobs (other winner): 3 sizes × 1 split × 5 seeds
     Fully optimized model — aug ON with winner_aug params.
     """
     lc_cfg        = cfg['learning_curve']
@@ -90,12 +91,25 @@ def build_lc_jobs(cfg: dict, winner: dict, winner_aug: dict) -> list[dict]:
     ds            = cfg['dataset']
     optimized_aug = winner_aug.get('optimized_params', {})
 
+    # Select dataset sizes based on winning split.
+    # 67/33 supports [6,12,18,24,30] — balanced val at each size (1+1 to 5+5).
+    # 80/20 and 93/7 fall back to [10,20,30] — only multiples of 10 guaranteed clean.
+    best_split = tuple(winner['best_split'])
+    if best_split == (67, 33):
+        dataset_sizes = lc_cfg['dataset_sizes_67_33']
+        active_splits = [(67, 33)]
+        print(f"Wave 3: winning split 67/33 → sizes={dataset_sizes} (5-point curve)")
+    else:
+        dataset_sizes = lc_cfg['dataset_sizes_fallback']
+        active_splits = [best_split]
+        print(f"Wave 3: winning split {best_split} → sizes={dataset_sizes} (3-point fallback)")
+
     jobs = []
 
     for (train_pct, val_pct), seed, n_images in product(
-        [tuple(r) for r in splits['ratios']],
+        active_splits,
         splits['seeds'],
-        lc_cfg['dataset_sizes'],
+        dataset_sizes,
     ):
         run_id = (
             f"w3lc__{winner['arch']}__{winner['encoder']}__"

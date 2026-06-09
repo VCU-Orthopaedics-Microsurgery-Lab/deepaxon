@@ -19,8 +19,10 @@
     },
 
     "learning_curve": {
-        "_note": "Wave 3 learning curve — fully optimized model, run after Waves 1 and 2. Arch/encoder/weights/aug read from winner.json and winner_aug.json at runtime.",
-        "dataset_sizes": [10, 20, 30]
+        "_note": "Wave 3 learning curve — fully optimized model, run after Waves 1 and 2. Arch/encoder/weights/aug read from winner.json and winner_aug.json at runtime. Split fixed at Wave 1 winner — dataset sizes auto-selected by wave3_launcher.py based on winning split.",
+        "dataset_sizes_67_33":  [6, 12, 18, 24, 30],
+        "dataset_sizes_fallback": [10, 20, 30],
+        "_sizes_note": "67/33 supports fine-grained sizes (5-point curve, balanced val at each). Other splits fall back to multiples of 10 (3-point curve)."
     },
 
     "sweep": {
