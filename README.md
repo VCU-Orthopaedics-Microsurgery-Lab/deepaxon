@@ -34,16 +34,26 @@ python utils/version.py  # Print DeepAxon version and full environment info
 
 ## Installation
 
+**Python version:** 3.11.x required. Create and activate a Python 3.11 virtual environment before running.
+
 ```bash
-pip install -r requirements.txt
-pip install patchify --no-deps
+chmod +x install.sh && ./install.sh   # Linux/macOS
+bash install.sh                        # Windows
 ```
 
-**Python version:** 3.11.x required.
+This installs all dependencies in the correct order: core requirements, PyTorch 2.5.1 (CUDA 12.1), and patchify (--no-deps).
 
-Core dependencies: PyTorch 2.5.1 (cu121), segmentation-models-pytorch 0.5.0, monai, patchify, opencv-python, numpy, scikit-learn, scipy, rich.
+**Manual steps (if not using install.sh):**
+```bash
+pip install -r requirements.txt
+pip install torch==2.5.1+cu121 torchvision==0.20.1+cu121 \
+    --index-url https://download.pytorch.org/whl/cu121
+pip install patchify==0.2.3 --no-deps
+```
 
-**Note:** patchify is installed with `--no-deps` to avoid numpy conflicts. Install PyTorch with the correct CUDA wheel for your system first. See [pytorch.org](https://pytorch.org) for the correct install command.
+Core dependencies: PyTorch 2.5.1 (cu121), segmentation-models-pytorch 0.5.0, monai 1.5.2, patchify 0.2.3, opencv-python, numpy, scikit-learn, scipy, rich.
+
+**Note:** patchify is installed with `--no-deps` to avoid numpy conflicts. For CPU-only or different CUDA versions, adjust the PyTorch wheel — see [pytorch.org](https://pytorch.org).
 
 ---
 
@@ -134,7 +144,7 @@ Edit `config.json` to set pixel calibration, CLAHE, watershed, patch size, train
 
 Pre-trained `.pt` models are stored in `models/`. The `python -m segment` command presents an interactive model selection menu.
 
-All models: UNet++ architecture, ResNet34 encoder, ImageNet pretrained weights, 256×256×1 input, 3-class output, PyTorch v5 pipeline.
+Current production model (rb40x_v1): UNet++ architecture, ResNet34 encoder, ImageNet pretrained weights, 256×256×1 input, 3-class output, PyTorch v5 pipeline. Architecture and encoder for rb40x_v2 to be determined from Wave 1 sweep results.
 
 ---
 
@@ -161,12 +171,14 @@ All settings read from `train_config.json`. No prompts. Use this for all cluster
 {
     "images_dir": "/path/to/dataset",
     "mag": "40X",
-    "epochs": 200,
-    "batch_size": 256,
+    "epochs": 400,
+    "batch_size": 128,
     "augmentation": false,
     "model_name": "my_model"
 }
 ```
+
+> **Note:** batch_size=128 is the validated default for H100 80GB. AMP (mixed precision) is not supported — excluded after confirmed training collapse across multiple arch/encoder combinations.
 
 ### On VCU Athena HPRC cluster
 
@@ -203,25 +215,25 @@ File naming: all training images must use `ctrl_` or `regen_` prefix (e.g. `ctrl
 
 ---
 
-## Analysis Pipeline (Paper 1 — v5_analysis branch)
+## Analysis Pipeline (Paper 1)
 
-The `v5_analysis` branch contains a full three-wave SLURM job array pipeline for systematic architecture, encoder, class weight, and augmentation optimization.
+The analysis pipeline is on the `main` branch of the lab's private GitHub fork (`VCU-Orthopaedics-Microsurgery-Lab/deepaxon`). The public repo will be a clean open-source branch once the best model is selected — it will not include analysis pipeline internals or Athena-specific configs.
 
 ### Entry Points
 
 ```bash
 python wave1_launcher.py --config analysis_config.json [--dry-run]  # 5,760 jobs
-python wave2_launcher.py --config analysis_config.json --step 2a    # 2,065 jobs
+python wave2_launcher.py --config analysis_config.json --step 2a    # 2,265 jobs
 python wave2_launcher.py --config analysis_config.json --step 2b    # 5 jobs
-python wave3_launcher.py --config analysis_config.json              # 45 jobs
+python wave3_launcher.py --config analysis_config.json              # 25 jobs (67/33 winner) or 15 jobs (other)
 python aggregator.py --config analysis_config.json [--wave 1/2a/2b/3]
 ```
 
 See `analysis_config.json` for full configuration. Fill in real Athena paths before first run.
 
-**Wave 1** — Architecture/encoder/class weight sweep (aug OFF), n=30, all 3 splits, 5 seeds.
-**Wave 2** — Augmentation parameter sweep on winning model from Wave 1.
-**Wave 3** — Learning curve on fully optimized model.
+**Wave 1** — Architecture/encoder/class weight sweep (aug OFF), n=30, all 3 splits, 5 seeds. 4 architectures × 6 encoders × 16 class weight configs × 3 splits × 5 seeds = 5,760 jobs. Split into fast array (unet, unet++, manet) and deeplab array (deeplabv3+) due to wall time differences.
+**Wave 2** — Augmentation parameter sweep (2,265 jobs) then aug ON vs OFF validation (5 jobs) on winning model from Wave 1.
+**Wave 3** — Learning curve on fully optimized model. Dataset sizes auto-selected from winning split: [6,12,18,24,30] if 67/33 wins, [10,20,30] otherwise. Single split only.
 
 ---
 

@@ -7,9 +7,12 @@ __pycache__/
 .venv/
 venv/
 env/
+da_venv/
+deep_axon_new/
 
-# VS Code settings
+# VS Code / IDE settings
 .vscode/
+.idea/
 
 # OS junk
 .DS_Store
@@ -17,3 +20,28 @@ Thumbs.db
 
 # ── Study data (never in public repo) ────────────────────────────────────────
 notebooks/
+images/
+*.tif
+*.tiff
+*.png
+
+# ── Model weights ─────────────────────────────────────────────────────────────
+models/*.pt
+*.pt
+*.keras
+*.h5
+
+# ── Training logs ─────────────────────────────────────────────────────────────
+logs/
+
+# ── Analysis pipeline outputs (Athena cluster — never commit) ─────────────────
+analysis/
+jobs/
+results/
+
+# ── Internal config files (contain Athena paths, never commit) ───────────────
+train_config.json
+
+# ── Jupyter / notebooks ───────────────────────────────────────────────────────
+*.ipynb
+.ipynb_checkpoints/

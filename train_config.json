@@ -1,10 +1,10 @@
 {
     "_readme": "Non-interactive training config for sbatch/HPRC use. Passed via: python -m train --config train_config.json. All fields required. This file is gitignored — internal only.",
 
-    "images_dir":   "/lustre/home/mazurm/rb40x_v2_hprc",
+    "images_dir":   "/lustre/home/mazurm/rb40x_val_hprc",
     "mag":          "40X",
-    "model_name":   "dev_rb40x_cw300_100_100_vl_i20_val4",
+    "model_name":   "rb40x_v2",
     "epochs":       400,
     "augmentation": true,
-    "batch_size":   256
+    "batch_size":   128
 }

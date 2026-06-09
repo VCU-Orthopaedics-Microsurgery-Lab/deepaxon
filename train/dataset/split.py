@@ -7,8 +7,8 @@ Replaces val_ prefix detection for all Wave 1/2 jobs.
 Guarantees:
     - Equal ctrl/regen balance in both train and val sets
     - Reproducible via fixed seed
-    - Dataset size subsampling (10, 20, 30 images) draws equally from each phenotype
-    - Val fraction maps to brief ratios: 70/30 → 0.30, 80/20 → 0.20, 90/10 → 0.10
+    - Dataset size subsampling (6, 12, 18, 24, 30 images for Wave 3 if 67/33 wins; 10, 20, 30 fallback) draws equally from each phenotype
+    - Val fraction maps to analysis ratios: 67/33 → 0.33, 80/20 → 0.20, 93/7 → 0.07
 
 On v5_analysis, val_ prefix detection has been removed from data_loader.py.
 This module is the sole split mechanism for all analysis runs.

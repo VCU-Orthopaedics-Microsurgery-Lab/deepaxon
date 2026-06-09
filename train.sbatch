@@ -9,7 +9,8 @@
 #SBATCH --error=logs/train_%j.err
 
 # ── Environment ────────────────────────────────────────────────────────────────
-source /lustre/home/mazurm/deepaxon/da_venv/bin/activate
+source /lustre/home/mazurm/deepaxon/venv/bin/activate
+cd /lustre/home/mazurm/deepaxon
 
 # ── Run training (non-interactive via config file) ─────────────────────────────
 python -m train --config train_config.json
