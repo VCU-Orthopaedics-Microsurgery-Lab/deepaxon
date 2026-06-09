@@ -95,6 +95,27 @@ def load_results_from(results_dir: Path, label: str = '') -> list[dict]:
     return results
 
 
+def filter_degenerate(results: list[dict], 
+                       dice_macro_min: float = 0.5,
+                       dice_myelin_min: float = 0.1,
+                       dice_axon_min: float = 0.1) -> tuple[list[dict], list[dict]]:
+    """
+    Separate degenerate results from valid ones.
+    Degenerate: model collapsed to background-only predictions.
+    Returns (valid, degenerate).
+    """
+    valid = []
+    degenerate = []
+    for r in results:
+        if (r.get('dice_macro',  1.0) < dice_macro_min or
+            r.get('dice_myelin', 1.0) < dice_myelin_min or
+            r.get('dice_axon',   1.0) < dice_axon_min):
+            degenerate.append(r)
+        else:
+            valid.append(r)
+    return valid, degenerate
+
+
 def check_completeness(results: list[dict], expected: int):
     n = len(results)
     if n < expected:
@@ -115,7 +136,7 @@ HIGHER_IS_BETTER = [
 ]
 
 LOWER_IS_BETTER = [
-    'hd95_macro', 'hd95_axon', 'hd95_myelin', 'hd95_bg',
+    'hd95_macro', 'hd95_myelin_axon', 'hd95_axon', 'hd95_myelin', 'hd95_bg',
 ]
 
 ALL_METRICS = HIGHER_IS_BETTER + LOWER_IS_BETTER
@@ -126,6 +147,9 @@ RANKING_METRICS = [
     ('dice_myelin',      'higher'),
     ('dice_bg',          'higher'),
     ('iou_axon',         'higher'),
+    ('iou_myelin',       'higher'),
+    ('hd95_macro',       'lower'),
+    ('hd95_myelin_axon', 'lower'),
     ('hd95_axon',        'lower'),
     ('hd95_myelin',      'lower'),
     ('hd95_bg',          'lower'),
@@ -134,7 +158,7 @@ RANKING_METRICS = [
     ('precision_axon',   'higher'),
 ]
 
-CONSENSUS_THRESHOLD = 4
+CONSENSUS_THRESHOLD = 5
 
 
 # ─── Shared aggregation helpers ───────────────────────────────────────────────
@@ -175,23 +199,71 @@ def aggregate_combo(results: list[dict]) -> dict:
     return summary
 
 
+def compute_composite_score(summary: dict) -> float:
+    """
+    Myelin+axon composite score for ranking.
+    Mean of dice_myelin, dice_axon, and normalized hd95_myelin_axon (cap 50px).
+    Higher is better.
+    """
+    dm = summary.get('dice_myelin_mean') or 0
+    da = summary.get('dice_axon_mean')   or 0
+    hd = summary.get('hd95_myelin_axon_mean') or float('inf')
+    hd_score = max(0, 1 - hd / 50)
+    return round((dm + da + hd_score) / 3, 4)
+
+
 def find_optimal_weights(
     groups: dict, arch: str, encoder: str,
     primary_metric: str = 'dice_macro',
 ) -> dict | None:
-    best_summary = None
-    best_val     = -float('inf')
+    best_macro     = None
+    best_macro_val = -float('inf')
+    best_composite     = None
+    best_composite_val = -float('inf')
+
     for key, results in groups.items():
         r0 = results[0]
         if r0['arch'] != arch or r0['encoder'] != encoder:
             continue
         summary = aggregate_combo(results)
-        val = summary.get(f'{primary_metric}_mean')
-        if val is not None and val > best_val:
-            best_val     = val
-            best_summary = summary
-    return best_summary
 
+        # By dice_macro
+        val = summary.get(f'{primary_metric}_mean')
+        if val is not None and val > best_macro_val:
+            best_macro_val = val
+            best_macro     = summary
+
+        # By myelin+axon composite
+        dm  = summary.get('dice_myelin_mean') or 0
+        da  = summary.get('dice_axon_mean')   or 0
+        hd  = summary.get('hd95_myelin_axon_mean') or float('inf')
+        hd_score  = max(0, 1 - hd / 50)
+        composite = (dm + da + hd_score) / 3
+        if composite > best_composite_val:
+            best_composite_val = composite
+            best_composite     = summary
+
+    if best_macro and best_composite:
+        same = (best_macro['class_weights'] == best_composite['class_weights'])
+        print(
+            f"  {arch}/{encoder} — "
+            f"dice_macro winner:  cw={best_macro['class_weights']} "
+            f"(macro={round(best_macro_val,4)}, "
+            f"myelin={round(best_macro.get('dice_myelin_mean',0),4)}, "
+            f"axon={round(best_macro.get('dice_axon_mean',0),4)})"
+        )
+        if not same:
+            print(
+                f"  {arch}/{encoder} — "
+                f"composite winner:   cw={best_composite['class_weights']} "
+                f"(composite={round(best_composite_val,4)}, "
+                f"myelin={round(best_composite.get('dice_myelin_mean',0),4)}, "
+                f"axon={round(best_composite.get('dice_axon_mean',0),4)})"
+            )
+        else:
+            print(f"  {arch}/{encoder} — both methods agree on cw={best_macro['class_weights']}")
+
+    return best_macro  # Table 2/3 still use dice_macro winner — override via --select
 
 def find_best_split(
     results: list[dict], arch: str, encoder: str,
@@ -263,7 +335,7 @@ def write_flat_csv(results: list[dict], out_path: Path):
 def write_summary_csv(summaries: list[dict], out_path: Path):
     if not summaries:
         return
-    base_cols   = ['arch', 'encoder', 'class_weights', 'n_runs']
+    base_cols   = ['arch', 'encoder', 'class_weights', 'n_runs', 'composite_score']
     metric_cols = []
     for m in ALL_METRICS:
         metric_cols += [f'{m}_mean', f'{m}_sd']
@@ -299,12 +371,16 @@ def write_dict_csv(rows: list[dict], out_path: Path, label: str):
 # ─── Wave 1 functions ─────────────────────────────────────────────────────────
 
 def build_table2(groups: dict, encoder: str = 'resnet34') -> list[dict]:
+    print(f"  [NOTE] Table 2 uses encoder={encoder} as controlled comparison. "
+          f"Architecture rankings may differ with other encoders.")
     archs = sorted({r['arch'] for results in groups.values() for r in results})
     rows  = []
     for arch in archs:
         summary = find_optimal_weights(groups, arch, encoder)
         if summary:
             rows.append(summary)
+    for row in rows:
+        row['composite_score'] = compute_composite_score(row)
     rows.sort(key=lambda x: x.get('dice_macro_mean') or 0, reverse=True)
     return rows
 
@@ -321,6 +397,8 @@ def build_table3(groups: dict, winning_arch: str) -> list[dict]:
         summary = find_optimal_weights(groups, winning_arch, encoder)
         if summary:
             rows.append(summary)
+    for row in rows:
+        row['composite_score'] = compute_composite_score(row)
     rows.sort(key=lambda x: x.get('dice_macro_mean') or 0, reverse=True)
     return rows
 
@@ -361,18 +439,35 @@ def build_candidates(summaries: list[dict], top_n: int = 5) -> dict:
                 if (s['arch'] == arch and s['encoder'] == encoder
                         and str(s['class_weights']) == weights_str):
                     consensus.append({
-                        'arch':             arch,
-                        'encoder':          encoder,
-                        'class_weights':    s['class_weights'],
-                        'n_rankings_top5':  count,
-                        'dice_macro_mean':  s.get('dice_macro_mean'),
-                        'dice_axon_mean':   s.get('dice_axon_mean'),
-                        'dice_myelin_mean': s.get('dice_myelin_mean'),
-                        'hd95_axon_mean':   s.get('hd95_axon_mean'),
-                        'hd95_myelin_mean': s.get('hd95_myelin_mean'),
+                        'arch':                  arch,
+                        'encoder':               encoder,
+                        'class_weights':         s['class_weights'],
+                        'n_rankings_top5':       count,
+                        'dice_macro_mean':       s.get('dice_macro_mean'),
+                        'dice_axon_mean':        s.get('dice_axon_mean'),
+                        'dice_myelin_mean':      s.get('dice_myelin_mean'),
+                        'hd95_myelin_axon_mean': s.get('hd95_myelin_axon_mean'),
+                        'hd95_axon_mean':        s.get('hd95_axon_mean'),
+                        'hd95_myelin_mean':      s.get('hd95_myelin_mean'),
                     })
                     break
 
+    for c in consensus:
+        in_myelin_top5 = any(
+            e['arch'] == c['arch'] and e['encoder'] == c['encoder']
+            and str(e['class_weights']) == str(c['class_weights'])
+            for e in candidates.get('by_dice_myelin', [])
+        )
+        in_hd_top5 = any(
+            e['arch'] == c['arch'] and e['encoder'] == c['encoder']
+            and str(e['class_weights']) == str(c['class_weights'])
+            for e in candidates.get('by_hd95_myelin_axon', [])
+        )
+        c['in_dice_myelin_top5']      = in_myelin_top5
+        c['in_hd95_myelin_axon_top5'] = in_hd_top5
+        if not in_myelin_top5 and not in_hd_top5:
+            c['_clinical_warning'] = 'Not in top 5 for dice_myelin OR hd95_myelin_axon'
+            
     candidates[f'consensus_top{top_n}'] = consensus[:top_n]
     candidates['_note'] = (
         f"consensus = models in top {top_n} across "
@@ -438,6 +533,8 @@ AUG_SWEEP_KEYS = {
     'gaussian_blur':    ['blur_prob', 'blur_sigma'],
     'elastic':          ['elastic_prob', 'elastic_alpha', 'elastic_sigma'],
     'clahe':            ['clahe_prob', 'clahe_clip', 'clahe_tile'],
+    'contrast_stretch': ['contrast_stretch_prob', 'contrast_stretch_scale'],
+    'random_erase':     ['erase_prob', 'erase_scale'],
 }
 
 
@@ -479,6 +576,10 @@ def build_table4(results_2a: list[dict]) -> list[dict]:
         best_n      = 0
         best_metrics = {}
 
+        best_myelin_mean   = -float('inf')
+        best_myelin_params = {}
+        best_myelin_n      = 0
+
         for param_key, param_results in by_params.items():
             vals = [r['dice_macro'] for r in param_results
                     if 'dice_macro' in r and r['dice_macro'] is not None]
@@ -496,6 +597,15 @@ def build_table4(results_2a: list[dict]) -> list[dict]:
                     best_metrics[f'{metric}_mean'] = mn
                     best_metrics[f'{metric}_sd']   = sd
 
+            myelin_vals = [r['dice_myelin'] for r in param_results
+                           if 'dice_myelin' in r and r['dice_myelin'] is not None]
+            if myelin_vals:
+                myelin_mean = statistics.mean(myelin_vals)
+                if myelin_mean > best_myelin_mean:
+                    best_myelin_mean   = myelin_mean
+                    best_myelin_params = json.loads(param_key)
+                    best_myelin_n      = len(myelin_vals)
+
         row = {
             'aug_type':      aug_type,
             'n_seeds':       best_n,
@@ -504,8 +614,19 @@ def build_table4(results_2a: list[dict]) -> list[dict]:
         }
         rows.append(row)
 
-        print(f"  {aug_type}: best params={best_params} "
-              f"dice_macro={round(best_mean, 4)} (n={best_n})")
+        best_myelin = best_metrics.get('dice_myelin_mean')
+        best_hd     = best_metrics.get('hd95_myelin_axon_mean')
+        print(f"  {aug_type}:")
+        print(f"    dice_macro winner:  params={best_params} "
+              f"dice_macro={round(best_mean, 4)} "
+              f"| dice_myelin={round(best_myelin, 4) if best_myelin else 'N/A'} "
+              f"| hd95_myelin_axon={round(best_hd, 4) if best_hd else 'N/A'} "
+              f"(n={best_n})")
+        if best_myelin_params != best_params:
+            print(f"    dice_myelin winner: params={best_myelin_params} "
+                  f"dice_myelin={round(best_myelin_mean, 4)} (n={best_myelin_n})")
+        else:
+            print(f"    both methods agree on params={best_params}")
 
     return rows
 
@@ -554,7 +675,7 @@ def build_table5(results_2b: list[dict], results_sw: list[dict], winner: dict) -
         }
 
         for metric in ['dice_macro', 'dice_axon', 'dice_myelin', 'dice_bg',
-                        'hd95_macro', 'hd95_axon', 'hd95_myelin']:
+                        'hd95_macro', 'hd95_myelin_axon', 'hd95_axon', 'hd95_myelin']:
             row[f'{metric}_aug_on']  = r_on.get(metric)
             row[f'{metric}_aug_off'] = r_off.get(metric) if r_off else None
             on_val  = r_on.get(metric)
@@ -572,20 +693,23 @@ def build_table5(results_2b: list[dict], results_sw: list[dict], winner: dict) -
 
 # ─── Wave 3 functions ─────────────────────────────────────────────────────────
 
-def build_table1(results_lc: list[dict]) -> list[dict]:
+def build_table1(results_lc: list[dict]) -> tuple[list[dict], list[dict]]:
     """
     Table 1 — Learning curve.
     Mean Dice ± SD per dataset size, averaged across splits and seeds.
     Shows plateau at n=30 — dataset sufficiency argument.
+    Also returns per-split breakdown as supplementary rows.
     """
     by_size = defaultdict(list)
     for r in results_lc:
-        if r.get('wave') == 3:  # only Wave 3 LC results
+        if r.get('wave') == 3:
             n = r.get('n_images')
             if n is not None:
                 by_size[n].append(r)
 
     rows = []
+    split_rows = []
+
     for n_images in sorted(by_size.keys()):
         size_results = by_size[n_images]
         row = {
@@ -599,11 +723,59 @@ def build_table1(results_lc: list[dict]) -> list[dict]:
             row[f'{metric}_mean'] = mean
             row[f'{metric}_sd']   = sd
 
+        if rows:
+            prev = rows[-1]
+            for metric in ['dice_macro', 'dice_myelin', 'hd95_myelin_axon']:
+                curr_val = row.get(f'{metric}_mean')
+                prev_val = prev.get(f'{metric}_mean')
+                if curr_val is not None and prev_val is not None and prev_val != 0:
+                    if metric in LOWER_IS_BETTER:
+                        pct = round((prev_val - curr_val) / prev_val * 100, 2)
+                    else:
+                        pct = round((curr_val - prev_val) / prev_val * 100, 2)
+                    row[f'plateau_pct_{metric}'] = pct
+                else:
+                    row[f'plateau_pct_{metric}'] = None
+        else:
+            for metric in ['dice_macro', 'dice_myelin', 'hd95_myelin_axon']:
+                row[f'plateau_pct_{metric}'] = None
         rows.append(row)
-        print(f"  n={n_images}: dice_macro={row.get('dice_macro_mean')} "
-              f"± {row.get('dice_macro_sd')} (n_runs={len(size_results)})")
+        
+        print(f"  n={n_images} (n_runs={len(size_results)}):")
+        print(f"    dice_macro={row.get('dice_macro_mean')} ± {row.get('dice_macro_sd')}")
+        print(f"    dice_myelin={row.get('dice_myelin_mean')} ± {row.get('dice_myelin_sd')}")
+        print(f"    hd95_myelin_axon={row.get('hd95_myelin_axon_mean')} ± {row.get('hd95_myelin_axon_sd')}")
+        
+        prev_n = rows[-2]['n_images'] if len(rows) >= 2 else None
+        if prev_n is not None:
+            for metric in ['dice_macro', 'dice_myelin', 'hd95_myelin_axon']:
+                pct = row.get(f'plateau_pct_{metric}')
+                if pct is not None:
+                    print(f"    {metric} Δ vs n={prev_n}: {pct:+.2f}% improvement")
 
-    return rows
+        # Per-split breakdown
+        by_split = defaultdict(list)
+        for r in size_results:
+            split_key = f"{r.get('train_pct')}_{r.get('val_pct')}"
+            by_split[split_key].append(r)
+
+        for split_key, split_results in sorted(by_split.items()):
+            train_pct, val_pct = split_key.split('_')
+            split_row = {
+                'n_images':  n_images,
+                'train_pct': int(train_pct),
+                'val_pct':   int(val_pct),
+                'n_runs':    len(split_results),
+            }
+            for metric in ALL_METRICS:
+                vals = [r[metric] for r in split_results
+                        if metric in r and r[metric] is not None]
+                mean, sd = _mean_sd(vals)
+                split_row[f'{metric}_mean'] = mean
+                split_row[f'{metric}_sd']   = sd
+            split_rows.append(split_row)
+
+    return rows, split_rows
 
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
@@ -639,11 +811,63 @@ def main():
             print("No results found — exiting.")
             return
 
+        results, degenerate = filter_degenerate(results)
+        if degenerate:
+            print(f"[WARN] {len(degenerate)} degenerate results excluded "
+                  f"(dice_macro<0.5 or axon/myelin<0.1):")
+
+            # By arch
+            by_arch = {}
+            by_arch_total = {}
+            # By encoder
+            by_enc = {}
+            by_enc_total = {}
+            # By arch+encoder
+            by_combo = {}
+            by_combo_total = {}
+
+            for r in results + degenerate:
+                arch = r['arch']; enc = r['encoder']
+                by_arch_total[arch] = by_arch_total.get(arch, 0) + 1
+                by_enc_total[enc]   = by_enc_total.get(enc,  0) + 1
+                by_combo_total[f"{arch}/{enc}"] = by_combo_total.get(f"{arch}/{enc}", 0) + 1
+
+            for r in degenerate:
+                arch = r['arch']; enc = r['encoder']
+                by_arch[arch]           = by_arch.get(arch, 0) + 1
+                by_enc[enc]             = by_enc.get(enc,   0) + 1
+                by_combo[f"{arch}/{enc}"] = by_combo.get(f"{arch}/{enc}", 0) + 1
+
+            print(f"\n  By architecture:")
+            for arch, count in sorted(by_arch.items(), key=lambda x: -x[1]):
+                pct = round(count / by_arch_total[arch] * 100, 1)
+                print(f"    {arch:<20} {count:>4} / {by_arch_total[arch]:>4} degenerate ({pct}%)")
+
+            print(f"\n  By encoder:")
+            for enc, count in sorted(by_enc.items(), key=lambda x: -x[1]):
+                pct = round(count / by_enc_total[enc] * 100, 1)
+                print(f"    {enc:<25} {count:>4} / {by_enc_total[enc]:>4} degenerate ({pct}%)")
+
+            print(f"\n  By arch/encoder:")
+            for combo, count in sorted(by_combo.items(), key=lambda x: -x[1]):
+                pct = round(count / by_combo_total[combo] * 100, 1)
+                print(f"    {combo:<35} {count:>4} / {by_combo_total[combo]:>4} degenerate ({pct}%)")
+
+            # Write degenerate CSV with collapse rate columns
+            for r in degenerate:
+                arch = r['arch']; enc = r['encoder']
+                r['collapse_pct_arch']    = round(by_arch[arch]  / by_arch_total[arch]  * 100, 1)
+                r['collapse_pct_encoder'] = round(by_enc[enc]    / by_enc_total[enc]    * 100, 1)
+                r['collapse_pct_combo']   = round(by_combo[f"{arch}/{enc}"] / by_combo_total[f"{arch}/{enc}"] * 100, 1)
+            write_flat_csv(degenerate, out_dir / 'wave1_degenerate.csv')
+
         groups    = group_by_combo(results)
         summaries = [aggregate_combo(v) for v in groups.values()]
         print(f"Aggregated {len(summaries)} unique arch/encoder/weight combinations")
 
         write_flat_csv(results,   out_dir / 'wave1_all_results.csv')
+        for s in summaries:
+            s['composite_score'] = compute_composite_score(s)
         write_summary_csv(summaries, out_dir / 'wave1_summary.csv')
 
         table2_rows = build_table2(groups, encoder='resnet34')
@@ -654,8 +878,8 @@ def main():
             table3_rows = build_table3(groups, prov_arch)
             write_table_csv(
                 table3_rows,
-                out_dir / f'table3_encoders_{prov_arch}.csv',
-                f'Table 3 (provisional arch: {prov_arch})'
+                out_dir / f'table3_encoders_provisional_{prov_arch}.csv', 
+                f'Table 3 provisional (top dice_macro arch: {prov_arch})'
             )
 
         candidates = build_candidates(summaries)
@@ -667,8 +891,11 @@ def main():
         for i, c in enumerate(candidates.get('consensus_top5', []), 1):
             print(
                 f"  {i}. {c['arch']} + {c['encoder']} weights={c['class_weights']} "
-                f"| top5 in {c['n_rankings_top5']}/{len(RANKING_METRICS)} rankings "
-                f"| dice_macro={c.get('dice_macro_mean')} "
+                f"| top5 in {c['n_rankings_top5']}/{len(RANKING_METRICS)} rankings\n"
+                f"       dice_macro={c.get('dice_macro_mean')} "
+                f"| dice_myelin={c.get('dice_myelin_mean')} "
+                f"| dice_axon={c.get('dice_axon_mean')} "
+                f"| hd95_myelin_axon={c.get('hd95_myelin_axon_mean')} "
                 f"| hd95_axon={c.get('hd95_axon_mean')}"
             )
 
@@ -692,7 +919,7 @@ def main():
             write_table_csv(
                 table3_rows,
                 out_dir / f'table3_encoders_{args.arch}.csv',
-                f'Table 3 (confirmed arch: {args.arch})'
+                f'Table 3 confirmed arch: {args.arch}'
             )
         else:
             print("\nReview outputs, then run:")
@@ -744,15 +971,19 @@ def main():
         write_dict_csv(table5_rows, out_dir / 'table5_aug_comparison.csv', 'Table 5')
 
         # Summary to terminal
-        on_vals  = [r['dice_macro_aug_on']  for r in table5_rows
-                    if r.get('dice_macro_aug_on')  is not None]
-        off_vals = [r['dice_macro_aug_off'] for r in table5_rows
-                    if r.get('dice_macro_aug_off') is not None]
-        if on_vals and off_vals:
-            print(f"\nAug ON  dice_macro: {round(statistics.mean(on_vals), 4)} "
-                  f"± {round(statistics.stdev(on_vals), 4)}")
-            print(f"Aug OFF dice_macro: {round(statistics.mean(off_vals), 4)} "
-                  f"± {round(statistics.stdev(off_vals), 4)}")
+        print("\n── AUG ON vs OFF SUMMARY ────────────────────────────────────────────")
+        for metric in ['dice_macro', 'dice_myelin', 'dice_axon', 'hd95_myelin_axon']:
+            on_vals  = [r[f'{metric}_aug_on']  for r in table5_rows
+                        if r.get(f'{metric}_aug_on')  is not None]
+            off_vals = [r[f'{metric}_aug_off'] for r in table5_rows
+                        if r.get(f'{metric}_aug_off') is not None]
+            if on_vals and off_vals:
+                delta_vals = [r[f'{metric}_delta'] for r in table5_rows
+                              if r.get(f'{metric}_delta') is not None]
+                print(f"  {metric:<22} "
+                      f"ON={round(statistics.mean(on_vals), 4)} ± {round(statistics.stdev(on_vals), 4)}  "
+                      f"OFF={round(statistics.mean(off_vals), 4)} ± {round(statistics.stdev(off_vals), 4)}  "
+                      f"delta={round(statistics.mean(delta_vals), 4)}")
 
     # ── Wave 3 ────────────────────────────────────────────────────────────────
     elif args.wave == '3':
@@ -765,8 +996,9 @@ def main():
             return
 
         print("\nLearning curve by dataset size:")
-        table1_rows = build_table1(results_lc)
+        table1_rows, table1_split_rows = build_table1(results_lc)
         write_dict_csv(table1_rows, out_dir / 'table1_learning_curve.csv', 'Table 1')
+        write_dict_csv(table1_split_rows, out_dir / 'table1_learning_curve_by_split.csv', 'Table 1 (per-split)')
 
         print("\nTable 1 complete — plateau confirmation for dataset sufficiency.")
 
