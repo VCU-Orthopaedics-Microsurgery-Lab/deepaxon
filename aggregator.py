@@ -7,6 +7,7 @@ Outputs by wave:
     Wave 1 (--wave 1, default):
         wave1_all_results.csv   — flat dump of all 5,760 results
         wave1_summary.csv       — mean ± SD per arch/encoder/weights combo
+        wave1_collapse_report.csv — collapse analysis by arch/encoder/class weight
         table2_architecture.csv — architecture comparison (encoder=resnet34)
         table3_encoders_<arch>  — encoder comparison (winning arch)
         candidates.json         — top 5 per metric + consensus
@@ -15,15 +16,13 @@ Outputs by wave:
     Wave 2a (--wave 2a):
         wave2a_all_results.csv  — flat dump of all 2a results
         table4_aug_sweep.csv    — best params per aug type (Table 4)
-        Prints top settings per aug type to terminal.
-        You then manually write winner_aug.json.
 
     Wave 2b (--wave 2b):
         table5_aug_comparison.csv — aug ON vs aug OFF per phenotype (Table 5)
-        Pulls aug OFF baseline from Wave 1 SW results.
 
     Wave 3 (--wave 3):
         table1_learning_curve.csv — Dice ± SD vs dataset size (Table 1)
+        table1_learning_curve_by_split.csv — per-split breakdown
 
 Usage:
     python aggregator.py --config analysis_config.json [--wave 1]
@@ -67,13 +66,8 @@ def load_config(path: str) -> dict:
 # ─── Result loading ───────────────────────────────────────────────────────────
 
 def load_results_from(results_dir: Path, label: str = '') -> list[dict]:
-    """
-    Recursively find all result.json files under results_dir.
-    Returns list of result dicts with 'result_path' added.
-    """
     results = []
     missing = []
-
     for p in sorted(results_dir.rglob('result.json')):
         try:
             with open(p) as f:
@@ -82,26 +76,25 @@ def load_results_from(results_dir: Path, label: str = '') -> list[dict]:
             results.append(r)
         except Exception as e:
             missing.append((str(p), str(e)))
-
     if missing:
         print(f"[WARN] Failed to load {len(missing)} result files:")
         for path, err in missing[:10]:
             print(f"  {path}: {err}")
         if len(missing) > 10:
             print(f"  ... and {len(missing) - 10} more")
-
     tag = f" [{label}]" if label else ""
     print(f"Loaded {len(results)} result files from {results_dir}{tag}")
     return results
 
 
-def filter_degenerate(results: list[dict], 
+def filter_degenerate(results: list[dict],
                        dice_macro_min: float = 0.5,
-                       dice_myelin_min: float = 0.1,
-                       dice_axon_min: float = 0.1) -> tuple[list[dict], list[dict]]:
+                       dice_myelin_min: float = 0.5,
+                       dice_axon_min: float = 0.6) -> tuple[list[dict], list[dict]]:
     """
     Separate degenerate results from valid ones.
     Degenerate: model collapsed to background-only predictions.
+    Cutoffs derived from bimodal distribution analysis of Wave 1 results.
     Returns (valid, degenerate).
     """
     valid = []
@@ -227,13 +220,11 @@ def find_optimal_weights(
             continue
         summary = aggregate_combo(results)
 
-        # By dice_macro
         val = summary.get(f'{primary_metric}_mean')
         if val is not None and val > best_macro_val:
             best_macro_val = val
             best_macro     = summary
 
-        # By myelin+axon composite
         dm  = summary.get('dice_myelin_mean') or 0
         da  = summary.get('dice_axon_mean')   or 0
         hd  = summary.get('hd95_myelin_axon_mean') or float('inf')
@@ -264,6 +255,7 @@ def find_optimal_weights(
             print(f"  {arch}/{encoder} — both methods agree on cw={best_macro['class_weights']}")
 
     return best_macro  # Table 2/3 still use dice_macro winner — override via --select
+
 
 def find_best_split(
     results: list[dict], arch: str, encoder: str,
@@ -368,6 +360,143 @@ def write_dict_csv(rows: list[dict], out_path: Path, label: str):
     print(f"{label}: {out_path} ({len(rows)} rows)")
 
 
+# ─── Collapse diagnostics ─────────────────────────────────────────────────────
+
+def build_collapse_report(all_results: list[dict], degenerate: list[dict], out_dir: Path):
+    """
+    Full collapse diagnostic report — runs before degenerate filtering.
+    Produces wave1_collapse_report.csv and prints full terminal breakdown.
+    Called with the unfiltered result set.
+    """
+    total = len(all_results)
+
+    def classify(r):
+        types = []
+        myelin_ok = r.get('dice_myelin', 1.0) >= 0.5
+        axon_ok   = r.get('dice_axon',   1.0) >= 0.6
+        if not myelin_ok and not axon_ok:
+            types.append('both_collapsed')
+        elif not myelin_ok:
+            types.append('myelin_only')
+        elif not axon_ok:
+            types.append('axon_only')
+        return types
+
+    type_counts = defaultdict(int)
+    for r in all_results:
+        for t in classify(r):
+            type_counts[t] += 1
+
+    print(f"\n── COLLAPSE DIAGNOSTICS ─────────────────────────────────────────────")
+    print(f"  Total results:    {total}")
+    print(f"  Valid:            {total - len(degenerate)} ({round((total - len(degenerate))/total*100,1)}%)")
+    print(f"  Degenerate:       {len(degenerate)} ({round(len(degenerate)/total*100,1)}%)")
+    print(f"\n  Collapse type (can overlap):")
+    for t, count in sorted(type_counts.items(), key=lambda x: -x[1]):
+        print(f"    {t:<25} {count:>4} ({round(count/total*100,1)}%)")
+
+    by_arch       = defaultdict(int)
+    by_arch_total = defaultdict(int)
+    for r in all_results:
+        by_arch_total[r['arch']] += 1
+    for r in degenerate:
+        by_arch[r['arch']] += 1
+
+    print(f"\n  By architecture:")
+    for arch in sorted(by_arch_total):
+        count = by_arch.get(arch, 0)
+        pct   = round(count / by_arch_total[arch] * 100, 1)
+        print(f"    {arch:<20} {count:>4} / {by_arch_total[arch]:>4} ({pct}%)")
+
+    by_enc       = defaultdict(int)
+    by_enc_total = defaultdict(int)
+    for r in all_results:
+        by_enc_total[r['encoder']] += 1
+    for r in degenerate:
+        by_enc[r['encoder']] += 1
+
+    print(f"\n  By encoder:")
+    for enc in sorted(by_enc_total):
+        count = by_enc.get(enc, 0)
+        pct   = round(count / by_enc_total[enc] * 100, 1)
+        print(f"    {enc:<25} {count:>4} / {by_enc_total[enc]:>4} ({pct}%)")
+
+    by_combo       = defaultdict(lambda: defaultdict(int))
+    by_combo_total = defaultdict(int)
+    for r in all_results:
+        by_combo_total[f"{r['arch']}/{r['encoder']}"] += 1
+    for r in degenerate:
+        combo = f"{r['arch']}/{r['encoder']}"
+        for t in classify(r):
+            by_combo[combo][t] += 1
+
+    print(f"\n  By arch/encoder:")
+    for combo in sorted(by_combo_total):
+        total_combo = by_combo_total[combo]
+        collapsed   = sum(by_combo[combo].values())
+        if collapsed == 0:
+            print(f"    {combo:<35} {0:>3}/{total_combo:>3} (0.0%)")
+        else:
+            pct   = round(collapsed / total_combo * 100, 1)
+            parts = []
+            for t in ['both_collapsed', 'myelin_only', 'axon_only']:
+                c = by_combo[combo].get(t, 0)
+                if c > 0:
+                    parts.append(f"{t}={c}({round(c/total_combo*100,1)}%)")
+            print(f"    {combo:<35} {collapsed:>3}/{total_combo:>3} ({pct}%)  {'  '.join(parts)}")
+
+    by_cw         = defaultdict(lambda: defaultdict(int))
+    by_cw_total   = defaultdict(int)
+    for r in all_results:
+        by_cw_total[str(r.get('class_weights', []))] += 1
+    for r in degenerate:
+        cw = str(r.get('class_weights', []))
+        for t in classify(r):
+            by_cw[cw][t] += 1
+
+    print(f"\n  By class weight (collapsed/total):")
+    for cw in sorted(by_cw_total):
+        total_cw  = by_cw_total[cw]
+        collapsed = sum(by_cw[cw].values())
+        pct       = round(collapsed / total_cw * 100, 1)
+        if collapsed > 0:
+            parts = []
+            for t in ['both_collapsed', 'myelin_only', 'axon_only']:
+                c = by_cw[cw].get(t, 0)
+                if c > 0:
+                    parts.append(f"{t}={c}")
+            print(f"    cw={cw:<30} {collapsed:>4}/{total_cw:>4} ({pct}%)  {'  '.join(parts)}")
+
+    excl = [r for r in all_results
+            if r.get('encoder') not in ['efficientnet-b3', 'efficientnet-b4']]
+    excl_deg = [r for r in excl if
+                r.get('dice_myelin', 1.0) < 0.5 or
+                r.get('dice_axon',   1.0) < 0.6]
+    print(f"\n  Excluding efficientnet encoders:")
+    print(f"    Total:      {len(excl)}")
+    print(f"    Valid:      {len(excl) - len(excl_deg)} ({round((len(excl)-len(excl_deg))/len(excl)*100,2)}%)")
+    print(f"    Degenerate: {len(excl_deg)} ({round(len(excl_deg)/len(excl)*100,2)}%)")
+
+    csv_rows = []
+    for combo in sorted(by_combo_total):
+        arch, encoder = combo.split('/', 1)
+        total_combo   = by_combo_total[combo]
+        collapsed     = sum(by_combo[combo].values())
+        csv_rows.append({
+            'arch':           arch,
+            'encoder':        encoder,
+            'total_runs':     total_combo,
+            'collapsed':      collapsed,
+            'valid':          total_combo - collapsed,
+            'collapse_pct':   round(collapsed / total_combo * 100, 1),
+            'both_collapsed': by_combo[combo].get('both_collapsed', 0),
+            'myelin_only':    by_combo[combo].get('myelin_only', 0),
+            'axon_only':      by_combo[combo].get('axon_only', 0),
+        })
+
+    write_dict_csv(csv_rows, out_dir / 'wave1_collapse_report.csv', 'Collapse report')
+
+
 # ─── Wave 1 functions ─────────────────────────────────────────────────────────
 
 def build_table2(groups: dict, encoder: str = 'resnet34') -> list[dict]:
@@ -382,6 +511,10 @@ def build_table2(groups: dict, encoder: str = 'resnet34') -> list[dict]:
     for row in rows:
         row['composite_score'] = compute_composite_score(row)
     rows.sort(key=lambda x: x.get('dice_macro_mean') or 0, reverse=True)
+    for row in rows:
+        enc = row.get('encoder', '')
+        if enc in ('efficientnet-b3', 'efficientnet-b4'):
+            row['_encoder_warning'] = f'High collapse rate (~48%) for {enc} — n_runs reflects valid runs only'
     return rows
 
 
@@ -400,6 +533,10 @@ def build_table3(groups: dict, winning_arch: str) -> list[dict]:
     for row in rows:
         row['composite_score'] = compute_composite_score(row)
     rows.sort(key=lambda x: x.get('dice_macro_mean') or 0, reverse=True)
+    for row in rows:
+        enc = row.get('encoder', '')
+        if enc in ('efficientnet-b3', 'efficientnet-b4'):
+            row['_encoder_warning'] = f'High collapse rate (~48%) for {enc} — n_runs reflects valid runs only'
     return rows
 
 
@@ -451,7 +588,23 @@ def build_candidates(summaries: list[dict], top_n: int = 5) -> dict:
                         'hd95_myelin_mean':      s.get('hd95_myelin_mean'),
                     })
                     break
+    
+    # Filter consensus: must appear in top 5 for at least 1 Dice metric
+    # AND at least 1 HD95 metric — prevents single-family domination
+    def _in_family(c, family_metrics):
+        return any(
+            e['arch'] == c['arch'] and e['encoder'] == c['encoder']
+            and str(e['class_weights']) == str(c['class_weights'])
+            for metric in family_metrics
+            for e in candidates.get(f'by_{metric}', [])
+        )
 
+    consensus = [
+        c for c in consensus
+        if _in_family(c, ['dice_macro', 'dice_myelin', 'dice_axon'])
+        and _in_family(c, ['hd95_myelin_axon', 'hd95_axon', 'hd95_myelin'])
+    ]
+    
     for c in consensus:
         in_myelin_top5 = any(
             e['arch'] == c['arch'] and e['encoder'] == c['encoder']
@@ -465,13 +618,19 @@ def build_candidates(summaries: list[dict], top_n: int = 5) -> dict:
         )
         c['in_dice_myelin_top5']      = in_myelin_top5
         c['in_hd95_myelin_axon_top5'] = in_hd_top5
-        if not in_myelin_top5 and not in_hd_top5:
-            c['_clinical_warning'] = 'Not in top 5 for dice_myelin OR hd95_myelin_axon'
-            
+        if not in_myelin_top5:
+            c['_clinical_warning'] = 'Not in top 5 for dice_myelin specifically — review before selecting'
+    
+    if not consensus:
+        print("  [WARN] No consensus candidates passed family balance filter "
+              "(Dice + HD95 co-representation required). "
+              "Consider lowering CONSENSUS_THRESHOLD or reviewing RANKING_METRICS.")
+
     candidates[f'consensus_top{top_n}'] = consensus[:top_n]
     candidates['_note'] = (
         f"consensus = models in top {top_n} across "
-        f"{CONSENSUS_THRESHOLD}+ of {len(RANKING_METRICS)} metric rankings."
+        f"{CONSENSUS_THRESHOLD}+ of {len(RANKING_METRICS)} metric rankings, "
+        f"with co-representation required in both Dice and HD95 metric families."
     )
     return candidates
 
@@ -521,7 +680,6 @@ def write_winner(
 
 # ─── Wave 2a functions ────────────────────────────────────────────────────────
 
-# Aug types and which params identify each sweep
 AUG_SWEEP_KEYS = {
     'hflip_prob':       ['hflip_prob'],
     'vflip_prob':       ['vflip_prob'],
@@ -539,7 +697,6 @@ AUG_SWEEP_KEYS = {
 
 
 def _get_aug_type(result: dict) -> str:
-    """Infer aug type from stage field in result.json."""
     stage = result.get('stage', '')
     for aug_type in AUG_SWEEP_KEYS:
         if aug_type in stage:
@@ -548,12 +705,6 @@ def _get_aug_type(result: dict) -> str:
 
 
 def build_table4(results_2a: list[dict]) -> list[dict]:
-    """
-    Table 4 — Aug sweep matrix.
-    For each aug type, find the parameter combination that maximizes
-    mean dice_macro across seeds.
-    One row per aug type.
-    """
     by_aug_type = defaultdict(list)
     for r in results_2a:
         aug_type = _get_aug_type(r)
@@ -561,24 +712,22 @@ def build_table4(results_2a: list[dict]) -> list[dict]:
 
     rows = []
     for aug_type, type_results in sorted(by_aug_type.items()):
-        # Group by aug param combo
         by_params = defaultdict(list)
         for r in type_results:
-            aug_params = r.get('aug_params', {})
+            aug_params    = r.get('aug_params', {})
             relevant_keys = AUG_SWEEP_KEYS.get(aug_type, [])
-            param_key = json.dumps(
+            param_key     = json.dumps(
                 {k: aug_params.get(k) for k in relevant_keys}, sort_keys=True
             )
             by_params[param_key].append(r)
 
-        best_mean   = -float('inf')
-        best_params = {}
-        best_n      = 0
-        best_metrics = {}
-
-        best_myelin_mean   = -float('inf')
-        best_myelin_params = {}
-        best_myelin_n      = 0
+        best_mean         = -float('inf')
+        best_params       = {}
+        best_n            = 0
+        best_metrics      = {}
+        best_myelin_mean  = -float('inf')
+        best_myelin_params= {}
+        best_myelin_n     = 0
 
         for param_key, param_results in by_params.items():
             vals = [r['dice_macro'] for r in param_results
@@ -587,9 +736,9 @@ def build_table4(results_2a: list[dict]) -> list[dict]:
                 continue
             mean = statistics.mean(vals)
             if mean > best_mean:
-                best_mean    = mean
-                best_params  = json.loads(param_key)
-                best_n       = len(vals)
+                best_mean   = mean
+                best_params = json.loads(param_key)
+                best_n      = len(vals)
                 for metric in ALL_METRICS:
                     m_vals = [r[metric] for r in param_results
                               if metric in r and r[metric] is not None]
@@ -602,16 +751,11 @@ def build_table4(results_2a: list[dict]) -> list[dict]:
             if myelin_vals:
                 myelin_mean = statistics.mean(myelin_vals)
                 if myelin_mean > best_myelin_mean:
-                    best_myelin_mean   = myelin_mean
-                    best_myelin_params = json.loads(param_key)
-                    best_myelin_n      = len(myelin_vals)
+                    best_myelin_mean    = myelin_mean
+                    best_myelin_params  = json.loads(param_key)
+                    best_myelin_n       = len(myelin_vals)
 
-        row = {
-            'aug_type':      aug_type,
-            'n_seeds':       best_n,
-            **best_params,
-            **best_metrics,
-        }
+        row = {'aug_type': aug_type, 'n_seeds': best_n, **best_params, **best_metrics}
         rows.append(row)
 
         best_myelin = best_metrics.get('dice_myelin_mean')
@@ -634,20 +778,12 @@ def build_table4(results_2a: list[dict]) -> list[dict]:
 # ─── Wave 2b functions ────────────────────────────────────────────────────────
 
 def build_table5(results_2b: list[dict], results_sw: list[dict], winner: dict) -> list[dict]:
-    """
-    Table 5 — Aug ON vs OFF per phenotype.
-    Aug ON: from Wave 2b results.
-    Aug OFF: pulled from Wave 1 SW results matching arch/encoder/weights/split/seed.
-    Phenotype inferred from val_stems in result.json.
-    """
     arch    = winner['arch']
     encoder = winner['encoder']
     weights = winner['class_weights']
     split   = winner['best_split']
+    w_str   = '_'.join(str(int(w)) if w == int(w) else str(w) for w in weights)
 
-    w_str = '_'.join(str(int(w)) if w == int(w) else str(w) for w in weights)
-
-    # Aug OFF baseline from Wave 1 SW
     aug_off_by_seed = {}
     for r in results_sw:
         if (r['arch'] == arch and r['encoder'] == encoder
@@ -658,33 +794,22 @@ def build_table5(results_2b: list[dict], results_sw: list[dict], winner: dict) -
             aug_off_by_seed[r['seed']] = r
 
     rows = []
-
     for r_on in results_2b:
-        seed = r_on.get('seed')
-        r_off = aug_off_by_seed.get(seed)
-
-        # Infer phenotype balance from val_stems
+        seed      = r_on.get('seed')
+        r_off     = aug_off_by_seed.get(seed)
         val_stems = r_on.get('val_stems', [])
-        n_ctrl  = sum(1 for s in val_stems if s.startswith('ctrl_'))
-        n_regen = sum(1 for s in val_stems if s.startswith('regen_'))
-
         row = {
-            'seed':              seed,
-            'n_val_ctrl':        n_ctrl,
-            'n_val_regen':       n_regen,
+            'seed':        seed,
+            'n_val_ctrl':  sum(1 for s in val_stems if s.startswith('ctrl_')),
+            'n_val_regen': sum(1 for s in val_stems if s.startswith('regen_')),
         }
-
         for metric in ['dice_macro', 'dice_axon', 'dice_myelin', 'dice_bg',
-                        'hd95_macro', 'hd95_myelin_axon', 'hd95_axon', 'hd95_myelin']:
+                       'hd95_macro', 'hd95_myelin_axon', 'hd95_axon', 'hd95_myelin']:
             row[f'{metric}_aug_on']  = r_on.get(metric)
             row[f'{metric}_aug_off'] = r_off.get(metric) if r_off else None
             on_val  = r_on.get(metric)
             off_val = r_off.get(metric) if r_off else None
-            if on_val is not None and off_val is not None:
-                row[f'{metric}_delta'] = round(on_val - off_val, 4)
-            else:
-                row[f'{metric}_delta'] = None
-
+            row[f'{metric}_delta'] = round(on_val - off_val, 4) if (on_val is not None and off_val is not None) else None
         rows.append(row)
 
     rows.sort(key=lambda x: x['seed'])
@@ -694,12 +819,6 @@ def build_table5(results_2b: list[dict], results_sw: list[dict], winner: dict) -
 # ─── Wave 3 functions ─────────────────────────────────────────────────────────
 
 def build_table1(results_lc: list[dict]) -> tuple[list[dict], list[dict]]:
-    """
-    Table 1 — Learning curve.
-    Mean Dice ± SD per dataset size, averaged across splits and seeds.
-    Shows plateau at n=30 — dataset sufficiency argument.
-    Also returns per-split breakdown as supplementary rows.
-    """
     by_size = defaultdict(list)
     for r in results_lc:
         if r.get('wave') == 3:
@@ -707,15 +826,12 @@ def build_table1(results_lc: list[dict]) -> tuple[list[dict], list[dict]]:
             if n is not None:
                 by_size[n].append(r)
 
-    rows = []
+    rows      = []
     split_rows = []
 
     for n_images in sorted(by_size.keys()):
         size_results = by_size[n_images]
-        row = {
-            'n_images': n_images,
-            'n_runs':   len(size_results),
-        }
+        row = {'n_images': n_images, 'n_runs': len(size_results)}
         for metric in ALL_METRICS:
             vals = [r[metric] for r in size_results
                     if metric in r and r[metric] is not None]
@@ -739,13 +855,14 @@ def build_table1(results_lc: list[dict]) -> tuple[list[dict], list[dict]]:
         else:
             for metric in ['dice_macro', 'dice_myelin', 'hd95_myelin_axon']:
                 row[f'plateau_pct_{metric}'] = None
+
         rows.append(row)
-        
+
         print(f"  n={n_images} (n_runs={len(size_results)}):")
         print(f"    dice_macro={row.get('dice_macro_mean')} ± {row.get('dice_macro_sd')}")
         print(f"    dice_myelin={row.get('dice_myelin_mean')} ± {row.get('dice_myelin_sd')}")
         print(f"    hd95_myelin_axon={row.get('hd95_myelin_axon_mean')} ± {row.get('hd95_myelin_axon_sd')}")
-        
+
         prev_n = rows[-2]['n_images'] if len(rows) >= 2 else None
         if prev_n is not None:
             for metric in ['dice_macro', 'dice_myelin', 'hd95_myelin_axon']:
@@ -753,7 +870,6 @@ def build_table1(results_lc: list[dict]) -> tuple[list[dict], list[dict]]:
                 if pct is not None:
                     print(f"    {metric} Δ vs n={prev_n}: {pct:+.2f}% improvement")
 
-        # Per-split breakdown
         by_split = defaultdict(list)
         for r in size_results:
             split_key = f"{r.get('train_pct')}_{r.get('val_pct')}"
@@ -812,19 +928,14 @@ def main():
             return
 
         results, degenerate = filter_degenerate(results)
-        if degenerate:
-            print(f"[WARN] {len(degenerate)} degenerate results excluded "
-                  f"(dice_macro<0.5 or axon/myelin<0.1):")
+        build_collapse_report(results + degenerate, degenerate, out_dir)
 
-            # By arch
-            by_arch = {}
-            by_arch_total = {}
-            # By encoder
-            by_enc = {}
-            by_enc_total = {}
-            # By arch+encoder
-            by_combo = {}
-            by_combo_total = {}
+        if degenerate:
+            print(f"\n[WARN] {len(degenerate)} degenerate results excluded "
+                  f"(dice_macro<0.5, dice_myelin<0.5, or dice_axon<0.6)")
+            by_arch = {}; by_arch_total = {}
+            by_enc  = {}; by_enc_total  = {}
+            by_combo= {}; by_combo_total= {}
 
             for r in results + degenerate:
                 arch = r['arch']; enc = r['encoder']
@@ -834,26 +945,10 @@ def main():
 
             for r in degenerate:
                 arch = r['arch']; enc = r['encoder']
-                by_arch[arch]           = by_arch.get(arch, 0) + 1
-                by_enc[enc]             = by_enc.get(enc,   0) + 1
+                by_arch[arch]             = by_arch.get(arch, 0) + 1
+                by_enc[enc]               = by_enc.get(enc,   0) + 1
                 by_combo[f"{arch}/{enc}"] = by_combo.get(f"{arch}/{enc}", 0) + 1
 
-            print(f"\n  By architecture:")
-            for arch, count in sorted(by_arch.items(), key=lambda x: -x[1]):
-                pct = round(count / by_arch_total[arch] * 100, 1)
-                print(f"    {arch:<20} {count:>4} / {by_arch_total[arch]:>4} degenerate ({pct}%)")
-
-            print(f"\n  By encoder:")
-            for enc, count in sorted(by_enc.items(), key=lambda x: -x[1]):
-                pct = round(count / by_enc_total[enc] * 100, 1)
-                print(f"    {enc:<25} {count:>4} / {by_enc_total[enc]:>4} degenerate ({pct}%)")
-
-            print(f"\n  By arch/encoder:")
-            for combo, count in sorted(by_combo.items(), key=lambda x: -x[1]):
-                pct = round(count / by_combo_total[combo] * 100, 1)
-                print(f"    {combo:<35} {count:>4} / {by_combo_total[combo]:>4} degenerate ({pct}%)")
-
-            # Write degenerate CSV with collapse rate columns
             for r in degenerate:
                 arch = r['arch']; enc = r['encoder']
                 r['collapse_pct_arch']    = round(by_arch[arch]  / by_arch_total[arch]  * 100, 1)
@@ -865,7 +960,7 @@ def main():
         summaries = [aggregate_combo(v) for v in groups.values()]
         print(f"Aggregated {len(summaries)} unique arch/encoder/weight combinations")
 
-        write_flat_csv(results,   out_dir / 'wave1_all_results.csv')
+        write_flat_csv(results, out_dir / 'wave1_all_results.csv')
         for s in summaries:
             s['composite_score'] = compute_composite_score(s)
         write_summary_csv(summaries, out_dir / 'wave1_summary.csv')
@@ -878,7 +973,7 @@ def main():
             table3_rows = build_table3(groups, prov_arch)
             write_table_csv(
                 table3_rows,
-                out_dir / f'table3_encoders_provisional_{prov_arch}.csv', 
+                out_dir / f'table3_encoders_provisional_{prov_arch}.csv',
                 f'Table 3 provisional (top dice_macro arch: {prov_arch})'
             )
 
@@ -889,9 +984,10 @@ def main():
 
         print("\n── CONSENSUS TOP 5 ──────────────────────────────────────────────────")
         for i, c in enumerate(candidates.get('consensus_top5', []), 1):
+            warn = ' ⚠ CLINICAL WARNING' if '_clinical_warning' in c else ''
             print(
                 f"  {i}. {c['arch']} + {c['encoder']} weights={c['class_weights']} "
-                f"| top5 in {c['n_rankings_top5']}/{len(RANKING_METRICS)} rankings\n"
+                f"| top5 in {c['n_rankings_top5']}/{len(RANKING_METRICS)} rankings{warn}\n"
                 f"       dice_macro={c.get('dice_macro_mean')} "
                 f"| dice_myelin={c.get('dice_myelin_mean')} "
                 f"| dice_axon={c.get('dice_axon_mean')} "
@@ -960,7 +1056,6 @@ def main():
 
         results_2b = load_results_from(results_dir / 'wave2', 'Wave 2b')
         results_2b = [r for r in results_2b if r.get('stage') == '2b_aug_comparison']
-
         results_sw = load_results_from(results_dir / 'sw', 'Wave 1 SW baseline')
 
         if not results_2b:
@@ -970,16 +1065,12 @@ def main():
         table5_rows = build_table5(results_2b, results_sw, winner)
         write_dict_csv(table5_rows, out_dir / 'table5_aug_comparison.csv', 'Table 5')
 
-        # Summary to terminal
         print("\n── AUG ON vs OFF SUMMARY ────────────────────────────────────────────")
         for metric in ['dice_macro', 'dice_myelin', 'dice_axon', 'hd95_myelin_axon']:
-            on_vals  = [r[f'{metric}_aug_on']  for r in table5_rows
-                        if r.get(f'{metric}_aug_on')  is not None]
-            off_vals = [r[f'{metric}_aug_off'] for r in table5_rows
-                        if r.get(f'{metric}_aug_off') is not None]
+            on_vals  = [r[f'{metric}_aug_on']  for r in table5_rows if r.get(f'{metric}_aug_on')  is not None]
+            off_vals = [r[f'{metric}_aug_off'] for r in table5_rows if r.get(f'{metric}_aug_off') is not None]
             if on_vals and off_vals:
-                delta_vals = [r[f'{metric}_delta'] for r in table5_rows
-                              if r.get(f'{metric}_delta') is not None]
+                delta_vals = [r[f'{metric}_delta'] for r in table5_rows if r.get(f'{metric}_delta') is not None]
                 print(f"  {metric:<22} "
                       f"ON={round(statistics.mean(on_vals), 4)} ± {round(statistics.stdev(on_vals), 4)}  "
                       f"OFF={round(statistics.mean(off_vals), 4)} ± {round(statistics.stdev(off_vals), 4)}  "
@@ -997,9 +1088,8 @@ def main():
 
         print("\nLearning curve by dataset size:")
         table1_rows, table1_split_rows = build_table1(results_lc)
-        write_dict_csv(table1_rows, out_dir / 'table1_learning_curve.csv', 'Table 1')
+        write_dict_csv(table1_rows,       out_dir / 'table1_learning_curve.csv',          'Table 1')
         write_dict_csv(table1_split_rows, out_dir / 'table1_learning_curve_by_split.csv', 'Table 1 (per-split)')
-
         print("\nTable 1 complete — plateau confirmation for dataset sufficiency.")
 
 
