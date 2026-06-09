@@ -1,0 +1,893 @@
+{
+  "by_dice_macro": [
+    {
+      "arch": "unet++",
+      "encoder": "densenet169",
+      "class_weights": [
+        2.0,
+        2.0,
+        1.0
+      ],
+      "n_runs": 15,
+      "dice_macro": 0.9018,
+      "dice_macro_sd": 0.0157
+    },
+    {
+      "arch": "unet++",
+      "encoder": "densenet169",
+      "class_weights": [
+        1.0,
+        2.0,
+        1.0
+      ],
+      "n_runs": 15,
+      "dice_macro": 0.9017,
+      "dice_macro_sd": 0.0153
+    },
+    {
+      "arch": "unet++",
+      "encoder": "densenet169",
+      "class_weights": [
+        1.0,
+        2.0,
+        2.0
+      ],
+      "n_runs": 15,
+      "dice_macro": 0.9016,
+      "dice_macro_sd": 0.0153
+    },
+    {
+      "arch": "unet++",
+      "encoder": "densenet169",
+      "class_weights": [
+        3.0,
+        3.0,
+        1.0
+      ],
+      "n_runs": 15,
+      "dice_macro": 0.9015,
+      "dice_macro_sd": 0.0156
+    },
+    {
+      "arch": "unet++",
+      "encoder": "densenet169",
+      "class_weights": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "n_runs": 15,
+      "dice_macro": 0.9009,
+      "dice_macro_sd": 0.0147
+    }
+  ],
+  "by_dice_axon": [
+    {
+      "arch": "unet++",
+      "encoder": "resnet50",
+      "class_weights": [
+        1.0,
+        1.0,
+        3.0
+      ],
+      "n_runs": 15,
+      "dice_axon": 0.8303,
+      "dice_axon_sd": 0.0565
+    },
+    {
+      "arch": "unet++",
+      "encoder": "densenet169",
+      "class_weights": [
+        3.0,
+        1.0,
+        3.0
+      ],
+      "n_runs": 15,
+      "dice_axon": 0.829,
+      "dice_axon_sd": 0.0576
+    },
+    {
+      "arch": "unet++",
+      "encoder": "densenet121",
+      "class_weights": [
+        1.0,
+        2.0,
+        2.0
+      ],
+      "n_runs": 15,
+      "dice_axon": 0.8279,
+      "dice_axon_sd": 0.0544
+    },
+    {
+      "arch": "unet++",
+      "encoder": "resnet50",
+      "class_weights": [
+        1.0,
+        1.0,
+        2.0
+      ],
+      "n_runs": 15,
+      "dice_axon": 0.8278,
+      "dice_axon_sd": 0.0591
+    },
+    {
+      "arch": "unet++",
+      "encoder": "densenet169",
+      "class_weights": [
+        3.0,
+        3.0,
+        1.0
+      ],
+      "n_runs": 15,
+      "dice_axon": 0.8275,
+      "dice_axon_sd": 0.0628
+    }
+  ],
+  "by_dice_myelin": [
+    {
+      "arch": "unet++",
+      "encoder": "densenet169",
+      "class_weights": [
+        2.0,
+        2.0,
+        1.0
+      ],
+      "n_runs": 15,
+      "dice_myelin": 0.7416,
+      "dice_myelin_sd": 0.0708
+    },
+    {
+      "arch": "unet++",
+      "encoder": "resnet50",
+      "class_weights": [
+        1.0,
+        2.0,
+        1.0
+      ],
+      "n_runs": 15,
+      "dice_myelin": 0.7416,
+      "dice_myelin_sd": 0.0623
+    },
+    {
+      "arch": "unet++",
+      "encoder": "densenet169",
+      "class_weights": [
+        1.0,
+        2.0,
+        1.0
+      ],
+      "n_runs": 15,
+      "dice_myelin": 0.7411,
+      "dice_myelin_sd": 0.0693
+    },
+    {
+      "arch": "unet++",
+      "encoder": "densenet169",
+      "class_weights": [
+        1.0,
+        3.0,
+        1.0
+      ],
+      "n_runs": 15,
+      "dice_myelin": 0.7406,
+      "dice_myelin_sd": 0.071
+    },
+    {
+      "arch": "unet++",
+      "encoder": "densenet121",
+      "class_weights": [
+        1.0,
+        2.0,
+        2.0
+      ],
+      "n_runs": 15,
+      "dice_myelin": 0.7404,
+      "dice_myelin_sd": 0.0629
+    }
+  ],
+  "by_dice_bg": [
+    {
+      "arch": "unet++",
+      "encoder": "densenet169",
+      "class_weights": [
+        3.0,
+        1.0,
+        2.0
+      ],
+      "n_runs": 15,
+      "dice_bg": 0.9404,
+      "dice_bg_sd": 0.0115
+    },
+    {
+      "arch": "unet++",
+      "encoder": "densenet169",
+      "class_weights": [
+        2.0,
+        2.0,
+        1.0
+      ],
+      "n_runs": 15,
+      "dice_bg": 0.9403,
+      "dice_bg_sd": 0.012
+    },
+    {
+      "arch": "unet++",
+      "encoder": "densenet121",
+      "class_weights": [
+        3.0,
+        1.0,
+        3.0
+      ],
+      "n_runs": 15,
+      "dice_bg": 0.9402,
+      "dice_bg_sd": 0.0123
+    },
+    {
+      "arch": "unet++",
+      "encoder": "densenet169",
+      "class_weights": [
+        3.0,
+        1.0,
+        3.0
+      ],
+      "n_runs": 15,
+      "dice_bg": 0.9402,
+      "dice_bg_sd": 0.012
+    },
+    {
+      "arch": "unet++",
+      "encoder": "densenet121",
+      "class_weights": [
+        1.0,
+        1.0,
+        3.0
+      ],
+      "n_runs": 15,
+      "dice_bg": 0.94,
+      "dice_bg_sd": 0.0125
+    }
+  ],
+  "by_iou_axon": [
+    {
+      "arch": "unet++",
+      "encoder": "densenet169",
+      "class_weights": [
+        3.0,
+        1.0,
+        3.0
+      ],
+      "n_runs": 15,
+      "iou_axon": 0.7507,
+      "iou_axon_sd": 0.0582
+    },
+    {
+      "arch": "unet++",
+      "encoder": "resnet50",
+      "class_weights": [
+        1.0,
+        1.0,
+        3.0
+      ],
+      "n_runs": 15,
+      "iou_axon": 0.7504,
+      "iou_axon_sd": 0.0564
+    },
+    {
+      "arch": "unet++",
+      "encoder": "densenet169",
+      "class_weights": [
+        3.0,
+        3.0,
+        1.0
+      ],
+      "n_runs": 15,
+      "iou_axon": 0.7491,
+      "iou_axon_sd": 0.0623
+    },
+    {
+      "arch": "unet++",
+      "encoder": "densenet169",
+      "class_weights": [
+        3.0,
+        1.0,
+        2.0
+      ],
+      "n_runs": 15,
+      "iou_axon": 0.7487,
+      "iou_axon_sd": 0.061
+    },
+    {
+      "arch": "unet++",
+      "encoder": "densenet169",
+      "class_weights": [
+        1.0,
+        2.0,
+        1.0
+      ],
+      "n_runs": 15,
+      "iou_axon": 0.7486,
+      "iou_axon_sd": 0.064
+    }
+  ],
+  "by_iou_myelin": [
+    {
+      "arch": "unet++",
+      "encoder": "densenet169",
+      "class_weights": [
+        2.0,
+        2.0,
+        1.0
+      ],
+      "n_runs": 15,
+      "iou_myelin": 0.6305,
+      "iou_myelin_sd": 0.066
+    },
+    {
+      "arch": "unet++",
+      "encoder": "densenet169",
+      "class_weights": [
+        1.0,
+        2.0,
+        1.0
+      ],
+      "n_runs": 15,
+      "iou_myelin": 0.6296,
+      "iou_myelin_sd": 0.0652
+    },
+    {
+      "arch": "unet++",
+      "encoder": "densenet169",
+      "class_weights": [
+        1.0,
+        3.0,
+        1.0
+      ],
+      "n_runs": 15,
+      "iou_myelin": 0.6287,
+      "iou_myelin_sd": 0.0677
+    },
+    {
+      "arch": "unet++",
+      "encoder": "resnet50",
+      "class_weights": [
+        1.0,
+        2.0,
+        1.0
+      ],
+      "n_runs": 15,
+      "iou_myelin": 0.6287,
+      "iou_myelin_sd": 0.0592
+    },
+    {
+      "arch": "unet",
+      "encoder": "densenet121",
+      "class_weights": [
+        1.0,
+        2.0,
+        2.0
+      ],
+      "n_runs": 15,
+      "iou_myelin": 0.628,
+      "iou_myelin_sd": 0.0661
+    }
+  ],
+  "by_hd95_macro": [
+    {
+      "arch": "unet++",
+      "encoder": "resnet50",
+      "class_weights": [
+        3.0,
+        1.0,
+        2.0
+      ],
+      "n_runs": 15,
+      "hd95_macro": 13.0797,
+      "hd95_macro_sd": 5.1625
+    },
+    {
+      "arch": "unet++",
+      "encoder": "densenet169",
+      "class_weights": [
+        2.0,
+        1.0,
+        2.0
+      ],
+      "n_runs": 15,
+      "hd95_macro": 13.1482,
+      "hd95_macro_sd": 5.8299
+    },
+    {
+      "arch": "unet++",
+      "encoder": "densenet169",
+      "class_weights": [
+        3.0,
+        1.0,
+        3.0
+      ],
+      "n_runs": 15,
+      "hd95_macro": 13.2538,
+      "hd95_macro_sd": 6.1414
+    },
+    {
+      "arch": "unet++",
+      "encoder": "resnet50",
+      "class_weights": [
+        3.0,
+        2.0,
+        2.0
+      ],
+      "n_runs": 15,
+      "hd95_macro": 13.2809,
+      "hd95_macro_sd": 5.359
+    },
+    {
+      "arch": "unet++",
+      "encoder": "densenet169",
+      "class_weights": [
+        2.0,
+        2.0,
+        1.0
+      ],
+      "n_runs": 15,
+      "hd95_macro": 13.2954,
+      "hd95_macro_sd": 6.6689
+    }
+  ],
+  "by_hd95_myelin_axon": [
+    {
+      "arch": "unet++",
+      "encoder": "resnet50",
+      "class_weights": [
+        3.0,
+        1.0,
+        2.0
+      ],
+      "n_runs": 15,
+      "hd95_myelin_axon": 15.4657,
+      "hd95_myelin_axon_sd": 6.4876
+    },
+    {
+      "arch": "unet++",
+      "encoder": "resnet50",
+      "class_weights": [
+        3.0,
+        2.0,
+        2.0
+      ],
+      "n_runs": 15,
+      "hd95_myelin_axon": 15.6623,
+      "hd95_myelin_axon_sd": 6.646
+    },
+    {
+      "arch": "unet++",
+      "encoder": "densenet169",
+      "class_weights": [
+        2.0,
+        1.0,
+        2.0
+      ],
+      "n_runs": 15,
+      "hd95_myelin_axon": 15.7235,
+      "hd95_myelin_axon_sd": 7.5098
+    },
+    {
+      "arch": "unet++",
+      "encoder": "densenet169",
+      "class_weights": [
+        3.0,
+        1.0,
+        3.0
+      ],
+      "n_runs": 15,
+      "hd95_myelin_axon": 15.7258,
+      "hd95_myelin_axon_sd": 7.6905
+    },
+    {
+      "arch": "unet++",
+      "encoder": "densenet169",
+      "class_weights": [
+        1.0,
+        2.0,
+        2.0
+      ],
+      "n_runs": 15,
+      "hd95_myelin_axon": 15.7747,
+      "hd95_myelin_axon_sd": 7.1685
+    }
+  ],
+  "by_hd95_axon": [
+    {
+      "arch": "unet++",
+      "encoder": "resnet50",
+      "class_weights": [
+        3.0,
+        1.0,
+        2.0
+      ],
+      "n_runs": 15,
+      "hd95_axon": 16.5096,
+      "hd95_axon_sd": 6.7493
+    },
+    {
+      "arch": "unet++",
+      "encoder": "resnet50",
+      "class_weights": [
+        1.0,
+        1.0,
+        3.0
+      ],
+      "n_runs": 15,
+      "hd95_axon": 16.5849,
+      "hd95_axon_sd": 6.3581
+    },
+    {
+      "arch": "unet++",
+      "encoder": "densenet169",
+      "class_weights": [
+        3.0,
+        1.0,
+        3.0
+      ],
+      "n_runs": 15,
+      "hd95_axon": 16.598,
+      "hd95_axon_sd": 7.3613
+    },
+    {
+      "arch": "unet++",
+      "encoder": "densenet169",
+      "class_weights": [
+        2.0,
+        1.0,
+        2.0
+      ],
+      "n_runs": 15,
+      "hd95_axon": 16.6127,
+      "hd95_axon_sd": 7.2947
+    },
+    {
+      "arch": "unet++",
+      "encoder": "resnet50",
+      "class_weights": [
+        3.0,
+        2.0,
+        2.0
+      ],
+      "n_runs": 15,
+      "hd95_axon": 16.6354,
+      "hd95_axon_sd": 6.8139
+    }
+  ],
+  "by_hd95_myelin": [
+    {
+      "arch": "unet++",
+      "encoder": "resnet50",
+      "class_weights": [
+        3.0,
+        1.0,
+        2.0
+      ],
+      "n_runs": 15,
+      "hd95_myelin": 14.4218,
+      "hd95_myelin_sd": 6.3079
+    },
+    {
+      "arch": "unet++",
+      "encoder": "resnet50",
+      "class_weights": [
+        3.0,
+        2.0,
+        2.0
+      ],
+      "n_runs": 15,
+      "hd95_myelin": 14.6893,
+      "hd95_myelin_sd": 6.5344
+    },
+    {
+      "arch": "unet++",
+      "encoder": "densenet169",
+      "class_weights": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "n_runs": 15,
+      "hd95_myelin": 14.7212,
+      "hd95_myelin_sd": 7.1883
+    },
+    {
+      "arch": "unet++",
+      "encoder": "densenet169",
+      "class_weights": [
+        3.0,
+        2.0,
+        1.0
+      ],
+      "n_runs": 15,
+      "hd95_myelin": 14.7527,
+      "hd95_myelin_sd": 7.011
+    },
+    {
+      "arch": "unet++",
+      "encoder": "resnet50",
+      "class_weights": [
+        4.0,
+        1.0,
+        1.0
+      ],
+      "n_runs": 15,
+      "hd95_myelin": 14.7567,
+      "hd95_myelin_sd": 7.3192
+    }
+  ],
+  "by_hd95_bg": [
+    {
+      "arch": "unet++",
+      "encoder": "densenet169",
+      "class_weights": [
+        2.0,
+        1.0,
+        2.0
+      ],
+      "n_runs": 15,
+      "hd95_bg": 7.9975,
+      "hd95_bg_sd": 2.5525
+    },
+    {
+      "arch": "unet++",
+      "encoder": "densenet169",
+      "class_weights": [
+        3.0,
+        2.0,
+        1.0
+      ],
+      "n_runs": 15,
+      "hd95_bg": 8.1285,
+      "hd95_bg_sd": 2.7136
+    },
+    {
+      "arch": "unet++",
+      "encoder": "densenet169",
+      "class_weights": [
+        2.0,
+        2.0,
+        1.0
+      ],
+      "n_runs": 15,
+      "hd95_bg": 8.2082,
+      "hd95_bg_sd": 3.0148
+    },
+    {
+      "arch": "unet++",
+      "encoder": "densenet169",
+      "class_weights": [
+        3.0,
+        1.0,
+        2.0
+      ],
+      "n_runs": 15,
+      "hd95_bg": 8.2246,
+      "hd95_bg_sd": 3.0022
+    },
+    {
+      "arch": "unet++",
+      "encoder": "resnet50",
+      "class_weights": [
+        1.0,
+        2.0,
+        1.0
+      ],
+      "n_runs": 15,
+      "hd95_bg": 8.2322,
+      "hd95_bg_sd": 2.1109
+    }
+  ],
+  "by_precision_myelin": [
+    {
+      "arch": "manet",
+      "encoder": "densenet121",
+      "class_weights": [
+        3.0,
+        1.0,
+        3.0
+      ],
+      "n_runs": 15,
+      "precision_myelin": 0.827,
+      "precision_myelin_sd": 0.0413
+    },
+    {
+      "arch": "manet",
+      "encoder": "densenet169",
+      "class_weights": [
+        3.0,
+        1.0,
+        2.0
+      ],
+      "n_runs": 15,
+      "precision_myelin": 0.8206,
+      "precision_myelin_sd": 0.0369
+    },
+    {
+      "arch": "manet",
+      "encoder": "densenet169",
+      "class_weights": [
+        3.0,
+        1.0,
+        3.0
+      ],
+      "n_runs": 15,
+      "precision_myelin": 0.8205,
+      "precision_myelin_sd": 0.0469
+    },
+    {
+      "arch": "manet",
+      "encoder": "densenet121",
+      "class_weights": [
+        3.0,
+        1.0,
+        2.0
+      ],
+      "n_runs": 15,
+      "precision_myelin": 0.816,
+      "precision_myelin_sd": 0.0439
+    },
+    {
+      "arch": "unet",
+      "encoder": "densenet121",
+      "class_weights": [
+        3.0,
+        1.0,
+        3.0
+      ],
+      "n_runs": 15,
+      "precision_myelin": 0.8122,
+      "precision_myelin_sd": 0.0405
+    }
+  ],
+  "by_recall_myelin": [
+    {
+      "arch": "manet",
+      "encoder": "densenet169",
+      "class_weights": [
+        1.0,
+        3.0,
+        1.0
+      ],
+      "n_runs": 15,
+      "recall_myelin": 0.7866,
+      "recall_myelin_sd": 0.0883
+    },
+    {
+      "arch": "manet",
+      "encoder": "resnet34",
+      "class_weights": [
+        1.0,
+        3.0,
+        1.0
+      ],
+      "n_runs": 15,
+      "recall_myelin": 0.7862,
+      "recall_myelin_sd": 0.0757
+    },
+    {
+      "arch": "manet",
+      "encoder": "densenet121",
+      "class_weights": [
+        1.0,
+        3.0,
+        1.0
+      ],
+      "n_runs": 15,
+      "recall_myelin": 0.7813,
+      "recall_myelin_sd": 0.0834
+    },
+    {
+      "arch": "manet",
+      "encoder": "resnet50",
+      "class_weights": [
+        1.0,
+        3.0,
+        1.0
+      ],
+      "n_runs": 15,
+      "recall_myelin": 0.7805,
+      "recall_myelin_sd": 0.0793
+    },
+    {
+      "arch": "unet++",
+      "encoder": "densenet169",
+      "class_weights": [
+        1.0,
+        3.0,
+        1.0
+      ],
+      "n_runs": 15,
+      "recall_myelin": 0.7793,
+      "recall_myelin_sd": 0.0743
+    }
+  ],
+  "by_precision_axon": [
+    {
+      "arch": "manet",
+      "encoder": "densenet169",
+      "class_weights": [
+        1.0,
+        3.0,
+        1.0
+      ],
+      "n_runs": 15,
+      "precision_axon": 0.8747,
+      "precision_axon_sd": 0.0395
+    },
+    {
+      "arch": "manet",
+      "encoder": "densenet169",
+      "class_weights": [
+        3.0,
+        3.0,
+        1.0
+      ],
+      "n_runs": 15,
+      "precision_axon": 0.874,
+      "precision_axon_sd": 0.0436
+    },
+    {
+      "arch": "manet",
+      "encoder": "densenet121",
+      "class_weights": [
+        3.0,
+        3.0,
+        1.0
+      ],
+      "n_runs": 15,
+      "precision_axon": 0.872,
+      "precision_axon_sd": 0.0415
+    },
+    {
+      "arch": "manet",
+      "encoder": "densenet121",
+      "class_weights": [
+        1.0,
+        3.0,
+        1.0
+      ],
+      "n_runs": 15,
+      "precision_axon": 0.8707,
+      "precision_axon_sd": 0.0406
+    },
+    {
+      "arch": "unet++",
+      "encoder": "densenet169",
+      "class_weights": [
+        3.0,
+        3.0,
+        1.0
+      ],
+      "n_runs": 15,
+      "precision_axon": 0.8692,
+      "precision_axon_sd": 0.0326
+    }
+  ],
+  "consensus_top5": [
+    {
+      "arch": "unet++",
+      "encoder": "densenet169",
+      "class_weights": [
+        3.0,
+        1.0,
+        3.0
+      ],
+      "n_rankings_top5": 6,
+      "n_runs": 15,
+      "dice_macro_mean": 0.9004,
+      "dice_axon_mean": 0.829,
+      "dice_myelin_mean": 0.7374,
+      "hd95_myelin_axon_mean": 15.7258,
+      "hd95_axon_mean": 16.598,
+      "hd95_myelin_mean": 14.8536,
+      "in_dice_myelin_top5": false,
+      "in_hd95_myelin_axon_top5": true,
+      "_clinical_warning": "Not in top 5 for dice_myelin specifically \u2014 review before selecting"
+    }
+  ],
+  "_note": "Stable encoders only. Consensus = top 5 across 5+ of 14 metrics, with Dice+HD95 family co-representation required."
+}

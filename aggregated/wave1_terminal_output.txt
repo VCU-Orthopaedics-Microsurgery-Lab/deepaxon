@@ -1,0 +1,212 @@
+
+══ WAVE 1 ANALYSIS ══════════════════════════════════════════════════
+Loaded 4470 result files from /lustre/home/mazurm/deepaxon/analysis/results/sw [Wave 1 SW]
+[OK] All 4470/4320 results loaded
+
+── FINDING 1: TRAINING OVERVIEW ─────────────────────────────────────
+
+  Early stopping: 4470/4470 runs (100.0%)
+  Epochs (all runs):   mean=61.2 sd=20.6 min=41 max=156
+  Epochs (valid only): mean=64.8 sd=20.5 min=41 max=156
+
+  arch                  mean_epochs      sd   min   max      n
+  deeplabv3+                   64.2     8.8    47    94    150
+  manet                        63.7    21.2    41   130   1440
+  unet                         61.3    21.5    41   156   1440
+  unet++                       58.2    19.5    41   136   1440
+
+  encoder                    mean_epochs      sd   min   max      n note
+  densenet121                       55.8     7.9    45    95    720
+  densenet169                       57.7     7.9    44    94    720
+  efficientnet-b3                   72.5    32.0    41   156    720 *unstable (~50% collapse)
+  efficientnet-b4                   72.9    31.4    41   148    720 *unstable (~50% collapse)
+  resnet34                          54.8     7.4    45    94    870
+  resnet50                          54.6     6.3    45    91    720
+
+  Split comparison (stable encoders, valid runs only):
+     split  dice_myelin      sd  hd95_myelin_axon      sd      n
+     67/33       0.7507  0.0501           14.6654  4.8879   1010
+     80/20       0.7352   0.047           15.3889  4.6652   1010
+      93/7       0.6873  0.0966           22.8932  12.143   1008
+  Note: 93/7 eliminated — unstable val metrics at small n (HD95 SD ~2x higher than 67/33 and 80/20)
+
+── FINDING 2: COLLAPSE DIAGNOSTICS ─────────────────────────────────
+  Total results: 4470 | Valid: 3756 (84.0%) | Degenerate: 714 (16.0%)
+
+  Collapse type (can overlap):
+    both_collapsed             712 (15.9%)
+    axon_only                    2 (0.0%)
+
+  By architecture:
+    deeplabv3+              0 /  150 (0.0%)
+    manet                 240 / 1440 (16.7%)
+    unet                  230 / 1440 (16.0%)
+    unet++                244 / 1440 (16.9%)
+
+  By encoder:
+    densenet121                  1 /  720 (0.1%)
+    densenet169                  0 /  720 (0.0%)
+    efficientnet-b3            358 /  720 (49.7%) *** UNSTABLE
+    efficientnet-b4            354 /  720 (49.2%) *** UNSTABLE
+    resnet34                     1 /  870 (0.1%)
+    resnet50                     0 /  720 (0.0%)
+
+  By arch/encoder:
+    deeplabv3+/resnet34                   0/150 (0.0%)
+    manet/densenet121                     1/240 (0.4%)  both_collapsed=1(0.4%)
+    manet/densenet169                     0/240 (0.0%)
+    manet/efficientnet-b3               114/240 (47.5%)  both_collapsed=114(47.5%)
+    manet/efficientnet-b4               125/240 (52.1%)  both_collapsed=125(52.1%)
+    manet/resnet34                        0/240 (0.0%)
+    manet/resnet50                        0/240 (0.0%)
+    unet++/densenet121                    0/240 (0.0%)
+    unet++/densenet169                    0/240 (0.0%)
+    unet++/efficientnet-b3              126/240 (52.5%)  both_collapsed=125(52.1%)  axon_only=1(0.4%)
+    unet++/efficientnet-b4              118/240 (49.2%)  both_collapsed=118(49.2%)
+    unet++/resnet34                       0/240 (0.0%)
+    unet++/resnet50                       0/240 (0.0%)
+    unet/densenet121                      0/240 (0.0%)
+    unet/densenet169                      0/240 (0.0%)
+    unet/efficientnet-b3                118/240 (49.2%)  both_collapsed=117(48.8%)  axon_only=1(0.4%)
+    unet/efficientnet-b4                111/240 (46.2%)  both_collapsed=111(46.2%)
+    unet/resnet34                         1/240 (0.4%)  both_collapsed=1(0.4%)
+    unet/resnet50                         0/240 (0.0%)
+
+  By class weight (collapsed/total):
+    cw=[1.0, 1.0, 1.0]                  49/ 285 (17.2%)  both_collapsed=49
+    cw=[1.0, 1.0, 2.0]                  53/ 285 (18.6%)  both_collapsed=52  axon_only=1
+    cw=[1.0, 1.0, 3.0]                  53/ 285 (18.6%)  both_collapsed=53
+    cw=[1.0, 2.0, 1.0]                  51/ 285 (17.9%)  both_collapsed=51
+    cw=[1.0, 2.0, 2.0]                  49/ 270 (18.1%)  both_collapsed=49
+    cw=[1.0, 3.0, 1.0]                  49/ 285 (17.2%)  both_collapsed=48  axon_only=1
+    cw=[2.0, 1.0, 1.0]                  36/ 285 (12.6%)  both_collapsed=36
+    cw=[2.0, 1.0, 2.0]                  46/ 285 (16.1%)  both_collapsed=46
+    cw=[2.0, 2.0, 1.0]                  41/ 285 (14.4%)  both_collapsed=41
+    cw=[3.0, 1.0, 1.0]                  34/ 285 (11.9%)  both_collapsed=34
+    cw=[3.0, 1.0, 2.0]                  45/ 270 (16.7%)  both_collapsed=45
+    cw=[3.0, 1.0, 3.0]                  48/ 270 (17.8%)  both_collapsed=48
+    cw=[3.0, 2.0, 1.0]                  41/ 270 (15.2%)  both_collapsed=41
+    cw=[3.0, 2.0, 2.0]                  46/ 270 (17.0%)  both_collapsed=46
+    cw=[3.0, 3.0, 1.0]                  40/ 270 (14.8%)  both_collapsed=40
+    cw=[4.0, 1.0, 1.0]                  33/ 285 (11.6%)  both_collapsed=33
+
+  EfficientNet exclusion rationale:
+  Collapse rate: B3=49.7%  B4=49.2%
+  Performance of surviving (valid) EfficientNet runs vs stable encoders:
+  metric                         eff_valid (n=728)        stable (n=3028)    delta
+  dice_myelin                               0.7177                 0.7244  -0.0068
+  dice_axon                                 0.8133                 0.8144  -0.0011
+  hd95_myelin_axon                         16.6111                17.6457  -1.0346
+  CONCLUSION: EfficientNet valid runs do NOT outperform stable encoders on any metric. Exclusion is justified on both stability AND performance grounds.
+Collapse report: /lustre/home/mazurm/deepaxon/analysis/aggregated/wave1_collapse_report.csv (19 rows)
+
+── AUTO-DETECTED INCOMPLETE ARCHITECTURES ───────────────────────────
+  deeplabv3+           62.5% complete — EXCLUDED from competition tables
+  (appear in collapse report only)
+
+  Architectures in competition: manet, unet, unet++
+
+  Aggregated 298 unique arch/encoder/weight combinations
+Written: /lustre/home/mazurm/deepaxon/analysis/aggregated/wave1_all_results.csv (3756 rows)
+Written: /lustre/home/mazurm/deepaxon/analysis/aggregated/wave1_summary.csv (298 rows)
+
+── FINDING 3: STABLE LEADERBOARD ────────────────────────────────────
+  Excluded encoders: ['efficientnet-b3', 'efficientnet-b4']
+    Reason: ~50% collapse rate AND no performance advantage on valid runs
+  Excluded archs:    ['deeplabv3+']
+    Reason: <80% jobs complete
+  Valid runs included: 2878
+
+  Part A — All class weights aggregated (composite = (myelin+axon+hd95_norm)/3):
+  combo                                myelin    axon    hd95  composite     n
+  unet++/densenet169                   0.7368  0.8245 16.2139     0.7457   240
+  unet++/resnet50                      0.7353  0.8233 16.1885     0.7449   240
+  unet++/densenet121                   0.7344  0.8222 16.9036     0.7395   240
+  unet/densenet121                     0.7289  0.8197 17.3138     0.7341   240
+  unet++/resnet34                       0.719   0.813 17.0937       0.73   240
+  manet/densenet121                    0.7264  0.8178 17.9257     0.7286   239
+  unet/densenet169                     0.7247  0.8165 17.8909     0.7278   240
+  manet/densenet169                    0.7249  0.8161 17.9917      0.727   240
+  manet/resnet50                       0.7198  0.8091  17.521     0.7262   240
+  unet/resnet50                        0.7236  0.8128 18.2852     0.7236   240
+  manet/resnet34                       0.7182  0.8062 17.8383     0.7225   240
+  unet/resnet34                        0.7071  0.7947 20.9915      0.694   239
+  manet/densenet121 — dice_macro winner:  cw=[1.0, 2.0, 2.0] (macro=0.9007, myelin=0.7335, axon=0.8243)
+  manet/densenet121 — composite winner:   cw=[3.0, 2.0, 2.0] (composite=0.7419, myelin=0.7362, axon=0.8224)
+  manet/densenet169 — dice_macro winner:  cw=[2.0, 2.0, 1.0] (macro=0.9004, myelin=0.7313, axon=0.8183)
+  manet/densenet169 — composite winner:   cw=[3.0, 2.0, 1.0] (composite=0.7357, myelin=0.7323, axon=0.8198)
+  manet/resnet34 — dice_macro winner:  cw=[1.0, 2.0, 1.0] (macro=0.8951, myelin=0.727, axon=0.8088)
+  manet/resnet34 — both methods agree on cw=[1.0, 2.0, 1.0]
+  manet/resnet50 — dice_macro winner:  cw=[1.0, 2.0, 2.0] (macro=0.8971, myelin=0.7297, axon=0.8167)
+  manet/resnet50 — both methods agree on cw=[1.0, 2.0, 2.0]
+  unet++/densenet121 — dice_macro winner:  cw=[1.0, 2.0, 1.0] (macro=0.9005, myelin=0.734, axon=0.8184)
+  unet++/densenet121 — composite winner:   cw=[1.0, 2.0, 2.0] (composite=0.7468, myelin=0.7404, axon=0.8279)
+  unet++/densenet169 — dice_macro winner:  cw=[2.0, 2.0, 1.0] (macro=0.9018, myelin=0.7416, axon=0.8263)
+  unet++/densenet169 — composite winner:   cw=[3.0, 1.0, 3.0] (composite=0.7506, myelin=0.7374, axon=0.829)
+  unet++/resnet34 — dice_macro winner:  cw=[1.0, 2.0, 2.0] (macro=0.8971, myelin=0.7246, axon=0.8181)
+  unet++/resnet34 — both methods agree on cw=[1.0, 2.0, 2.0]
+  unet++/resnet50 — dice_macro winner:  cw=[1.0, 1.0, 3.0] (macro=0.9003, myelin=0.7382, axon=0.8303)
+  unet++/resnet50 — composite winner:   cw=[3.0, 1.0, 2.0] (composite=0.7503, myelin=0.7341, axon=0.826)
+  unet/densenet121 — dice_macro winner:  cw=[1.0, 2.0, 2.0] (macro=0.8999, myelin=0.7384, axon=0.8239)
+  unet/densenet121 — composite winner:   cw=[3.0, 2.0, 2.0] (composite=0.7398, myelin=0.7292, axon=0.8237)
+  unet/densenet169 — dice_macro winner:  cw=[1.0, 1.0, 1.0] (macro=0.8996, myelin=0.7318, axon=0.8239)
+  unet/densenet169 — both methods agree on cw=[1.0, 1.0, 1.0]
+  unet/resnet34 — dice_macro winner:  cw=[3.0, 1.0, 1.0] (macro=0.8949, myelin=0.7188, axon=0.8064)
+  unet/resnet34 — both methods agree on cw=[3.0, 1.0, 1.0]
+  unet/resnet50 — dice_macro winner:  cw=[1.0, 2.0, 2.0] (macro=0.8972, myelin=0.7298, axon=0.8174)
+  unet/resnet50 — both methods agree on cw=[1.0, 2.0, 2.0]
+
+  Part B — Best class weight per combo (cw_sd = sensitivity across 16 configs):
+  combo                               cw                      myelin    axon    hd95  composite   cw_sd
+  unet++/densenet169                  [2.0, 2.0, 1.0]         0.7416  0.8263  15.839     0.7504  0.0039
+  unet++/resnet50                     [1.0, 1.0, 3.0]         0.7382  0.8303  15.886     0.7503  0.0043
+  manet/densenet121                   [1.0, 2.0, 2.0]         0.7335  0.8243 16.8205     0.7405  0.0083
+  unet/densenet169                    [1.0, 1.0, 1.0]         0.7318  0.8239 17.0919      0.738  0.0076
+  unet/densenet121                    [1.0, 2.0, 2.0]         0.7384  0.8239 17.4936     0.7375   0.005
+  unet++/resnet34                     [1.0, 2.0, 2.0]         0.7246  0.8181 16.6745     0.7364  0.0049
+  manet/resnet50                      [1.0, 2.0, 2.0]         0.7297  0.8167 17.0511     0.7351  0.0061
+  unet++/densenet121                  [1.0, 2.0, 1.0]          0.734  0.8184 17.4244     0.7346  0.0037
+  unet/resnet50                       [1.0, 2.0, 2.0]         0.7298  0.8174 17.1803     0.7345  0.0069
+  manet/densenet169                   [2.0, 2.0, 1.0]         0.7313  0.8183  17.443     0.7336  0.0062
+  manet/resnet34                      [1.0, 2.0, 1.0]          0.727  0.8088 16.9369     0.7324  0.0061
+  unet/resnet34                       [3.0, 1.0, 1.0]         0.7188  0.8064 18.4141      0.719  0.0122
+  cw_sd interpretation: <0.01 = robust to weight choice | >0.02 = weight-sensitive
+Stable leaderboard (overall): /lustre/home/mazurm/deepaxon/analysis/aggregated/table2_stable_leaderboard_overall.csv (12 rows)
+Stable leaderboard (best CW): /lustre/home/mazurm/deepaxon/analysis/aggregated/table2_stable_leaderboard_best_cw.csv (12 rows)
+
+── FINDING 4: FULL REFERENCE TABLE (encoder=resnet34 controlled) ────
+  Note: includes unstable encoders — for reference only.
+  Primary competition result is the Stable Leaderboard (Finding 3).
+  deeplabv3+/resnet34 — dice_macro winner:  cw=[1.0, 1.0, 1.0] (macro=0.8917, myelin=0.722, axon=0.8165)
+  deeplabv3+/resnet34 — both methods agree on cw=[1.0, 1.0, 1.0]
+  manet/resnet34 — dice_macro winner:  cw=[1.0, 2.0, 1.0] (macro=0.8951, myelin=0.727, axon=0.8088)
+  manet/resnet34 — both methods agree on cw=[1.0, 2.0, 1.0]
+  unet/resnet34 — dice_macro winner:  cw=[3.0, 1.0, 1.0] (macro=0.8949, myelin=0.7188, axon=0.8064)
+  unet/resnet34 — both methods agree on cw=[3.0, 1.0, 1.0]
+  unet++/resnet34 — dice_macro winner:  cw=[1.0, 2.0, 2.0] (macro=0.8971, myelin=0.7246, axon=0.8181)
+  unet++/resnet34 — both methods agree on cw=[1.0, 2.0, 2.0]
+Written: /lustre/home/mazurm/deepaxon/analysis/aggregated/table2_architecture.csv (4 rows)
+Table 2 (all encoders): /lustre/home/mazurm/deepaxon/analysis/aggregated/table2_architecture.csv
+  unet++/densenet121 — dice_macro winner:  cw=[1.0, 2.0, 1.0] (macro=0.9005, myelin=0.734, axon=0.8184)
+  unet++/densenet121 — composite winner:   cw=[1.0, 2.0, 2.0] (composite=0.7468, myelin=0.7404, axon=0.8279)
+  unet++/densenet169 — dice_macro winner:  cw=[2.0, 2.0, 1.0] (macro=0.9018, myelin=0.7416, axon=0.8263)
+  unet++/densenet169 — composite winner:   cw=[3.0, 1.0, 3.0] (composite=0.7506, myelin=0.7374, axon=0.829)
+  unet++/efficientnet-b3 — dice_macro winner:  cw=[2.0, 1.0, 1.0] (macro=0.9028, myelin=0.7319, axon=0.8262)
+  unet++/efficientnet-b3 — composite winner:   cw=[2.0, 1.0, 2.0] (composite=0.7545, myelin=0.7256, axon=0.8229)
+  unet++/efficientnet-b4 — dice_macro winner:  cw=[1.0, 1.0, 3.0] (macro=0.9002, myelin=0.7316, axon=0.8238)
+  unet++/efficientnet-b4 — composite winner:   cw=[1.0, 1.0, 2.0] (composite=0.7479, myelin=0.7249, axon=0.8243)
+  unet++/resnet34 — dice_macro winner:  cw=[1.0, 2.0, 2.0] (macro=0.8971, myelin=0.7246, axon=0.8181)
+  unet++/resnet34 — both methods agree on cw=[1.0, 2.0, 2.0]
+  unet++/resnet50 — dice_macro winner:  cw=[1.0, 1.0, 3.0] (macro=0.9003, myelin=0.7382, axon=0.8303)
+  unet++/resnet50 — composite winner:   cw=[3.0, 1.0, 2.0] (composite=0.7503, myelin=0.7341, axon=0.826)
+Written: /lustre/home/mazurm/deepaxon/analysis/aggregated/table3_encoders_provisional_unet++.csv (6 rows)
+Table 3 provisional (top dice_macro arch: unet++): /lustre/home/mazurm/deepaxon/analysis/aggregated/table3_encoders_provisional_unet++.csv
+
+Written: /lustre/home/mazurm/deepaxon/analysis/aggregated/candidates.json
+
+── CONSENSUS TOP 5 (stable encoders only) ───────────────────────────
+  1. unet++ + densenet169 cw=[3.0, 1.0, 3.0] | top5 in 6/14 rankings | n_runs=15 (~0 seeds/split/cw) *** CLINICAL WARNING
+     myelin=0.7374 axon=0.829 hd95=15.7258 hd95_axon=16.598
+
+Review outputs, then run:
+  python aggregator.py --config analysis_config.json --select --arch <arch> --encoder <enc> --weights <w1,w2,w3> [--split <train,val>] --note '<rationale>'

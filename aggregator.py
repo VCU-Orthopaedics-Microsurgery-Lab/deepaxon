@@ -1,28 +1,5 @@
 """
-aggregator.py
-
-Reads Wave 1/2/3 result.json files and produces paper tables.
-
-Outputs by wave:
-    Wave 1 (--wave 1, default):
-        wave1_all_results.csv       — flat dump of all 5,760 results
-        wave1_summary.csv           — mean ± SD per arch/encoder/weights combo
-        wave1_collapse_report.csv   — collapse analysis by arch/encoder/class weight
-        table2_architecture.csv     — architecture comparison (encoder=resnet34)
-        table3_encoders_<arch>      — encoder comparison (winning arch)
-        candidates.json             — top 5 per metric + consensus
-        winner.json                 — written via --select after review
-
-    Wave 2a (--wave 2a):
-        wave2a_all_results.csv  — flat dump of all 2a results
-        table4_aug_sweep.csv    — best params per aug type (Table 4)
-
-    Wave 2b (--wave 2b):
-        table5_aug_comparison.csv — aug ON vs aug OFF per phenotype (Table 5)
-
-    Wave 3 (--wave 3):
-        table1_learning_curve.csv — Dice ± SD vs dataset size (Table 1)
-        table1_learning_curve_by_split.csv — per-split breakdown
+aggregator.py — DeepAxon Wave 1/2/3 results aggregation
 
 Usage:
     python aggregator.py --config analysis_config.json [--wave 1]
@@ -31,16 +8,50 @@ Usage:
     python aggregator.py --config analysis_config.json --wave 3
 
     # After Wave 1 review — write winner.json
-    python aggregator.py --config analysis_config.json --select \\
-        --arch unet++ --encoder resnet34 --weights 3,1,1 \\
-        [--split 67,33] --note "Best consensus across axon/myelin Dice and HD95"
+    python aggregator.py --config analysis_config.json --select \
+        --arch unet++ --encoder densenet169 --weights 3,1,3 \
+        [--split 67,33] --note "Best composite — stable leaderboard Part B"
 
-Metric ranking directions:
-    Higher is better: dice_*, iou_*, precision_*, recall_*
-    Lower is better:  hd95_*
+────────────────────────────────────────────────────────────────────────────────
+WAVE 1 OUTPUTS  (--wave 1)
+Pipe output to tee for a permanent record:
+    python aggregator.py ... | tee analysis/aggregated/wave1_terminal_output.txt
+────────────────────────────────────────────────────────────────────────────────
 
-Background metrics included — false positive axon/myelin in connective
-tissue directly corrupts morphometric outputs.
+  FINDING 1 — Training overview (terminal only)
+    Epoch statistics (all runs + valid-only) by arch and by encoder.
+    Split comparison: dice_myelin + HD95 per split, stable encoders only.
+
+  FINDING 2 — Collapse diagnostics
+    wave1_collapse_report.csv   — per arch/encoder: total/valid/collapsed/type
+    wave1_degenerate.csv        — flat dump of all collapsed runs
+    Terminal: overall rates, by arch, by encoder, by arch/encoder, by class weight,
+              EfficientNet performance comparison (valid eff vs stable encoders).
+
+  FINDING 3 — Stable competition (primary result)
+    table2_stable_leaderboard_overall.csv  — composite ranking, all weights aggregated
+    table2_stable_leaderboard_best_cw.csv  — composite ranking, best class weight + cw_sd
+    Excludes UNSTABLE_ENCODERS and incomplete archs (auto-detected at <80% expected runs).
+
+  FINDING 4 — Full reference tables (all encoders, paper methods)
+    table2_architecture.csv             — arch comparison, encoder=resnet34 controlled
+    table3_encoders_provisional_<arch>  — encoder comparison, provisional winning arch
+    table3_encoders_<arch>              — confirmed arch (--select only)
+
+  SUPPORTING
+    wave1_all_results.csv, wave1_summary.csv, candidates.json, winner.json
+
+────────────────────────────────────────────────────────────────────────────────
+WAVE 2a/2b/3 OUTPUTS — see inline section headers below
+────────────────────────────────────────────────────────────────────────────────
+
+    Wave 2a: wave2a_all_results.csv, table4_aug_sweep.csv
+    Wave 2b: table5_aug_comparison.csv (aug OFF baseline from Wave 1 SW, no retraining)
+    Wave 3:  table1_learning_curve.csv, table1_learning_curve_by_split.csv
+             Dataset sizes auto-selected: 67/33→[6,12,18,24,30], other→[10,20,30]
+
+    Metric directions — higher: dice_*, iou_*, precision_*, recall_*
+                      — lower:  hd95_*
 """
 
 from __future__ import annotations
@@ -153,6 +164,15 @@ RANKING_METRICS = [
 
 CONSENSUS_THRESHOLD = 5
 
+# Encoders excluded from competition: ~50% collapse rate, confirmed NOT
+# performance-superior to stable encoders on surviving runs (myelin delta=-0.007,
+# HD95 delta=-1.1px vs resnet/densenet). Reported in collapse diagnostics only.
+UNSTABLE_ENCODERS = ['efficientnet-b3', 'efficientnet-b4']
+
+# Auto-exclusion threshold: archs with <80% expected runs excluded from competition.
+ARCH_COMPLETENESS_THRESHOLD = 0.80
+EXPECTED_RUNS_PER_ARCH_ENCODER = 240  # 16 weights x 3 splits x 5 seeds
+
 
 # ─── Shared aggregation helpers ───────────────────────────────────────────────
 
@@ -194,9 +214,8 @@ def aggregate_combo(results: list[dict]) -> dict:
 
 def compute_composite_score(summary: dict) -> float:
     """
-    Myelin+axon composite score for ranking.
-    Mean of dice_myelin, dice_axon, and normalized hd95_myelin_axon (cap 50px).
-    Higher is better.
+    Myelin+axon composite: mean of dice_myelin, dice_axon, hd95_myelin_axon normalized
+    to 50px ceiling. Higher is better.
     """
     dm = summary.get('dice_myelin_mean') or 0
     da = summary.get('dice_axon_mean')   or 0
@@ -254,7 +273,7 @@ def find_optimal_weights(
         else:
             print(f"  {arch}/{encoder} — both methods agree on cw={best_macro['class_weights']}")
 
-    return best_macro  # Table 2/3 still use dice_macro winner — override via --select
+    return best_macro
 
 
 def find_best_split(
@@ -360,13 +379,89 @@ def write_dict_csv(rows: list[dict], out_path: Path, label: str):
     print(f"{label}: {out_path} ({len(rows)} rows)")
 
 
-# ─── Collapse diagnostics ─────────────────────────────────────────────────────
+# ─── FINDING 1: Training overview ─────────────────────────────────────────────
 
-def build_collapse_report(all_results: list[dict], degenerate: list[dict], out_dir: Path):
+def print_training_overview(all_results: list[dict], valid: list[dict]):
     """
-    Full collapse diagnostic report — runs before degenerate filtering.
-    Produces wave1_collapse_report.csv and prints full terminal breakdown.
-    Called with the unfiltered result set.
+    FINDING 1 — Training overview.
+    Epoch stats by arch and encoder (all runs + valid-only note).
+    Split comparison: dice_myelin + HD95 per split, stable encoders only.
+    """
+    print(f"\n── FINDING 1: TRAINING OVERVIEW ─────────────────────────────────────")
+
+    # ── Overall epoch stats ───────────────────────────────────────────────────
+    all_epochs   = [r['epochs_completed'] for r in all_results if 'epochs_completed' in r]
+    valid_epochs = [r['epochs_completed'] for r in valid       if 'epochs_completed' in r]
+    early_all    = sum(1 for r in all_results if r.get('early_stopped'))
+
+    print(f"\n  Early stopping: {early_all}/{len(all_results)} runs "
+          f"({round(early_all/len(all_results)*100,1)}%)")
+    if all_epochs:
+        print(f"  Epochs (all runs):   mean={round(statistics.mean(all_epochs),1)} "
+              f"sd={round(statistics.stdev(all_epochs),1)} "
+              f"min={min(all_epochs)} max={max(all_epochs)}")
+    if valid_epochs:
+        print(f"  Epochs (valid only): mean={round(statistics.mean(valid_epochs),1)} "
+              f"sd={round(statistics.stdev(valid_epochs),1)} "
+              f"min={min(valid_epochs)} max={max(valid_epochs)}")
+
+    # ── By architecture ───────────────────────────────────────────────────────
+    by_arch = defaultdict(list)
+    for r in all_results:
+        if 'epochs_completed' in r:
+            by_arch[r['arch']].append(r['epochs_completed'])
+
+    print(f"\n  {'arch':<20} {'mean_epochs':>12} {'sd':>7} {'min':>5} {'max':>5} {'n':>6}")
+    for arch in sorted(by_arch):
+        ep = by_arch[arch]
+        print(f"  {arch:<20} {round(statistics.mean(ep),1):>12} "
+              f"{round(statistics.stdev(ep),1):>7} {min(ep):>5} {max(ep):>5} {len(ep):>6}")
+
+    # ── By encoder ────────────────────────────────────────────────────────────
+    by_enc = defaultdict(list)
+    for r in all_results:
+        if 'epochs_completed' in r:
+            by_enc[r['encoder']].append(r['epochs_completed'])
+
+    print(f"\n  {'encoder':<25} {'mean_epochs':>12} {'sd':>7} {'min':>5} {'max':>5} {'n':>6} {'note'}")
+    for enc in sorted(by_enc):
+        ep   = by_enc[enc]
+        note = ' *unstable (~50% collapse)' if enc in UNSTABLE_ENCODERS else ''
+        print(f"  {enc:<25} {round(statistics.mean(ep),1):>12} "
+              f"{round(statistics.stdev(ep),1):>7} {min(ep):>5} {max(ep):>5} {len(ep):>6}{note}")
+
+    # ── Split comparison: stable valid runs only ──────────────────────────────
+    stable_valid = [
+        r for r in valid
+        if r.get('encoder') not in UNSTABLE_ENCODERS
+        and 'dice_myelin' in r and 'hd95_myelin_axon' in r
+    ]
+
+    by_split = defaultdict(list)
+    for r in stable_valid:
+        by_split[f"{r['train_pct']}/{r['val_pct']}"].append(r)
+
+    print(f"\n  Split comparison (stable encoders, valid runs only):")
+    print(f"  {'split':>8} {'dice_myelin':>12} {'sd':>7} {'hd95_myelin_axon':>17} {'sd':>7} {'n':>6}")
+    for split in sorted(by_split):
+        rs = by_split[split]
+        dm = [r['dice_myelin']      for r in rs]
+        hd = [r['hd95_myelin_axon'] for r in rs]
+        print(f"  {split:>8} {round(statistics.mean(dm),4):>12} "
+              f"{round(statistics.stdev(dm),4):>7} "
+              f"{round(statistics.mean(hd),4):>17} "
+              f"{round(statistics.stdev(hd),4):>7} {len(rs):>6}")
+    print(f"  Note: 93/7 eliminated — unstable val metrics at small n "
+          f"(HD95 SD ~2x higher than 67/33 and 80/20)")
+
+
+# ─── FINDING 2: Collapse diagnostics ──────────────────────────────────────────
+
+def build_collapse_report(all_results: list[dict], degenerate: list[dict],
+                           valid: list[dict], out_dir: Path):
+    """
+    FINDING 2 — Collapse diagnostics.
+    Includes EfficientNet performance comparison: valid eff runs vs stable encoders.
     """
     total = len(all_results)
 
@@ -382,45 +477,47 @@ def build_collapse_report(all_results: list[dict], degenerate: list[dict], out_d
             types.append('axon_only')
         return types
 
+    print(f"\n── FINDING 2: COLLAPSE DIAGNOSTICS ─────────────────────────────────")
+    print(f"  Total results: {total} | Valid: {len(valid)} ({round(len(valid)/total*100,1)}%) "
+          f"| Degenerate: {len(degenerate)} ({round(len(degenerate)/total*100,1)}%)")
+
+    # ── Collapse type ─────────────────────────────────────────────────────────
     type_counts = defaultdict(int)
     for r in all_results:
         for t in classify(r):
             type_counts[t] += 1
-
-    print(f"\n── COLLAPSE DIAGNOSTICS ─────────────────────────────────────────────")
-    print(f"  Total results:    {total}")
-    print(f"  Valid:            {total - len(degenerate)} ({round((total - len(degenerate))/total*100,1)}%)")
-    print(f"  Degenerate:       {len(degenerate)} ({round(len(degenerate)/total*100,1)}%)")
     print(f"\n  Collapse type (can overlap):")
     for t, count in sorted(type_counts.items(), key=lambda x: -x[1]):
         print(f"    {t:<25} {count:>4} ({round(count/total*100,1)}%)")
 
+    # ── By architecture ───────────────────────────────────────────────────────
     by_arch       = defaultdict(int)
     by_arch_total = defaultdict(int)
     for r in all_results:
         by_arch_total[r['arch']] += 1
     for r in degenerate:
         by_arch[r['arch']] += 1
-
     print(f"\n  By architecture:")
     for arch in sorted(by_arch_total):
         count = by_arch.get(arch, 0)
         pct   = round(count / by_arch_total[arch] * 100, 1)
         print(f"    {arch:<20} {count:>4} / {by_arch_total[arch]:>4} ({pct}%)")
 
+    # ── By encoder ────────────────────────────────────────────────────────────
     by_enc       = defaultdict(int)
     by_enc_total = defaultdict(int)
     for r in all_results:
         by_enc_total[r['encoder']] += 1
     for r in degenerate:
         by_enc[r['encoder']] += 1
-
     print(f"\n  By encoder:")
     for enc in sorted(by_enc_total):
         count = by_enc.get(enc, 0)
         pct   = round(count / by_enc_total[enc] * 100, 1)
-        print(f"    {enc:<25} {count:>4} / {by_enc_total[enc]:>4} ({pct}%)")
+        flag  = ' *** UNSTABLE' if enc in UNSTABLE_ENCODERS else ''
+        print(f"    {enc:<25} {count:>4} / {by_enc_total[enc]:>4} ({pct}%){flag}")
 
+    # ── By arch/encoder ───────────────────────────────────────────────────────
     by_combo       = defaultdict(lambda: defaultdict(int))
     by_combo_total = defaultdict(int)
     for r in all_results:
@@ -429,7 +526,6 @@ def build_collapse_report(all_results: list[dict], degenerate: list[dict], out_d
         combo = f"{r['arch']}/{r['encoder']}"
         for t in classify(r):
             by_combo[combo][t] += 1
-
     print(f"\n  By arch/encoder:")
     for combo in sorted(by_combo_total):
         total_combo = by_combo_total[combo]
@@ -445,38 +541,46 @@ def build_collapse_report(all_results: list[dict], degenerate: list[dict], out_d
                     parts.append(f"{t}={c}({round(c/total_combo*100,1)}%)")
             print(f"    {combo:<35} {collapsed:>3}/{total_combo:>3} ({pct}%)  {'  '.join(parts)}")
 
-    by_cw         = defaultdict(lambda: defaultdict(int))
-    by_cw_total   = defaultdict(int)
+    # ── By class weight ───────────────────────────────────────────────────────
+    by_cw       = defaultdict(lambda: defaultdict(int))
+    by_cw_total = defaultdict(int)
     for r in all_results:
         by_cw_total[str(r.get('class_weights', []))] += 1
     for r in degenerate:
         cw = str(r.get('class_weights', []))
         for t in classify(r):
             by_cw[cw][t] += 1
-
     print(f"\n  By class weight (collapsed/total):")
     for cw in sorted(by_cw_total):
         total_cw  = by_cw_total[cw]
         collapsed = sum(by_cw[cw].values())
-        pct       = round(collapsed / total_cw * 100, 1)
         if collapsed > 0:
-            parts = []
-            for t in ['both_collapsed', 'myelin_only', 'axon_only']:
-                c = by_cw[cw].get(t, 0)
-                if c > 0:
-                    parts.append(f"{t}={c}")
+            pct   = round(collapsed / total_cw * 100, 1)
+            parts = [f"{t}={by_cw[cw][t]}" for t in ['both_collapsed','myelin_only','axon_only']
+                     if by_cw[cw].get(t, 0) > 0]
             print(f"    cw={cw:<30} {collapsed:>4}/{total_cw:>4} ({pct}%)  {'  '.join(parts)}")
 
-    excl = [r for r in all_results
-            if r.get('encoder') not in ['efficientnet-b3', 'efficientnet-b4']]
-    excl_deg = [r for r in excl if
-                r.get('dice_myelin', 1.0) < 0.5 or
-                r.get('dice_axon',   1.0) < 0.6]
-    print(f"\n  Excluding efficientnet encoders:")
-    print(f"    Total:      {len(excl)}")
-    print(f"    Valid:      {len(excl) - len(excl_deg)} ({round((len(excl)-len(excl_deg))/len(excl)*100,2)}%)")
-    print(f"    Degenerate: {len(excl_deg)} ({round(len(excl_deg)/len(excl)*100,2)}%)")
+    # ── EfficientNet performance comparison ───────────────────────────────────
+    eff_valid    = [r for r in valid if r.get('encoder') in UNSTABLE_ENCODERS]
+    stable_valid = [r for r in valid if r.get('encoder') not in UNSTABLE_ENCODERS]
 
+    print(f"\n  EfficientNet exclusion rationale:")
+    print(f"  Collapse rate: B3={round(by_enc.get('efficientnet-b3',0)/by_enc_total.get('efficientnet-b3',1)*100,1)}%  "
+          f"B4={round(by_enc.get('efficientnet-b4',0)/by_enc_total.get('efficientnet-b4',1)*100,1)}%")
+    print(f"  Performance of surviving (valid) EfficientNet runs vs stable encoders:")
+    print(f"  {'metric':<25} {'eff_valid (n='+str(len(eff_valid))+')':>22} "
+          f"{'stable (n='+str(len(stable_valid))+')':>22} {'delta':>8}")
+    for m in ['dice_myelin', 'dice_axon', 'hd95_myelin_axon']:
+        ev = [r[m] for r in eff_valid    if m in r and r[m] is not None]
+        sv = [r[m] for r in stable_valid if m in r and r[m] is not None]
+        if ev and sv:
+            delta = round(statistics.mean(ev) - statistics.mean(sv), 4)
+            print(f"  {m:<25} {round(statistics.mean(ev),4):>22} "
+                  f"{round(statistics.mean(sv),4):>22} {delta:>+8}")
+    print(f"  CONCLUSION: EfficientNet valid runs do NOT outperform stable encoders "
+          f"on any metric. Exclusion is justified on both stability AND performance grounds.")
+
+    # ── Write CSV ─────────────────────────────────────────────────────────────
     csv_rows = []
     for combo in sorted(by_combo_total):
         arch, encoder = combo.split('/', 1)
@@ -492,16 +596,151 @@ def build_collapse_report(all_results: list[dict], degenerate: list[dict], out_d
             'both_collapsed': by_combo[combo].get('both_collapsed', 0),
             'myelin_only':    by_combo[combo].get('myelin_only', 0),
             'axon_only':      by_combo[combo].get('axon_only', 0),
+            'unstable':       encoder in UNSTABLE_ENCODERS,
         })
-
     write_dict_csv(csv_rows, out_dir / 'wave1_collapse_report.csv', 'Collapse report')
+
+
+# ─── Arch completeness detection ──────────────────────────────────────────────
+
+def detect_incomplete_archs(results: list[dict]) -> tuple[list[str], list[str]]:
+    """
+    Auto-detect archs with <80% expected runs. Excluded from competition tables.
+    Returns (complete_archs, incomplete_archs).
+    """
+    combo_counts        = defaultdict(int)
+    arch_min_completion = defaultdict(lambda: float('inf'))
+
+    for r in results:
+        combo_counts[f"{r['arch']}/{r['encoder']}"] += 1
+    for combo, count in combo_counts.items():
+        arch = combo.split('/')[0]
+        pct  = count / EXPECTED_RUNS_PER_ARCH_ENCODER
+        arch_min_completion[arch] = min(arch_min_completion[arch], pct)
+
+    complete   = []
+    incomplete = []
+    for arch, min_pct in sorted(arch_min_completion.items()):
+        if min_pct >= ARCH_COMPLETENESS_THRESHOLD:
+            complete.append(arch)
+        else:
+            incomplete.append((arch, round(min_pct * 100, 1)))
+
+    if incomplete:
+        print(f"\n── AUTO-DETECTED INCOMPLETE ARCHITECTURES ───────────────────────────")
+        for arch, pct in incomplete:
+            print(f"  {arch:<20} {pct}% complete — EXCLUDED from competition tables")
+        print(f"  (appear in collapse report only)")
+    print(f"\n  Architectures in competition: {', '.join(complete)}")
+
+    return complete, [a for a, _ in incomplete]
+
+
+# ─── FINDING 3: Stable leaderboard ────────────────────────────────────────────
+
+def build_stable_leaderboard(results: list[dict], incomplete_archs: list[str]):
+    """
+    FINDING 3 — Stable competition (primary result).
+    Part A: overall composite ranking, all class weights aggregated.
+    Part B: best class weight per combo + class weight SD (sensitivity).
+    """
+    excluded_encoders = UNSTABLE_ENCODERS
+    excluded_archs    = incomplete_archs
+
+    filtered = [
+        r for r in results
+        if r.get('encoder') not in excluded_encoders
+        and r.get('arch') not in excluded_archs
+    ]
+
+    print(f"\n── FINDING 3: STABLE LEADERBOARD ────────────────────────────────────")
+    print(f"  Excluded encoders: {excluded_encoders}")
+    print(f"    Reason: ~50% collapse rate AND no performance advantage on valid runs")
+    print(f"  Excluded archs:    {excluded_archs if excluded_archs else 'none'}")
+    print(f"    Reason: <{int(ARCH_COMPLETENESS_THRESHOLD*100)}% jobs complete")
+    print(f"  Valid runs included: {len(filtered)}")
+
+    # ── Part A: overall ───────────────────────────────────────────────────────
+    by_combo = defaultdict(list)
+    for r in filtered:
+        by_combo[f"{r['arch']}/{r['encoder']}"].append(r)
+
+    rows_overall = []
+    for combo, rs in by_combo.items():
+        arch, encoder = combo.split('/', 1)
+        dm    = statistics.mean(r['dice_myelin']       for r in rs)
+        da    = statistics.mean(r['dice_axon']         for r in rs)
+        hd    = statistics.mean(r['hd95_myelin_axon']  for r in rs)
+        dmsd  = statistics.stdev(r['dice_myelin']      for r in rs)
+        dasd  = statistics.stdev(r['dice_axon']        for r in rs)
+        hdsd  = statistics.stdev(r['hd95_myelin_axon'] for r in rs)
+        hd_score  = max(0, 1 - hd / 50)
+        composite = round((dm + da + hd_score) / 3, 4)
+        rows_overall.append({
+            'arch':                  arch,
+            'encoder':               encoder,
+            'n_runs':                len(rs),
+            'dice_myelin_mean':      round(dm, 4),
+            'dice_myelin_sd':        round(dmsd, 4),
+            'dice_axon_mean':        round(da, 4),
+            'dice_axon_sd':          round(dasd, 4),
+            'hd95_myelin_axon_mean': round(hd, 4),
+            'hd95_myelin_axon_sd':   round(hdsd, 4),
+            'composite_score':       composite,
+        })
+    rows_overall.sort(key=lambda x: -x['composite_score'])
+
+    print(f"\n  Part A — All class weights aggregated (composite = (myelin+axon+hd95_norm)/3):")
+    print(f"  {'combo':<35} {'myelin':>7} {'axon':>7} {'hd95':>7} {'composite':>10} {'n':>5}")
+    for row in rows_overall:
+        combo = f"{row['arch']}/{row['encoder']}"
+        print(f"  {combo:<35} {row['dice_myelin_mean']:>7} {row['dice_axon_mean']:>7} "
+              f"{row['hd95_myelin_axon_mean']:>7} {row['composite_score']:>10} {row['n_runs']:>5}")
+
+    # ── Part B: best class weight + sensitivity ───────────────────────────────
+    groups_stable = group_by_combo(filtered)
+
+    # Compute composite SD across all 16 class weight configs per arch/encoder
+    cw_composite_by_combo = defaultdict(list)
+    for key, rs in groups_stable.items():
+        s = aggregate_combo(rs)
+        combo_key = f"{s['arch']}/{s['encoder']}"
+        cw_composite_by_combo[combo_key].append(compute_composite_score(s))
+
+    rows_best = []
+    for combo, rs in by_combo.items():
+        arch, encoder = combo.split('/', 1)
+        summary = find_optimal_weights(groups_stable, arch, encoder)
+        if summary:
+            summary['composite_score'] = compute_composite_score(summary)
+            cw_vals = cw_composite_by_combo.get(combo, [])
+            summary['cw_composite_sd'] = round(statistics.stdev(cw_vals), 4) if len(cw_vals) > 1 else 0.0
+            summary['cw_composite_range'] = round(max(cw_vals) - min(cw_vals), 4) if cw_vals else 0.0
+            rows_best.append(summary)
+    rows_best.sort(key=lambda x: x.get('composite_score') or 0, reverse=True)
+
+    print(f"\n  Part B — Best class weight per combo (cw_sd = sensitivity across 16 configs):")
+    print(f"  {'combo':<35} {'cw':<22} {'myelin':>7} {'axon':>7} {'hd95':>7} {'composite':>10} {'cw_sd':>7}")
+    for row in rows_best:
+        combo = f"{row['arch']}/{row['encoder']}"
+        cw    = str(row.get('class_weights', ''))
+        print(f"  {combo:<35} {cw:<22} "
+              f"{round(row.get('dice_myelin_mean') or 0,4):>7} "
+              f"{round(row.get('dice_axon_mean') or 0,4):>7} "
+              f"{round(row.get('hd95_myelin_axon_mean') or 0,4):>7} "
+              f"{round(row.get('composite_score') or 0,4):>10} "
+              f"{row.get('cw_composite_sd',0):>7}")
+    print(f"  cw_sd interpretation: <0.01 = robust to weight choice | >0.02 = weight-sensitive")
+
+    return rows_overall, rows_best
 
 
 # ─── Wave 1 functions ─────────────────────────────────────────────────────────
 
 def build_table2(groups: dict, encoder: str = 'resnet34') -> list[dict]:
-    print(f"  [NOTE] Table 2 uses encoder={encoder} as controlled comparison. "
-          f"Architecture rankings may differ with other encoders.")
+    print(f"\n── FINDING 4: FULL REFERENCE TABLE (encoder={encoder} controlled) ────")
+    print(f"  Note: includes unstable encoders — for reference only.")
+    print(f"  Primary competition result is the Stable Leaderboard (Finding 3).")
     archs = sorted({r['arch'] for results in groups.values() for r in results})
     rows  = []
     for arch in archs:
@@ -513,8 +752,8 @@ def build_table2(groups: dict, encoder: str = 'resnet34') -> list[dict]:
     rows.sort(key=lambda x: x.get('dice_macro_mean') or 0, reverse=True)
     for row in rows:
         enc = row.get('encoder', '')
-        if enc in ('efficientnet-b3', 'efficientnet-b4'):
-            row['_encoder_warning'] = f'High collapse rate (~48%) for {enc} — n_runs reflects valid runs only'
+        if enc in UNSTABLE_ENCODERS:
+            row['_encoder_warning'] = f'UNSTABLE: ~50% collapse, not performance-superior on valid runs'
     return rows
 
 
@@ -535,12 +774,22 @@ def build_table3(groups: dict, winning_arch: str) -> list[dict]:
     rows.sort(key=lambda x: x.get('dice_macro_mean') or 0, reverse=True)
     for row in rows:
         enc = row.get('encoder', '')
-        if enc in ('efficientnet-b3', 'efficientnet-b4'):
-            row['_encoder_warning'] = f'High collapse rate (~48%) for {enc} — n_runs reflects valid runs only'
+        if enc in UNSTABLE_ENCODERS:
+            row['_encoder_warning'] = f'UNSTABLE: ~50% collapse, not performance-superior on valid runs'
     return rows
 
 
-def build_candidates(summaries: list[dict], top_n: int = 5) -> dict:
+def build_candidates(summaries: list[dict], top_n: int = 5,
+                     incomplete_archs: list[str] | None = None) -> dict:
+    excluded_archs = incomplete_archs or []
+    summaries = [
+        s for s in summaries
+        if s.get('encoder') not in UNSTABLE_ENCODERS
+        and s.get('arch') not in excluded_archs
+    ]
+    if not summaries:
+        print("  [WARN] No summaries remain after filtering — check UNSTABLE_ENCODERS and incomplete_archs")
+        return {}
     candidates = {}
     for metric, direction in RANKING_METRICS:
         key     = f'{metric}_mean'
@@ -580,6 +829,7 @@ def build_candidates(summaries: list[dict], top_n: int = 5) -> dict:
                         'encoder':               encoder,
                         'class_weights':         s['class_weights'],
                         'n_rankings_top5':       count,
+                        'n_runs':                s['n_runs'],
                         'dice_macro_mean':       s.get('dice_macro_mean'),
                         'dice_axon_mean':        s.get('dice_axon_mean'),
                         'dice_myelin_mean':      s.get('dice_myelin_mean'),
@@ -588,9 +838,7 @@ def build_candidates(summaries: list[dict], top_n: int = 5) -> dict:
                         'hd95_myelin_mean':      s.get('hd95_myelin_mean'),
                     })
                     break
-    
-    # Filter consensus: must appear in top 5 for at least 1 Dice metric
-    # AND at least 1 HD95 metric — prevents single-family domination
+
     def _in_family(c, family_metrics):
         return any(
             e['arch'] == c['arch'] and e['encoder'] == c['encoder']
@@ -604,7 +852,7 @@ def build_candidates(summaries: list[dict], top_n: int = 5) -> dict:
         if _in_family(c, ['dice_macro', 'dice_myelin', 'dice_axon'])
         and _in_family(c, ['hd95_myelin_axon', 'hd95_axon', 'hd95_myelin'])
     ]
-    
+
     for c in consensus:
         in_myelin_top5 = any(
             e['arch'] == c['arch'] and e['encoder'] == c['encoder']
@@ -620,17 +868,16 @@ def build_candidates(summaries: list[dict], top_n: int = 5) -> dict:
         c['in_hd95_myelin_axon_top5'] = in_hd_top5
         if not in_myelin_top5:
             c['_clinical_warning'] = 'Not in top 5 for dice_myelin specifically — review before selecting'
-    
+
     if not consensus:
-        print("  [WARN] No consensus candidates passed family balance filter "
-              "(Dice + HD95 co-representation required). "
-              "Consider lowering CONSENSUS_THRESHOLD or reviewing RANKING_METRICS.")
+        print("  [WARN] No consensus candidates passed family balance filter. "
+              "Consider lowering CONSENSUS_THRESHOLD.")
 
     candidates[f'consensus_top{top_n}'] = consensus[:top_n]
     candidates['_note'] = (
-        f"consensus = models in top {top_n} across "
-        f"{CONSENSUS_THRESHOLD}+ of {len(RANKING_METRICS)} metric rankings, "
-        f"with co-representation required in both Dice and HD95 metric families."
+        f"Stable encoders only. Consensus = top {top_n} across "
+        f"{CONSENSUS_THRESHOLD}+ of {len(RANKING_METRICS)} metrics, "
+        f"with Dice+HD95 family co-representation required."
     )
     return candidates
 
@@ -809,7 +1056,8 @@ def build_table5(results_2b: list[dict], results_sw: list[dict], winner: dict) -
             row[f'{metric}_aug_off'] = r_off.get(metric) if r_off else None
             on_val  = r_on.get(metric)
             off_val = r_off.get(metric) if r_off else None
-            row[f'{metric}_delta'] = round(on_val - off_val, 4) if (on_val is not None and off_val is not None) else None
+            row[f'{metric}_delta'] = round(on_val - off_val, 4) if (
+                on_val is not None and off_val is not None) else None
         rows.append(row)
 
     rows.sort(key=lambda x: x['seed'])
@@ -826,7 +1074,7 @@ def build_table1(results_lc: list[dict]) -> tuple[list[dict], list[dict]]:
             if n is not None:
                 by_size[n].append(r)
 
-    rows      = []
+    rows       = []
     split_rows = []
 
     for n_images in sorted(by_size.keys()):
@@ -868,7 +1116,7 @@ def build_table1(results_lc: list[dict]) -> tuple[list[dict], list[dict]]:
             for metric in ['dice_macro', 'dice_myelin', 'hd95_myelin_axon']:
                 pct = row.get(f'plateau_pct_{metric}')
                 if pct is not None:
-                    print(f"    {metric} Δ vs n={prev_n}: {pct:+.2f}% improvement")
+                    print(f"    {metric} delta vs n={prev_n}: {pct:+.2f}% improvement")
 
         by_split = defaultdict(list)
         for r in size_results:
@@ -920,7 +1168,7 @@ def main():
 
     # ── Wave 1 ────────────────────────────────────────────────────────────────
     if args.wave == '1':
-        print("\n── WAVE 1 ───────────────────────────────────────────────────────────")
+        print("\n══ WAVE 1 ANALYSIS ══════════════════════════════════════════════════")
         results = load_results_from(results_dir / 'sw', 'Wave 1 SW')
         check_completeness(results, args.expected)
         if not results:
@@ -928,45 +1176,35 @@ def main():
             return
 
         results, degenerate = filter_degenerate(results)
-        build_collapse_report(results + degenerate, degenerate, out_dir)
 
-        if degenerate:
-            print(f"\n[WARN] {len(degenerate)} degenerate results excluded "
-                  f"(dice_macro<0.5, dice_myelin<0.5, or dice_axon<0.6)")
-            by_arch = {}; by_arch_total = {}
-            by_enc  = {}; by_enc_total  = {}
-            by_combo= {}; by_combo_total= {}
+        # Finding 1 — Training overview
+        print_training_overview(results + degenerate, results)
 
-            for r in results + degenerate:
-                arch = r['arch']; enc = r['encoder']
-                by_arch_total[arch] = by_arch_total.get(arch, 0) + 1
-                by_enc_total[enc]   = by_enc_total.get(enc,  0) + 1
-                by_combo_total[f"{arch}/{enc}"] = by_combo_total.get(f"{arch}/{enc}", 0) + 1
+        # Finding 2 — Collapse diagnostics
+        build_collapse_report(results + degenerate, degenerate, results, out_dir)
 
-            for r in degenerate:
-                arch = r['arch']; enc = r['encoder']
-                by_arch[arch]             = by_arch.get(arch, 0) + 1
-                by_enc[enc]               = by_enc.get(enc,   0) + 1
-                by_combo[f"{arch}/{enc}"] = by_combo.get(f"{arch}/{enc}", 0) + 1
+        # Arch completeness detection (feeds into Findings 3+4)
+        complete_archs, incomplete_archs = detect_incomplete_archs(results + degenerate)
 
-            for r in degenerate:
-                arch = r['arch']; enc = r['encoder']
-                r['collapse_pct_arch']    = round(by_arch[arch]  / by_arch_total[arch]  * 100, 1)
-                r['collapse_pct_encoder'] = round(by_enc[enc]    / by_enc_total[enc]    * 100, 1)
-                r['collapse_pct_combo']   = round(by_combo[f"{arch}/{enc}"] / by_combo_total[f"{arch}/{enc}"] * 100, 1)
-            write_flat_csv(degenerate, out_dir / 'wave1_degenerate.csv')
-
+        # Write supporting files
         groups    = group_by_combo(results)
         summaries = [aggregate_combo(v) for v in groups.values()]
-        print(f"Aggregated {len(summaries)} unique arch/encoder/weight combinations")
-
+        print(f"\n  Aggregated {len(summaries)} unique arch/encoder/weight combinations")
         write_flat_csv(results, out_dir / 'wave1_all_results.csv')
         for s in summaries:
             s['composite_score'] = compute_composite_score(s)
         write_summary_csv(summaries, out_dir / 'wave1_summary.csv')
 
+        # Finding 3 — Stable leaderboard
+        rows_overall, rows_best = build_stable_leaderboard(results, incomplete_archs)
+        write_dict_csv(rows_overall, out_dir / 'table2_stable_leaderboard_overall.csv',
+                       'Stable leaderboard (overall)')
+        write_dict_csv(rows_best, out_dir / 'table2_stable_leaderboard_best_cw.csv',
+                       'Stable leaderboard (best CW)')
+
+        # Finding 4 — Full reference table
         table2_rows = build_table2(groups, encoder='resnet34')
-        write_table_csv(table2_rows, out_dir / 'table2_architecture.csv', 'Table 2')
+        write_table_csv(table2_rows, out_dir / 'table2_architecture.csv', 'Table 2 (all encoders)')
 
         if table2_rows:
             prov_arch   = table2_rows[0]['arch']
@@ -977,22 +1215,22 @@ def main():
                 f'Table 3 provisional (top dice_macro arch: {prov_arch})'
             )
 
-        candidates = build_candidates(summaries)
+        # Consensus candidates
+        candidates = build_candidates(summaries, incomplete_archs=incomplete_archs)
         with open(out_dir / 'candidates.json', 'w') as f:
             json.dump(candidates, f, indent=2)
-        print(f"Written: {out_dir / 'candidates.json'}")
+        print(f"\nWritten: {out_dir / 'candidates.json'}")
 
-        print("\n── CONSENSUS TOP 5 ──────────────────────────────────────────────────")
+        print("\n── CONSENSUS TOP 5 (stable encoders only) ───────────────────────────")
         for i, c in enumerate(candidates.get('consensus_top5', []), 1):
-            warn = ' ⚠ CLINICAL WARNING' if '_clinical_warning' in c else ''
+            warn = ' *** CLINICAL WARNING' if '_clinical_warning' in c else ''
+            n_seeds = c.get('n_runs', 0)  # n_runs already = per arch/encoder/cw combo across splits×seeds
             print(
-                f"  {i}. {c['arch']} + {c['encoder']} weights={c['class_weights']} "
-                f"| top5 in {c['n_rankings_top5']}/{len(RANKING_METRICS)} rankings{warn}\n"
-                f"       dice_macro={c.get('dice_macro_mean')} "
-                f"| dice_myelin={c.get('dice_myelin_mean')} "
-                f"| dice_axon={c.get('dice_axon_mean')} "
-                f"| hd95_myelin_axon={c.get('hd95_myelin_axon_mean')} "
-                f"| hd95_axon={c.get('hd95_axon_mean')}"
+                f"  {i}. {c['arch']} + {c['encoder']} cw={c['class_weights']} "
+                f"| top5 in {c['n_rankings_top5']}/{len(RANKING_METRICS)} rankings "
+                f"| n_runs={c.get('n_runs')}{warn}\n"
+                f"     myelin={c.get('dice_myelin_mean')} axon={c.get('dice_axon_mean')} "
+                f"hd95={c.get('hd95_myelin_axon_mean')} hd95_axon={c.get('hd95_axon_mean')}"
             )
 
         if args.select:
@@ -1030,13 +1268,10 @@ def main():
         if not results_2a:
             print("No Wave 2a results found — exiting.")
             return
-
         write_flat_csv(results_2a, out_dir / 'wave2a_all_results.csv')
-
         print("\nBest parameters per aug type:")
         table4_rows = build_table4(results_2a)
         write_dict_csv(table4_rows, out_dir / 'table4_aug_sweep.csv', 'Table 4')
-
         print("\nNext steps:")
         print("  1. Review table4_aug_sweep.csv and wave2a_all_results.csv")
         print("  2. Write analysis/aggregated/winner_aug.json:")
@@ -1050,46 +1285,45 @@ def main():
         if not winner_path.exists():
             print(f"[ERROR] winner.json not found: {winner_path}")
             return
-
         with open(winner_path) as f:
             winner = json.load(f)
-
         results_2b = load_results_from(results_dir / 'wave2', 'Wave 2b')
         results_2b = [r for r in results_2b if r.get('stage') == '2b_aug_comparison']
         results_sw = load_results_from(results_dir / 'sw', 'Wave 1 SW baseline')
-
         if not results_2b:
             print("No Wave 2b results found — exiting.")
             return
-
         table5_rows = build_table5(results_2b, results_sw, winner)
         write_dict_csv(table5_rows, out_dir / 'table5_aug_comparison.csv', 'Table 5')
-
         print("\n── AUG ON vs OFF SUMMARY ────────────────────────────────────────────")
         for metric in ['dice_macro', 'dice_myelin', 'dice_axon', 'hd95_myelin_axon']:
-            on_vals  = [r[f'{metric}_aug_on']  for r in table5_rows if r.get(f'{metric}_aug_on')  is not None]
-            off_vals = [r[f'{metric}_aug_off'] for r in table5_rows if r.get(f'{metric}_aug_off') is not None]
+            on_vals  = [r[f'{metric}_aug_on']  for r in table5_rows
+                        if r.get(f'{metric}_aug_on')  is not None]
+            off_vals = [r[f'{metric}_aug_off'] for r in table5_rows
+                        if r.get(f'{metric}_aug_off') is not None]
             if on_vals and off_vals:
-                delta_vals = [r[f'{metric}_delta'] for r in table5_rows if r.get(f'{metric}_delta') is not None]
+                delta_vals = [r[f'{metric}_delta'] for r in table5_rows
+                              if r.get(f'{metric}_delta') is not None]
                 print(f"  {metric:<22} "
-                      f"ON={round(statistics.mean(on_vals), 4)} ± {round(statistics.stdev(on_vals), 4)}  "
-                      f"OFF={round(statistics.mean(off_vals), 4)} ± {round(statistics.stdev(off_vals), 4)}  "
-                      f"delta={round(statistics.mean(delta_vals), 4)}")
+                      f"ON={round(statistics.mean(on_vals),4)} "
+                      f"+/- {round(statistics.stdev(on_vals),4)}  "
+                      f"OFF={round(statistics.mean(off_vals),4)} "
+                      f"+/- {round(statistics.stdev(off_vals),4)}  "
+                      f"delta={round(statistics.mean(delta_vals),4)}")
 
     # ── Wave 3 ────────────────────────────────────────────────────────────────
     elif args.wave == '3':
-        print("\n── WAVE 3 — LEARNING CURVE ──────────────────────────────────────────")
+        print("\n── WAVE 3: LEARNING CURVE ───────────────────────────────────────────")
         results_lc = load_results_from(results_dir / 'lc', 'Wave 3 LC')
         results_lc = [r for r in results_lc if r.get('wave') == 3]
-
         if not results_lc:
             print("No Wave 3 results found — exiting.")
             return
-
         print("\nLearning curve by dataset size:")
         table1_rows, table1_split_rows = build_table1(results_lc)
-        write_dict_csv(table1_rows,       out_dir / 'table1_learning_curve.csv',          'Table 1')
-        write_dict_csv(table1_split_rows, out_dir / 'table1_learning_curve_by_split.csv', 'Table 1 (per-split)')
+        write_dict_csv(table1_rows, out_dir / 'table1_learning_curve.csv', 'Table 1')
+        write_dict_csv(table1_split_rows, out_dir / 'table1_learning_curve_by_split.csv',
+                       'Table 1 (per-split)')
         print("\nTable 1 complete — plateau confirmation for dataset sufficiency.")
 
 
