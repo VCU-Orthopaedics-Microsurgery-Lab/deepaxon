@@ -13,7 +13,7 @@ Two steps:
         One aug type varied at a time, all others fixed at production defaults.
         Identifies optimal parameters per aug type.
 
-    Step 2b — Aug ON vs OFF validation (20 jobs)
+    Step 2b — Aug ON vs OFF validation (5 jobs)
         Optimized aug params vs aug OFF, 5 seeds, ctrl vs regen phenotype.
         Requires step2a to complete first — winner_aug.json written manually.
 

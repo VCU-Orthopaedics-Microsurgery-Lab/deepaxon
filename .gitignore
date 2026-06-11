@@ -38,6 +38,7 @@ logs/
 analysis/
 jobs/
 results/
+aggregated/
 
 # ── Internal config files (contain Athena paths, never commit) ───────────────
 train_config.json

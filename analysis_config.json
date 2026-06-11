@@ -101,7 +101,7 @@
         "mail_user":  "mazurm@vcu.edu",
         "venv":       "/lustre/home/mazurm/deepaxon/venv",
         "cpus_per_task": 4,
-        "_concurrency_note": "SLURM noraml limit 6, raised to 9 by HPRC admin"
+        "_concurrency_note": "SLURM noraml limit 6, raised to 16 by HPRC admin"
     },
 
     "wave2": {
@@ -236,7 +236,7 @@
             "scale_levels": [0.02, 0.05, 0.10, 0.15, 0.20]
         },
         "step2b": {
-            "_note": "Aug ON (optimized from 2a) only — 5 seeds × 70/30 split. Aug OFF baseline pulled from Wave 1 SW results by matching arch/encoder/weights/seed/split. No redundant aug_off jobs.",
+            "_note": "Aug ON (optimized from 2a) only — 5 seeds × 67/33 split. Aug OFF baseline pulled from Wave 1 SW results by matching arch/encoder/weights/seed/split. No redundant aug_off jobs.",
             "seeds": [1, 2, 3, 4, 5],
             "split": "best_split from winner.json",
             "condition": "aug_on_only"
@@ -244,16 +244,11 @@
     },
 
     "wave3": {
-        "_note": "Learning curve on fully optimized model. Launched by wave3_launcher.py after winner.json and winner_aug.json are written. Reads arch/encoder/weights from winner.json, aug params from winner_aug.json.",
-        "_launcher": "python wave3_launcher.py --config analysis_config.json",
-        "_requires": ["winner.json", "winner_aug.json"],
-        "dataset_sizes": [10, 20, 30],
-        "_dataset_sizes_note": "Same sizes as Wave 1 LC — direct comparison possible",
-        "splits": "all 3 from splits.ratios — 67/33, 80/20, 93/7",
+        "_dataset_sizes_note": "Sizes auto-selected by wave3_launcher.py from learning_curve block — [6,12,18,24,30] if 67/33 wins, [10,20,30] otherwise. This block is not read at runtime.",
+        "splits": "winning split only — read from winner.json at runtime",
         "seeds": "all 5 from splits.seeds",
         "augmentation": "ON — optimized params from winner_aug.json",
-        "total_jobs": 45,
-        "_total_jobs_note": "3 sizes × 3 splits × 5 seeds",
-        "_output": "results/lc/ — Table 1 (learning curve)"
+        "total_jobs": "25 (67/33 winner: 5 sizes × 1 split × 5 seeds) or 15 (other winner: 3 sizes × 1 split × 5 seeds)",
+        "_total_jobs_note": "auto-selected by wave3_launcher.py"
     }
 }
