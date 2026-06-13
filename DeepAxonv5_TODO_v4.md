@@ -196,6 +196,17 @@ When no DeepLab jobs exist (e.g. unet3+/attention_unet configs), launcher genera
 an empty DeepLab sbatch and attempts submission, causing SLURM error.
 Fix: add guard to skip sbatch submission when n_deeplab_jobs == 0.
 
+**[INFRA-08] Per-phenotype val metric logging in train/train.py** 🟠
+Current result.json stores only aggregate val metrics — no ctrl/regen breakdown.
+val_stems field identifies which images were in val per run but per-image metrics
+are not stored so phenotype decomposition is not possible post-hoc from sweep results.
+Fix: split val images by ctrl_/regen_ prefix during val evaluation, compute metrics
+separately, write to result.json as dice_myelin_ctrl, dice_myelin_regen etc.
+**Must be implemented before Wave 2a launch.** Wave 1 sweep unaffected — already complete.
+Constrained splitter rerun (~50 jobs) should also use updated train.py.
+Per-phenotype breakdown is a Paper 1 primary result — model must be validated
+separately on control and regenerating phenotype.
+
 ---
 
 ## Section 6 — Docs
@@ -225,7 +236,6 @@ Architecture list, Athena directory structure, SLURM QOS, findings, local repo s
 - STR-10: Add models/model_registry.json
 - STR-11: Archive rb_40x_v1_256.keras
 - FEAT-21: visualize.py QC overlays
-- FEAT-22: Per-phenotype val dice tracking
 - FEAT-23: Boundary loss
 - CRIT-08: QuPath/GeoJSON workflow
 - GEN-01: 100X pixel size calibration
