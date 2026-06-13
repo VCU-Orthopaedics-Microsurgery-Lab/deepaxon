@@ -171,7 +171,6 @@ UNSTABLE_ENCODERS = ['efficientnet-b3', 'efficientnet-b4']
 
 # Auto-exclusion threshold: archs with <80% expected runs excluded from competition.
 ARCH_COMPLETENESS_THRESHOLD = 0.80
-EXPECTED_RUNS_PER_ARCH_ENCODER = 240  # 16 weights x 3 splits x 5 seeds
 
 
 # ─── Shared aggregation helpers ───────────────────────────────────────────────
@@ -561,24 +560,28 @@ def build_collapse_report(all_results: list[dict], degenerate: list[dict],
             print(f"    cw={cw:<30} {collapsed:>4}/{total_cw:>4} ({pct}%)  {'  '.join(parts)}")
 
     # ── EfficientNet performance comparison ───────────────────────────────────
-    eff_valid    = [r for r in valid if r.get('encoder') in UNSTABLE_ENCODERS]
-    stable_valid = [r for r in valid if r.get('encoder') not in UNSTABLE_ENCODERS]
+    eff_present = any(r.get('encoder') in UNSTABLE_ENCODERS for r in all_results)
+    if eff_present:
+        eff_valid    = [r for r in valid if r.get('encoder') in UNSTABLE_ENCODERS]
+        stable_valid = [r for r in valid if r.get('encoder') not in UNSTABLE_ENCODERS]
 
-    print(f"\n  EfficientNet exclusion rationale:")
-    print(f"  Collapse rate: B3={round(by_enc.get('efficientnet-b3',0)/by_enc_total.get('efficientnet-b3',1)*100,1)}%  "
-          f"B4={round(by_enc.get('efficientnet-b4',0)/by_enc_total.get('efficientnet-b4',1)*100,1)}%")
-    print(f"  Performance of surviving (valid) EfficientNet runs vs stable encoders:")
-    print(f"  {'metric':<25} {'eff_valid (n='+str(len(eff_valid))+')':>22} "
-          f"{'stable (n='+str(len(stable_valid))+')':>22} {'delta':>8}")
-    for m in ['dice_myelin', 'dice_axon', 'hd95_myelin_axon']:
-        ev = [r[m] for r in eff_valid    if m in r and r[m] is not None]
-        sv = [r[m] for r in stable_valid if m in r and r[m] is not None]
-        if ev and sv:
-            delta = round(statistics.mean(ev) - statistics.mean(sv), 4)
-            print(f"  {m:<25} {round(statistics.mean(ev),4):>22} "
-                  f"{round(statistics.mean(sv),4):>22} {delta:>+8}")
-    print(f"  CONCLUSION: EfficientNet valid runs do NOT outperform stable encoders "
-          f"on any metric. Exclusion is justified on both stability AND performance grounds.")
+        print(f"\n  EfficientNet exclusion rationale:")
+        print(f"  Collapse rate: B3={round(by_enc.get('efficientnet-b3',0)/by_enc_total.get('efficientnet-b3',1)*100,1)}%  "
+              f"B4={round(by_enc.get('efficientnet-b4',0)/by_enc_total.get('efficientnet-b4',1)*100,1)}%")
+        print(f"  Performance of surviving (valid) EfficientNet runs vs stable encoders:")
+        print(f"  {'metric':<25} {'eff_valid (n='+str(len(eff_valid))+')':>22} "
+              f"{'stable (n='+str(len(stable_valid))+')':>22} {'delta':>8}")
+        for m in ['dice_myelin', 'dice_axon', 'hd95_myelin_axon']:
+            ev = [r[m] for r in eff_valid    if m in r and r[m] is not None]
+            sv = [r[m] for r in stable_valid if m in r and r[m] is not None]
+            if ev and sv:
+                delta = round(statistics.mean(ev) - statistics.mean(sv), 4)
+                print(f"  {m:<25} {round(statistics.mean(ev),4):>22} "
+                      f"{round(statistics.mean(sv),4):>22} {delta:>+8}")
+        print(f"  CONCLUSION: EfficientNet valid runs do NOT outperform stable encoders "
+              f"on any metric. Exclusion is justified on both stability AND performance grounds.")
+    else:
+        print(f"\n  EfficientNet encoders not present in this sweep — exclusion section skipped.")
 
     # ── Write CSV ─────────────────────────────────────────────────────────────
     csv_rows = []
@@ -603,11 +606,12 @@ def build_collapse_report(all_results: list[dict], degenerate: list[dict],
 
 # ─── Arch completeness detection ──────────────────────────────────────────────
 
-def detect_incomplete_archs(results: list[dict]) -> tuple[list[str], list[str]]:
-    """
-    Auto-detect archs with <80% expected runs. Excluded from competition tables.
-    Returns (complete_archs, incomplete_archs).
-    """
+def detect_incomplete_archs(results: list[dict], cfg: dict) -> tuple[list[str], list[str]]:
+    n_weights = len(cfg['sweep']['class_weights'])
+    n_splits  = len(cfg['splits']['ratios'])
+    n_seeds   = len(cfg['splits']['seeds'])
+    expected_per_combo = n_weights * n_splits * n_seeds
+
     combo_counts        = defaultdict(int)
     arch_min_completion = defaultdict(lambda: float('inf'))
 
@@ -615,7 +619,7 @@ def detect_incomplete_archs(results: list[dict]) -> tuple[list[str], list[str]]:
         combo_counts[f"{r['arch']}/{r['encoder']}"] += 1
     for combo, count in combo_counts.items():
         arch = combo.split('/')[0]
-        pct  = count / EXPECTED_RUNS_PER_ARCH_ENCODER
+        pct  = count / expected_per_combo
         arch_min_completion[arch] = min(arch_min_completion[arch], pct)
 
     complete   = []
@@ -1157,12 +1161,21 @@ def main():
     parser.add_argument('--weights',  help='Class weights e.g. 3,1,1 (--select)')
     parser.add_argument('--split',    help='TT split e.g. 67,33 (--select, optional)')
     parser.add_argument('--note',     default='Manual selection after Wave 1 review')
-    parser.add_argument('--expected', type=int, default=5760,
-                        help='Expected SW job count for completeness check (default 5760)')
+    parser.add_argument('--expected', type=int, default=None,
+                        help='Expected SW job count for completeness check (auto-derived from config if not set)')
     args = parser.parse_args()
 
     cfg         = load_config(args.config)
     results_dir = Path(cfg['output']['results_dir'])
+
+    if args.expected is None:
+        n_archs    = len(cfg['sweep']['architectures'])
+        n_weights  = len(cfg['sweep']['class_weights'])
+        n_splits   = len(cfg['splits']['ratios'])
+        n_seeds    = len(cfg['splits']['seeds'])
+        args.expected = n_archs * n_weights * n_splits * n_seeds
+        print(f"Expected jobs (auto): {n_archs} arch × {n_weights} weights × "
+              f"{n_splits} splits × {n_seeds} seeds = {args.expected}")
     out_dir     = results_dir.parent / 'aggregated'
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1184,7 +1197,7 @@ def main():
         build_collapse_report(results + degenerate, degenerate, results, out_dir)
 
         # Arch completeness detection (feeds into Findings 3+4)
-        complete_archs, incomplete_archs = detect_incomplete_archs(results + degenerate)
+        complete_archs, incomplete_archs = detect_incomplete_archs(results + degenerate, cfg)
 
         # Write supporting files
         groups    = group_by_combo(results)

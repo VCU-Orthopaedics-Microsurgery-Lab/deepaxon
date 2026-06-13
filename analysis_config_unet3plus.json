@@ -1,5 +1,5 @@
 {
-    "_readme": "Master config for Wave 1/2 analysis runs. Read by wave1_launcher.py and wave2_launcher.py. Do NOT merge into train_config.json — that file drives single interactive runs only.",
+    "_readme": "Wave 1 sweep config for UNet3+ architecture only. Identical to analysis_config.json except sweep.architectures and output paths. Run after main Wave 1 sweep completes. Do NOT merge into train_config.json.",
     "dataset": {
         "images_dir": "/lustre/home/mazurm/rb40x_val_hprc",
         "mag": "40X",
@@ -19,40 +19,22 @@
     },
 
     "learning_curve": {
-        "_note": "Wave 3 learning curve — fully optimized model, run after Waves 1 and 2. Arch/encoder/weights/aug read from winner.json and winner_aug.json at runtime. Split fixed at Wave 1 winner — dataset sizes auto-selected by wave3_launcher.py based on winning split.",
+        "_note": "Not used for UNet3+ sweep. Retained for config compatibility with wave3_launcher.py.",
         "dataset_sizes_67_33":  [6, 12, 18, 24, 30],
         "dataset_sizes_fallback": [10, 20, 30],
         "_sizes_note": "67/33 supports fine-grained sizes (5-point curve, balanced val at each). Other splits fall back to multiples of 10 (3-point curve)."
     },
 
     "sweep": {
-        "_note": "Full arch/encoder/weight sweep at n=30 only",
+        "_note": "UNet3+ only — 6 encoders × 16 class weights × 3 splits × 5 seeds = 1,440 jobs. Separate array from main Wave 1 sweep. No skip logic — clean results directory.",
         "dataset_size": 30,
         "architectures": [
-            {"arch": "unet++",     "encoder": "resnet34"},
-            {"arch": "unet++",     "encoder": "resnet50"},
-            {"arch": "unet++",     "encoder": "efficientnet-b3"},
-            {"arch": "unet++",     "encoder": "efficientnet-b4"},
-            {"arch": "unet++",     "encoder": "densenet121"},
-            {"arch": "unet++",     "encoder": "densenet169"},
-            {"arch": "unet",       "encoder": "resnet34"},
-            {"arch": "unet",       "encoder": "resnet50"},
-            {"arch": "unet",       "encoder": "efficientnet-b3"},
-            {"arch": "unet",       "encoder": "efficientnet-b4"},
-            {"arch": "unet",       "encoder": "densenet121"},
-            {"arch": "unet",       "encoder": "densenet169"},
-            {"arch": "manet",      "encoder": "resnet34"},
-            {"arch": "manet",      "encoder": "resnet50"},
-            {"arch": "manet",      "encoder": "efficientnet-b3"},
-            {"arch": "manet",      "encoder": "efficientnet-b4"},
-            {"arch": "manet",      "encoder": "densenet121"},
-            {"arch": "manet",      "encoder": "densenet169"},
-            {"arch": "deeplabv3+", "encoder": "resnet34"},
-            {"arch": "deeplabv3+", "encoder": "resnet50"},
-            {"arch": "deeplabv3+", "encoder": "efficientnet-b3"},
-            {"arch": "deeplabv3+", "encoder": "efficientnet-b4"},
-            {"arch": "deeplabv3+", "encoder": "densenet121"},
-            {"arch": "deeplabv3+", "encoder": "densenet169"}
+            {"arch": "unet3+", "encoder": "resnet34"},
+            {"arch": "unet3+", "encoder": "resnet50"},
+            {"arch": "unet3+", "encoder": "efficientnet-b3"},
+            {"arch": "unet3+", "encoder": "efficientnet-b4"},
+            {"arch": "unet3+", "encoder": "densenet121"},
+            {"arch": "unet3+", "encoder": "densenet169"}
         ],
         "class_weights": [
             [1.0, 1.0, 1.0],
@@ -74,38 +56,41 @@
         ],
         "_class_weights_note": "16 configs — [bg, myelin, axon]. Row 3 = rb40x_v1 production value."
     },
+
     "training": {
         "epochs": 400,
         "batch_size": 128,
         "augmentation": false,
         "learning_rate": 0.001,
         "weight_decay": 0.01,
-        "_augmentation_note": "Wave 1 always aug OFF. Wave 2 launcher overrides this."
+        "_augmentation_note": "Wave 1 always aug OFF."
     },
+
     "output": {
-        "jobs_dir":    "/lustre/home/mazurm/deepaxon/analysis/jobs",
-        "results_dir": "/lustre/home/mazurm/deepaxon/analysis/results",
-        "models_dir":  "/lustre/home/mazurm/deepaxon/analysis/models",
-        "logs_dir":    "/lustre/home/mazurm/deepaxon/analysis/logs"
+        "jobs_dir":    "/lustre/home/mazurm/deepaxon/analysis_unet3plus/jobs",
+        "results_dir": "/lustre/home/mazurm/deepaxon/analysis_unet3plus/results",
+        "models_dir":  "/lustre/home/mazurm/deepaxon/analysis_unet3plus/models",
+        "logs_dir":    "/lustre/home/mazurm/deepaxon/analysis_unet3plus/logs"
     },
+
     "slurm": {
         "partition": "gpu-h100",
         "gres": "gpu:1",
         "nodes": 1,
         "time": "00:45:00",
-        "_time_note": "45 min ceiling — ~10min observed for unet++/resnet34 at bs=128 including Lustre overhead",
-        "time_deeplab": "12:00:00",
-        "_time_deeplab_note": "237 sec/epoch observed for deeplabv3+/efficientnet-b4 (job 820, 5:16 elapsed / 79.7 mean epochs). 12hr ceiling set for rerun to accommodate densenet121/169 tail.",
+        "_time_note": "45 min ceiling — UNet3+ parameter counts similar to UNet++. Monitor first batch for timeout risk on densenet169.",
+        "time_deeplab": "00:45:00",
+        "_time_deeplab_note": "Not used — no deeplabv3+ jobs in unet3+ sweep. Retained for launcher compatibility.",
         "mem": "32G",
         "mail_type": "END,FAIL",
         "mail_user":  "mazurm@vcu.edu",
         "venv":       "/lustre/home/mazurm/deepaxon/venv",
         "cpus_per_task": 4,
-        "_concurrency_note": "SLURM normal limit 6, raised to 16 by HPRC admin"
+        "_concurrency_note": "SLURM limit raised to 16 by HPRC admin"
     },
 
     "wave2": {
-        "_note": "Aug parameter sweep on winning model only. Triggered manually after Wave 1 review. All aug types OFF except the one being swept (OAT design). Step 2b compares optimized aug ON vs Wave 1 aug OFF baseline.",
+        "_note": "Not used for UNet3+ sweep. If UNet3+ wins Wave 1, re-run wave2_launcher.py pointing winner.json to analysis_unet3plus/aggregated/winner.json.",
 
         "production_defaults": {
             "_note": "Fixed values for all aug types not being swept. All probabilities 0.0 — one aug active at a time.",

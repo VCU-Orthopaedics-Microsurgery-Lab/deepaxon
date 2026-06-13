@@ -29,6 +29,7 @@ from train.dataset.augment import augment_dataset_np
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 import segmentation_models_pytorch as smp
+from train.unet3plus import UNet3Plus
 from utils.metrics import compute_epoch_metrics, compute_all_metrics
 
 # ─── Global Config ────────────────────────────────────────────────────────────
@@ -76,35 +77,41 @@ def weighted_dice_loss(pred: torch.Tensor, target: torch.Tensor, weights: torch.
 
 # ─────────── Parametric arch/encoder: _ARCH_MAP + build_model() ─────────────
 _ARCH_MAP = {
-    'unet++':       smp.UnetPlusPlus,
-    'unet':         smp.Unet,
-    'manet':        smp.MAnet,
-    'deeplabv3+':   smp.DeepLabV3Plus,        
-}                                                                
+    'unet':           smp.Unet,
+    'attention_unet': smp.Unet,
+    'unet++':         smp.UnetPlusPlus,
+    'unet3+':         UNet3Plus,
+    'manet':          smp.MAnet,
+    'deeplabv3+':     smp.DeepLabV3Plus,
+}                                                             
                                                                      
 def build_model(arch: str, encoder: str, device):                   
     """                                                              
     Instantiate a segmentation model by arch/encoder name.           
-    arch:    'unet++' | 'unet' | 'manet' | 'deeplabv3+'         
+    arch:    'unet' | 'attention_unet' | 'unet++' | 'unet3+'
+             'manet' | 'deeplabv3+'
     encoder: 'resnet34' | 'resnet50'                                 
              'efficientnet-b3' | 'efficientnet-b4'                   
              'densenet121' | 'densenet169'                           
     All combinations valid per segmentation-models-pytorch.          
     encoder_weights: imagenet for all.                               
-    """                                                              
+    """                                                         
     arch_key = arch.lower()                                          
     if arch_key not in _ARCH_MAP:                                    
         raise ValueError(                                            
             f"Unknown arch '{arch}' — must be one of {list(_ARCH_MAP)}" 
         )                                                            
-    model_cls = _ARCH_MAP[arch_key]                                  
-    model = model_cls(                                               
-        encoder_name=encoder,                                        
-        encoder_weights='imagenet',                                  
-        in_channels=1,                                               
-        classes=3,                                                   
-        activation=None,                                             
-    )                                                                
+    model_cls = _ARCH_MAP[arch_key]
+    kwargs = dict(
+        encoder_name=encoder,
+        encoder_weights='imagenet',
+        in_channels=1,
+        classes=3,
+        activation=None,
+    )
+    if arch_key == 'attention_unet':
+        kwargs['decoder_attention_type'] = 'scse'
+    model = model_cls(**kwargs)                                                   
     return model.to(device)                                          
 
 

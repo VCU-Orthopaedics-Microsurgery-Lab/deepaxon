@@ -15,7 +15,7 @@ python -m train                   # Train a new segmentation model (interactive)
 python -m train --config FILE     # Train non-interactively (sbatch mode)
 python -m train.finetune          # Fine-tune an existing model on new images
 
-# ── Analysis pipeline (v5_analysis branch, Athena cluster) ─────────────────
+# ── Analysis pipeline (main branch, Athena cluster) ────────────────────────
 python wave1_launcher.py --config analysis_config.json [--dry-run]
 python wave2_launcher.py --config analysis_config.json --step 2a [--dry-run]
 python wave2_launcher.py --config analysis_config.json --step 2b [--dry-run]
@@ -23,7 +23,7 @@ python wave3_launcher.py --config analysis_config.json [--dry-run]
 python aggregator.py     --config analysis_config.json [--wave 1/2a/2b/3]
 
 # ── Utilities ──────────────────────────────────────────────────────────────
-python utils/version.py  # Print DeepAxon version and full environment info
+python -m utils          # Print DeepAxon version and full environment info
 ```
 
 > **Note:** Use `python -m` to ensure the repo root is on the Python path.
@@ -81,7 +81,7 @@ ctrl_AnimalID_Side_Segment_###.tif    ← control phenotype
 regen_AnimalID_Side_Segment_###.tif  ← regenerating phenotype
 ```
 
-Phenotype prefix is required for analysis pipeline. All 30 training images must have `ctrl_` or `regen_` prefix.
+Phenotype prefix is required for analysis pipeline. All training images must have `ctrl_` or `regen_` prefix.
 
 ---
 
@@ -180,6 +180,19 @@ All settings read from `train_config.json`. No prompts. Use this for all cluster
 
 > **Note:** batch_size=128 is the validated default for H100 80GB. AMP (mixed precision) is not supported — excluded after confirmed training collapse across multiple arch/encoder combinations.
 
+### Supported Architectures
+
+| arch string | Architecture | Notes |
+|---|---|---|
+| `unet` | UNet | Field standard baseline |
+| `attention_unet` | Attention UNet | UNet + SCSE decoder attention |
+| `unet++` | UNet++ | Current DeepAxon production |
+| `unet3+` | UNet3+ | Full-scale skip connections |
+| `manet` | MANet | Multi-scale attention |
+| `deeplabv3+` | DeepLabV3+ | ASPP context (~42× slower per epoch) |
+
+All architectures support encoders: `resnet34`, `resnet50`, `efficientnet-b3`, `efficientnet-b4`, `densenet121`, `densenet169`.
+
 ### On VCU Athena HPRC cluster
 
 ```bash
@@ -204,7 +217,7 @@ Training pipeline steps:
 
 ### Annotation Guidance
 
-Minimum images for a valid training run (40X, bs=256):
+Minimum images for a valid training run (40X, bs=128):
 - **Minimum:** 5 ctrl + 5 regen = 10 images
 - **Good:** 10 ctrl + 10 regen = 20 images
 - **Paper quality:** 15 ctrl + 15 regen = 30 images
@@ -217,23 +230,88 @@ File naming: all training images must use `ctrl_` or `regen_` prefix (e.g. `ctrl
 
 ## Analysis Pipeline (Paper 1)
 
-The analysis pipeline is on the `main` branch of the lab's private GitHub fork (`VCU-Orthopaedics-Microsurgery-Lab/deepaxon`). The public repo will be a clean open-source branch once the best model is selected — it will not include analysis pipeline internals or Athena-specific configs.
+The analysis pipeline runs on the `main` branch of the lab's private GitHub fork (`VCU-Orthopaedics-Microsurgery-Lab/deepaxon`). The public repo will be a clean open-source branch once the best model is selected — it will not include analysis pipeline internals or Athena-specific configs.
+
+### Architecture Sweep Design
+
+Wave 1 sweeps 6 architectures across 6 encoders in three separate SLURM arrays:
+
+| Config | Architectures | Jobs | Array |
+|---|---|---|---|
+| `analysis_config.json` | unet, unet++, manet, deeplabv3+ | 5,760 | Fast + DeepLab |
+| `analysis_config_unet3plus.json` | unet3+ | 1,440 | Fast only |
+| `analysis_config_attention_unet.json` | attention_unet | 1,440 | Fast only |
+
+Each sweep is isolated to its own results directory. Results are consolidated after all sweeps complete (see ANAL-11).
 
 ### Entry Points
 
 ```bash
-python wave1_launcher.py --config analysis_config.json [--dry-run]  # 5,760 jobs
-python wave2_launcher.py --config analysis_config.json --step 2a    # 2,265 jobs
-python wave2_launcher.py --config analysis_config.json --step 2b    # 5 jobs
-python wave3_launcher.py --config analysis_config.json              # 25 jobs (67/33 winner) or 15 jobs (other)
-python aggregator.py --config analysis_config.json [--wave 1/2a/2b/3]
+# Main sweep
+python wave1_launcher.py --config analysis_config.json [--dry-run]
+
+# Per-architecture sweeps (queue with dependency on prior array)
+python wave1_launcher.py --config analysis_config_unet3plus.json [--dry-run]
+python wave1_launcher.py --config analysis_config_attention_unet.json [--dry-run]
+
+# Aggregation (run against each config or unified config post-consolidation)
+python aggregator.py --config analysis_config.json --wave 1
+python aggregator.py --config analysis_config.json --select \
+    --arch <arch> --encoder <enc> --weights <w1,w2,w3> --note "rationale"
+
+# Wave 2 and 3 (after winner.json written)
+python wave2_launcher.py --config analysis_config.json --step 2a [--dry-run]
+python wave2_launcher.py --config analysis_config.json --step 2b [--dry-run]
+python wave3_launcher.py --config analysis_config.json [--dry-run]
 ```
 
-See `analysis_config.json` for full configuration. Fill in real Athena paths before first run.
+**Wave 1** — Architecture/encoder/class weight sweep (aug OFF), n=30, 3 splits, 5 seeds. 16 class weight configs. Results written to `analysis/results/sw/`, `analysis_unet3plus/results/sw/`, `analysis_attention_unet/results/sw/`.
 
-**Wave 1** — Architecture/encoder/class weight sweep (aug OFF), n=30, all 3 splits, 5 seeds. 4 architectures × 6 encoders × 16 class weight configs × 3 splits × 5 seeds = 5,760 jobs. Split into fast array (unet, unet++, manet) and deeplab array (deeplabv3+) due to wall time differences.
-**Wave 2** — Augmentation parameter sweep (2,265 jobs) then aug ON vs OFF validation (5 jobs) on winning model from Wave 1.
-**Wave 3** — Learning curve on fully optimized model. Dataset sizes auto-selected from winning split: [6,12,18,24,30] if 67/33 wins, [10,20,30] otherwise. Single split only.
+**Wave 2** — Augmentation parameter sweep (2,265 jobs) then aug ON vs OFF validation (5 jobs) on winning model from Wave 1. Aug OFF baseline pulled from Wave 1 results — no redundant re-runs.
+
+**Wave 3** — Learning curve on fully optimized model. Dataset sizes auto-selected from winning split: `[6,12,18,24,30]` if 67/33 wins, `[10,20,30]` otherwise. Single winning split only.
+
+### Athena Directory Structure
+
+```
+~/deepaxon/
+├── venv/                                # NEVER DELETE
+├── aggregator.py
+├── wave1_launcher.py
+├── wave2_launcher.py
+├── wave3_launcher.py
+├── analysis_config.json
+├── analysis_config_unet3plus.json
+├── analysis_config_attention_unet.json
+├── train/
+│   ├── train.py
+│   ├── __main__.py
+│   ├── unet3plus.py
+│   ├── finetune.py
+│   └── dataset/
+├── segment/
+├── morphometrics/
+├── utils/
+├── analysis/                            # Main sweep (unet/unet++/manet/deeplabv3+)
+│   ├── wave1_sw_fast.sbatch
+│   ├── wave1_sw_deeplab.sbatch
+│   ├── jobs/sw/                         # job_0000.json … job_5759.json
+│   ├── results/sw/                      # result.json per run
+│   ├── logs/sw/
+│   └── aggregated/
+├── analysis_unet3plus/                  # UNet3+ sweep
+│   ├── wave1_sw_fast.sbatch
+│   ├── jobs/sw/
+│   ├── results/sw/
+│   ├── logs/sw/
+│   └── aggregated/
+└── analysis_attention_unet/             # Attention UNet sweep
+    ├── wave1_sw_fast.sbatch
+    ├── jobs/sw/
+    ├── results/sw/
+    ├── logs/sw/
+    └── aggregated/
+```
 
 ---
 
@@ -272,27 +350,45 @@ See `analysis_config.json` for full configuration. Fill in real Athena paths bef
 ```
 deepaxon/
 ├── config.json
-├── analysis_config.json        # Analysis pipeline master config (v5_analysis)
-├── wave1_launcher.py           # Wave 1 SLURM launcher
-├── wave2_launcher.py           # Wave 2 SLURM launcher
-├── wave3_launcher.py           # Wave 3 SLURM launcher
-├── aggregator.py               # Results aggregation and table generation
+├── analysis_config.json                 # Main sweep config
+├── analysis_config_unet3plus.json       # UNet3+ sweep config
+├── analysis_config_attention_unet.json  # Attention UNet sweep config
+├── wave1_launcher.py
+├── wave2_launcher.py
+├── wave3_launcher.py
+├── aggregator.py
 ├── requirements.txt
-├── utils/
-│   ├── logger.py
-│   ├── helpers.py
-│   ├── metrics.py              # compute_epoch_metrics + compute_all_metrics
-│   ├── resize.py
-│   ├── gpu.py
-│   └── version.py              # v5.1.0 / v5_analysis
+├── install.sh
 ├── train/
-│   ├── train.py
+│   ├── train.py                         # Training loop, _ARCH_MAP, build_model()
+│   ├── __init__.py
+│   ├── __main__.py                      # Entry point, skip logic, --config flag
+│   ├── unet3plus.py                     # UNet3+ — full-scale skip connections
+│   ├── finetune.py                      # Fine-tuning (implemented, not validated)
 │   └── dataset/
-│       ├── split.py            # Stratified phenotype-balanced split
-│       ├── data_loader.py      # Manifest mode (ctrl_/regen_ prefixes)
-│       ├── augment.py          # Config mode + parametric aug_params mode
-│       └── preprocess.py
+│       ├── split.py                     # Stratified phenotype-balanced split
+│       ├── data_loader.py               # Manifest mode (ctrl_/regen_ prefixes)
+│       ├── augment.py                   # Config mode + parametric aug_params mode
+│       ├── preprocess.py
+│       └── __init__.py
 ├── segment/
+│   ├── segment.py                       # Inference, Hann blending, BGW output
+│   ├── __init__.py
+│   └── __main__.py
 ├── morphometrics/
-└── batch_axon/
+│   ├── morphometrics.py                 # Watershed, matching, quality filters
+│   ├── distributions.py                 # Three-tier diameter binning
+│   ├── analyze_nerve.py
+│   ├── __init__.py
+│   └── __main__.py
+└── utils/
+    ├── metrics.py                       # Dice, IoU, HD95, hd95_myelin_axon
+    ├── helpers.py                       # Shared utilities, get_path_input
+    ├── class_balance.py                 # Pixel class balance reporting
+    ├── version.py                       # v5.1.0 / v5_analysis
+    ├── logger.py
+    ├── resize.py
+    ├── gpu.py
+    ├── __init__.py
+    └── __main__.py
 ```
