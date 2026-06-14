@@ -324,8 +324,8 @@ def main():
                 seed         = run_cfg['seed'],
             )
             summary = split_summary(train_manifest, val_manifest)
-            run_cfg['_train_stems'] = summary['train_stems']
-            run_cfg['_val_stems']   = summary['val_stems']
+            run_cfg['train_stems'] = summary['train_stems']
+            run_cfg['val_stems']   = summary['val_stems']
             log.rule("STRATIFIED SPLIT")
             log.info(
                 f"Split: {summary['train_images']} train "
@@ -355,19 +355,47 @@ def main():
                 console.print(f"[dim]Result already exists — skipping: {run_cfg['run_id']}[/dim]")
                 sys.exit(0)
                 
-        train_model(
-            images_dir = run_cfg['images_dir'],
-            model_name = model_name,  
-            epochs     = run_cfg['epochs'],
-            batch_size = run_cfg['batch_size'],
-            use_aug    = run_cfg['augmentation'],
-            log        = log,
-            mag        = run_cfg['mag'],
-            arch       = run_cfg.get('arch',    'unet++'),              
-            encoder    = run_cfg.get('encoder', 'resnet34'),            
-            run_cfg    = run_cfg if is_analysis else None,              
-        )
-
+        try:
+            train_model(
+                images_dir = run_cfg['images_dir'],
+                model_name = model_name,
+                epochs     = run_cfg['epochs'],
+                batch_size = run_cfg['batch_size'],
+                use_aug    = run_cfg['augmentation'],
+                log        = log,
+                mag        = run_cfg['mag'],
+                arch       = run_cfg.get('arch',    'unet++'),
+                encoder    = run_cfg.get('encoder', 'resnet34'),
+                run_cfg    = run_cfg if is_analysis else None,
+            )
+        except ValueError as e:
+            err_str = str(e)
+            if 'dilated' in err_str or 'pooling' in err_str or 'DenseNet' in err_str:
+                if is_analysis:
+                    import json as _json
+                    from pathlib import Path as _Path
+                    stub = {
+                        'run_id':              run_cfg['run_id'],
+                        'status':              'INCOMPATIBLE',
+                        'incompatibility':     err_str,
+                        'arch':                run_cfg.get('arch'),
+                        'encoder':             run_cfg.get('encoder'),
+                        'class_weights':       run_cfg.get('class_weights'),
+                        'train_pct':           run_cfg.get('train_pct'),
+                        'val_pct':             run_cfg.get('val_pct'),
+                        'seed':                run_cfg.get('seed'),
+                    }
+                    result_path = (_Path(run_cfg['output']['results_dir'])
+                                   / run_cfg['run_id'] / 'result.json')
+                    result_path.parent.mkdir(parents=True, exist_ok=True)
+                    with open(result_path, 'w') as f:
+                        _json.dump(stub, f, indent=2)
+                    log.info(f"Structural incompatibility — stub written → {result_path}")
+                    sys.exit(0)
+                else:
+                    raise
+            else:
+                raise
         console.print(f"\n[dim]Log saved to: {log_path}[/dim]")
         return
 

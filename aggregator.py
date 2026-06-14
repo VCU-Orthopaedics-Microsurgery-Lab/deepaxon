@@ -76,15 +76,24 @@ def load_config(path: str) -> dict:
 
 # ─── Result loading ───────────────────────────────────────────────────────────
 
-def load_results_from(results_dir: Path, label: str = '') -> list[dict]:
-    results = []
-    missing = []
+def load_results_from(results_dir: Path, label: str = '') -> tuple[list[dict], list[dict]]:
+    """
+    Returns (results, incompatible) where incompatible are stub result.json
+    files written when a structural arch/encoder incompatibility was detected
+    at model instantiation (e.g. DenseNet + DeepLabV3+ in smp 0.5.0).
+    """
+    results      = []
+    incompatible = []
+    missing      = []
     for p in sorted(results_dir.rglob('result.json')):
         try:
             with open(p) as f:
                 r = json.load(f)
             r['result_path'] = str(p)
-            results.append(r)
+            if r.get('status') == 'INCOMPATIBLE':
+                incompatible.append(r)
+            else:
+                results.append(r)
         except Exception as e:
             missing.append((str(p), str(e)))
     if missing:
@@ -94,8 +103,9 @@ def load_results_from(results_dir: Path, label: str = '') -> list[dict]:
         if len(missing) > 10:
             print(f"  ... and {len(missing) - 10} more")
     tag = f" [{label}]" if label else ""
-    print(f"Loaded {len(results)} result files from {results_dir}{tag}")
-    return results
+    print(f"Loaded {len(results)} result files from {results_dir}{tag} "
+          f"(+{len(incompatible)} structurally incompatible)")
+    return results, incompatible
 
 
 def filter_degenerate(results: list[dict],
@@ -457,7 +467,8 @@ def print_training_overview(all_results: list[dict], valid: list[dict]):
 # ─── FINDING 2: Collapse diagnostics ──────────────────────────────────────────
 
 def build_collapse_report(all_results: list[dict], degenerate: list[dict],
-                           valid: list[dict], out_dir: Path):
+                           valid: list[dict], out_dir: Path,
+                           incompatible_stubs: list[dict] | None = None):
     """
     FINDING 2 — Collapse diagnostics.
     Includes EfficientNet performance comparison: valid eff runs vs stable encoders.
@@ -583,6 +594,22 @@ def build_collapse_report(all_results: list[dict], degenerate: list[dict],
     else:
         print(f"\n  EfficientNet encoders not present in this sweep — exclusion section skipped.")
 
+    # ── Structurally incompatible combos ──────────────────────────────────────
+    # Pass incompatible list into build_collapse_report via signature change below
+    if incompatible_stubs:
+        print(f"\n  Structurally incompatible (model instantiation failed — not a training issue):")
+        by_incompat_print = defaultdict(int)
+        for r in incompatible_stubs:
+            by_incompat_print[f"{r.get('arch')}/{r.get('encoder')}"] += 1
+        for combo, count in sorted(by_incompat_print.items()):
+            print(f"    {combo:<35} {count:>4} runs — STRUCTURALLY_INCOMPATIBLE")
+            reason = next(
+                (r.get('incompatibility', '') for r in incompatible_stubs
+                 if f"{r.get('arch')}/{r.get('encoder')}" == combo),
+                ''
+            )
+            print(f"    Reason: {reason[:80]}")
+    
     # ── Write CSV ─────────────────────────────────────────────────────────────
     csv_rows = []
     for combo in sorted(by_combo_total):
@@ -601,6 +628,28 @@ def build_collapse_report(all_results: list[dict], degenerate: list[dict],
             'axon_only':      by_combo[combo].get('axon_only', 0),
             'unstable':       encoder in UNSTABLE_ENCODERS,
         })
+        
+    if incompatible_stubs:
+        by_incompat = defaultdict(int)
+        for r in incompatible_stubs:
+            by_incompat[f"{r.get('arch')}/{r.get('encoder')}"] += 1
+        for combo, count in sorted(by_incompat.items()):
+            arch, encoder = combo.split('/', 1)
+            csv_rows.append({
+                'arch':           arch,
+                'encoder':        encoder,
+                'total_runs':     count,
+                'collapsed':      0,
+                'valid':          0,
+                'collapse_pct':   0.0,
+                'both_collapsed': 0,
+                'myelin_only':    0,
+                'axon_only':      0,
+                'unstable':       False,
+                'incompatible':   True,
+                'incompatibility':'STRUCTURALLY_INCOMPATIBLE — smp 0.5.0 make_dilated() '
+                                  'prohibits pooling-based downsampling',
+            })
     write_dict_csv(csv_rows, out_dir / 'wave1_collapse_report.csv', 'Collapse report')
 
 
@@ -1182,7 +1231,7 @@ def main():
     # ── Wave 1 ────────────────────────────────────────────────────────────────
     if args.wave == '1':
         print("\n══ WAVE 1 ANALYSIS ══════════════════════════════════════════════════")
-        results = load_results_from(results_dir / 'sw', 'Wave 1 SW')
+        results, incompatible = load_results_from(results_dir / 'sw', 'Wave 1 SW')
         check_completeness(results, args.expected)
         if not results:
             print("No results found — exiting.")
@@ -1194,7 +1243,8 @@ def main():
         print_training_overview(results + degenerate, results)
 
         # Finding 2 — Collapse diagnostics
-        build_collapse_report(results + degenerate, degenerate, results, out_dir)
+        build_collapse_report(results + degenerate, degenerate, results, out_dir,
+                              incompatible_stubs=incompatible)
 
         # Arch completeness detection (feeds into Findings 3+4)
         complete_archs, incomplete_archs = detect_incomplete_archs(results + degenerate, cfg)
@@ -1277,7 +1327,7 @@ def main():
     # ── Wave 2a ───────────────────────────────────────────────────────────────
     elif args.wave == '2a':
         print("\n── WAVE 2a ──────────────────────────────────────────────────────────")
-        results_2a = load_results_from(results_dir / 'wave2', 'Wave 2a')
+        results_2a, _ = load_results_from(results_dir / 'wave2', 'Wave 2a')
         if not results_2a:
             print("No Wave 2a results found — exiting.")
             return
@@ -1300,9 +1350,8 @@ def main():
             return
         with open(winner_path) as f:
             winner = json.load(f)
-        results_2b = load_results_from(results_dir / 'wave2', 'Wave 2b')
-        results_2b = [r for r in results_2b if r.get('stage') == '2b_aug_comparison']
-        results_sw = load_results_from(results_dir / 'sw', 'Wave 1 SW baseline')
+        results_2b, _ = load_results_from(results_dir / 'wave2', 'Wave 2b')
+        results_sw, _ = load_results_from(results_dir / 'sw', 'Wave 1 SW baseline')
         if not results_2b:
             print("No Wave 2b results found — exiting.")
             return
@@ -1327,7 +1376,7 @@ def main():
     # ── Wave 3 ────────────────────────────────────────────────────────────────
     elif args.wave == '3':
         print("\n── WAVE 3: LEARNING CURVE ───────────────────────────────────────────")
-        results_lc = load_results_from(results_dir / 'lc', 'Wave 3 LC')
+        results_lc, _ = load_results_from(results_dir / 'lc', 'Wave 3 LC')
         results_lc = [r for r in results_lc if r.get('wave') == 3]
         if not results_lc:
             print("No Wave 3 results found — exiting.")
